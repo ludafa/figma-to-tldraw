@@ -185,9 +185,13 @@ export function snapshotToShapes(
     if (type === 'figma-vector' || !node.children?.length) {
       return;
     }
-    const indices = getIndices(node.children.length);
+    // See apps/docs/figma-to-tldraw/tech.md §4.3.
+    const children = node.itemReverseZIndex
+      ? [...node.children].reverse()
+      : node.children;
+    const indices = getIndices(children.length);
     let currentMask = '';
-    node.children.forEach((child, i) => {
+    children.forEach((child, i) => {
       if (child.visible === false) {
         return;
       }

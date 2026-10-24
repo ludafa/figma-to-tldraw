@@ -191,4 +191,17 @@ Gemini 7 页：
 | 图片滤镜（`filters`：曝光、对比度、饱和度、色调、高光），背景图还叠了 48px 的图层模糊     | thumbnail 2、screenshot 1                                                                        | 中   | 用 CSS `filter` 或 SVG 滤镜近似，色调和高光要自己推算               |
 | 文字的渐变填充（`styleOverrideTable` 里的 `GRADIENT_LINEAR`，如 "Hello, Team"）           | screenshot 2、thumbnail 1、new-chat 1、plugin-file-cover 1                                       | 中   | CSS `background-clip: text`                                         |
 
-这些都还没修，等用户决定先修哪些（施工计划 5.4、5.5）。
+考完先修了两项最容易的（用户还没回复先修哪些，按我建议的顺序做），每行是改完以后重跑 7 个 Gemini 用例：
+
+| 修了什么                                          | 用例                                     | 修之前 | 修之后 |
+| ------------------------------------------------- | ---------------------------------------- | ------ | ------ |
+| First on top 叠放：子节点倒过来排（tech.md §4.3） | gemini-macbook-pro-14---new-chat-screen  | 1.84%  | 1.56%  |
+|                                                   | gemini-dribbble-thumbnail                | 41.74% | 41.58% |
+|                                                   | gemini-dribbble-screenshot               | 9.64%  | 9.50%  |
+|                                                   | gemini-macbook-pro-14---extension-screen | 1.41%  | 1.41%  |
+|                                                   | gemini-plugin-file-cover                 | 1.37%  | 1.49%  |
+| 装上 Red Hat Display 400、700（tech.md §6.4）     | gemini-plugin-file-cover                 | 1.49%  | 1.39%  |
+
+封面修完叠放顺序反而变高：卡片上的文字原来被背景盖住，现在露出来了，但用的是后备字体 Inter（缺 Product Sans），比 Figma 宽、换行也不一样，差异算进来了。卡片本身已经和 Figma 一样（文字、图标都在背景上面）。其他 103 个用例里没有 `itemReverseZIndex`，没有重跑。
+
+7 个 Gemini 用例重跑（`reports/fidelity/20261024-220745/`）：平均 8.39% → 8.31%。剩下的大头是图片滤镜（两张 Dribbble 图）和缺 Product Sans，文字渐变还没修。

@@ -190,6 +190,28 @@ describe('snapshotToShapes', () => {
     expect(new Set(indices).size).toBe(3);
   });
 
+  it('puts the first child on top when auto layout stacks first on top', () => {
+    const doc: FigmaNode = {
+      id: '1:1',
+      name: 'root',
+      type: 'FRAME',
+      itemReverseZIndex: true,
+      absoluteBoundingBox: box(0, 0, 100, 100),
+      children: ['a', 'b', 'c'].map((name, i) => ({
+        id: `1:${i + 2}`,
+        name,
+        type: 'RECTANGLE',
+        absoluteBoundingBox: box(0, 0, 10, 10),
+      })),
+    };
+    const { shapes } = snapshotToShapes(snapshot(doc), opts);
+    const bottomToTop = shapes
+      .slice(1)
+      .sort((x, y) => ((x.index as string) < (y.index as string) ? -1 : 1))
+      .map((s) => (s.props as { node: FigmaNode }).node.name);
+    expect(bottomToTop).toEqual(['c', 'b', 'a']);
+  });
+
   it('warns about unsupported node types', () => {
     const doc: FigmaNode = {
       id: '1:1',

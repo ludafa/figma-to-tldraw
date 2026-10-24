@@ -145,6 +145,7 @@ export interface FigmaNode {
   arcData?: FigmaArcData;
   effects?: FigmaEffect[];
   clipsContent?: boolean;
+  itemReverseZIndex?: boolean;
   characters?: string;
   style?: FigmaTypeStyle;
   characterStyleOverrides?: number[];
