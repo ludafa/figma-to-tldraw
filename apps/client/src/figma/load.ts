@@ -1,3 +1,4 @@
+import { fontShorthand } from './fonts';
 import type { CaseIndex, FigmaNode, Snapshot } from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §1.1 and §7.
@@ -39,19 +40,19 @@ function fontSpecs(snapshot: Snapshot): { font: string; text: string }[] {
   collectTexts(snapshot.rest.document, texts);
   const specs: { font: string; text: string }[] = [];
   for (const node of texts) {
+    const base = node.style ?? {};
     const styles = [
-      node.style,
-      ...Object.values(node.styleOverrideTable ?? {}),
+      base,
+      ...Object.values(node.styleOverrideTable ?? {}).map((o) => ({
+        ...base,
+        ...o,
+      })),
     ];
     for (const s of styles) {
-      if (!s?.fontFamily) {
+      if (!s.fontFamily) {
         continue;
       }
-      const italic = s.italic ? 'italic ' : '';
-      specs.push({
-        font: `${italic}${s.fontWeight ?? 400} 16px "${s.fontFamily}"`,
-        text: node.characters ?? '',
-      });
+      specs.push({ font: fontShorthand(s), text: node.characters ?? '' });
     }
   }
   return specs;

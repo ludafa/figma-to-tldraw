@@ -84,9 +84,11 @@ export abstract class FigmaShapeUtil<
 export function FigmaShapeContainer({
   shape,
   children,
+  backdrop,
 }: {
   shape: FigmaShape;
   children: ReactNode;
+  backdrop?: (clipPath: string | undefined) => ReactNode;
 }) {
   const editor = useEditor();
   const clipPaths = useValue(
@@ -133,6 +135,8 @@ export function FigmaShapeContainer({
         pointerEvents: 'none',
       }}
     >
+      {/* See apps/docs/figma-to-tldraw/tech.md §6.3. */}
+      {backdrop?.(clipPaths[0] ? `path('${clipPaths[0]}')` : undefined)}
       {content}
     </HTMLContainer>
   );

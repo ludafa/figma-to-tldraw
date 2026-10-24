@@ -160,7 +160,8 @@ export function snapshotToShapes(
       x,
       y,
       rotation,
-      opacity: node.opacity ?? 1,
+      // See apps/docs/figma-to-tldraw/tech.md §4.1.
+      opacity: type === 'figma-vector' ? 1 : (node.opacity ?? 1),
       props: {
         w: place.w,
         h: place.h,

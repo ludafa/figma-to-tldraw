@@ -189,7 +189,7 @@ describe('snapshotToShapes', () => {
     expect(warnings[0]).toContain('STICKY');
   });
 
-  it('places vectors at their render bounds and masks later siblings', () => {
+  it('places vectors at their render bounds, keeps their opacity in the SVG and masks later siblings', () => {
     const doc: FigmaNode = {
       id: '1:1',
       name: 'root',
@@ -207,6 +207,7 @@ describe('snapshotToShapes', () => {
           id: '1:3',
           name: 'icon',
           type: 'VECTOR',
+          opacity: 0.5,
           absoluteBoundingBox: box(20, 20, 30, 30),
           absoluteRenderBounds: box(19, 19, 32, 32),
         },
@@ -231,6 +232,7 @@ describe('snapshotToShapes', () => {
       type: 'figma-vector',
       x: 19,
       y: 19,
+      opacity: 1,
       props: { w: 32, h: 32, mask: shapeIdFor('t', '1:2') },
     });
   });

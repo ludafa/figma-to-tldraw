@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { layerBlurCss, textShadowCss } from '../effects';
+import { fontFamilyCss, fontStyleCss } from '../fonts';
 import { rgba } from '../geometry';
 import { visiblePaints } from '../paint';
 import type { FigmaShape } from '../shape-types';
@@ -8,9 +9,6 @@ import type { FigmaNode, FigmaTypeStyle } from '../types';
 import { FigmaShapeContainer, FigmaShapeUtil } from './base';
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
-
-export const FONT_STACK = (family: string | undefined) =>
-  `"${family ?? 'Inter'}", "Inter", "Noto Sans SC", sans-serif`;
 
 function fillColor(style: FigmaTypeStyle, node: FigmaNode): string | undefined {
   const fills = visiblePaints(style.fills ?? node.fills);
@@ -31,9 +29,9 @@ const TEXT_TRANSFORM: Partial<
 
 function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
   const css: CSSProperties = {
-    fontFamily: FONT_STACK(style.fontFamily),
+    fontFamily: fontFamilyCss(style),
     fontWeight: style.fontWeight,
-    fontStyle: style.italic ? 'italic' : 'normal',
+    fontStyle: fontStyleCss(style),
     fontSize: style.fontSize,
     color: fillColor(style, node),
     letterSpacing: style.letterSpacing ? `${style.letterSpacing}px` : undefined,

@@ -48,3 +48,18 @@
 | 8    | stroke/dashed           | 0.84%  | 虚线                                               |
 | 9    | layout/vertical-fill    | 0.68%  | 文字为主                                           |
 | 10   | layout/wrap             | 0.64%  | 文字为主                                           |
+
+第 4 步的修复记录（每行是改完以后重跑受影响的用例）：
+
+| 修了什么                                                         | 用例                    | 修之前 | 修之后 |
+| ---------------------------------------------------------------- | ----------------------- | ------ | ------ |
+| 矢量图形的透明度乘了两次（SVG 里已经带了），见 tech.md §4.1      | container/group-opacity | 15.53% | 2.64%  |
+| 背景模糊层放到裁剪包装层外面，见 tech.md §6.3                    | effect/background-blur  | 5.62%  | 0.01%  |
+| Inter 换回 3.19 版本，斜体用倾斜 10° 的可变字体，见 tech.md §6.4 | text/single-line        | 0.56%  | 0.00%  |
+|                                                                  | text/letter-spacing     | 0.56%  | 0.01%  |
+|                                                                  | text/wrap               | 1.68%  | 0.95%  |
+|                                                                  | text/decoration-case    | 1.84%  | 1.36%  |
+|                                                                  | text/mixed-styles       | 2.36%  | 2.15%  |
+|                                                                  | text/truncation         | 0.54%  | 0.11%  |
+|                                                                  | text/line-height        | 0.44%  | 0.13%  |
+|                                                                  | page/mobile-login       | 0.32%  | 0.26%  |

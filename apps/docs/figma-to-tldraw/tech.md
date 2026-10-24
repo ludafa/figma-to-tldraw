@@ -88,6 +88,10 @@ cases/
 
 图形的 `opacity` = 节点的 `opacity`（REST 里没有就是 1）。tldraw 会自己乘上祖先的透明度（§2），所以不要再手动乘。
 
+例外（2026-10-24，第一份报告发现）：`figma-vector` 的 `opacity` 固定是 1。Figma 导出的 SVG 已经把节点自己的透明度写进去了（比如 `<circle opacity="0.5">`），图形上再乘一次就变成 0.25。混合模式不会写进 SVG，还是由图形自己处理（§6.6）。
+
+已知限制：Figma 的组 / frame 透明度是"先把子节点画在一起，再整体变淡"，tldraw 是"每个子图形各自变淡"。子节点互相重叠时，重叠的地方颜色不一样（`container/group-opacity` 右边那组）。要完全一致就得把整个子树画进一个图形，属于架构改动，先记下来。
+
 ### 4.2 位置和旋转
 
 tldraw 子图形的 `x`、`y`、`rotation` 是相对父图形的局部坐标。做法是先算出每个图形想要的**页面变换矩阵**，再换算成相对父图形的：
@@ -171,9 +175,13 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 
 矢量节点导出的 SVG 已经带了阴影和模糊，不再加。
 
+背景模糊的那一层不能放在 §5 的 `clip-path` 包装层里面（2026-10-24，第一份报告发现）：浏览器规定，带 `clip-path`、`filter`、`opacity < 1`、`mask`、`mix-blend-mode` 的元素是"背景根"，它里面的 `backdrop-filter` 只能模糊到这个元素里面画的东西，看不到下面的其他图形。所以 `FigmaShapeContainer` 把背景模糊层（`BackdropBlur`）放在裁剪包装层外面，最近的那个裁剪形状直接写在这一层自己的 `clip-path` 上（元素自己的 `clip-path` 不影响它看到的背景）。限制：有好几层裁剪时，背景模糊层只按最近的一层裁；图形自己带透明度或混合模式时，`.tl-shape` 本身就成了背景根，模糊还是会失效。
+
 ### 6.4 文字
 
-- 字体：Inter 和 Noto Sans SC 用 npm 的 `@fontsource` 包加载，和 Figma 用同样的字重。
+- 字体：Inter 和 Noto Sans SC 用 npm 的 `@fontsource` 包加载，和 Figma 用同样的字重。代码在 `apps/client/src/figma/fonts.ts`。
+- **Inter 必须用 3.x 版本**（2026-10-24，第一份报告发现）：Figma 用的是 Inter 3.19，新版 Inter 4（`@fontsource/inter` 5.x）的字宽不一样，24px 的 "The quick brown fox jumps" 宽 306.9px，Figma 是 305px，3.19 量出来是 304.6px。所以锁定 `@fontsource/inter@4.5.15`（里面是 Inter 3.19）。也试过 Inter 4 的光学尺寸（`opsz`），24px 时只有 292.5px，更不对。
+- Inter 3.19 的字体包没有静态斜体。Figma 的 Inter Italic 是正体倾斜 10°，所以斜体改用同一个包里带倾斜轴的可变字体 `InterVariable`，CSS 写 `font-style: oblique 10deg`。
 - 行高一律用 REST 算好的 `lineHeightPx`；字间距用 `letterSpacing`（像素）。
 - `textAutoResize` 为 `WIDTH_AND_HEIGHT` 时不换行（`white-space: pre`），其他情况按节点宽度换行。
 - 垂直对齐用 flex 的 `justify-content`。

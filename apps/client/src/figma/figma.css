@@ -1,6 +1,6 @@
 /* See apps/docs/figma-to-tldraw/tech.md §6.4 and §6.6. */
 @import '@fontsource/inter/400.css';
-@import '@fontsource/inter/400-italic.css';
+@import '@fontsource/inter/variable-full.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
 @import '@fontsource/inter/700.css';
