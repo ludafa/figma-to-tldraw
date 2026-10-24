@@ -191,13 +191,18 @@ SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚�
 - 字体：Inter 和 Noto Sans SC 用 npm 的 `@fontsource` 包加载，和 Figma 用同样的字重。代码在 `apps/client/src/figma/fonts.ts`。
 - **Inter 必须用 3.x 版本**（2026-10-24，第一份报告发现）：Figma 用的是 Inter 3.19，新版 Inter 4（`@fontsource/inter` 5.x）的字宽不一样，24px 的 "The quick brown fox jumps" 宽 306.9px，Figma 是 305px，3.19 量出来是 304.6px。所以锁定 `@fontsource/inter@4.5.15`（里面是 Inter 3.19）。也试过 Inter 4 的光学尺寸（`opsz`），24px 时只有 292.5px，更不对。
 - Inter 3.19 的字体包没有静态斜体。Figma 的 Inter Italic 是正体倾斜 10°，所以斜体改用同一个包里带倾斜轴的可变字体 `InterVariable`，CSS 写 `font-style: oblique 10deg`。
-- 行高用 REST 算好的 `lineHeightPx`；字间距用 `letterSpacing`（像素）。单位是 `INTRINSIC_%`（自动）或 `FONT_SIZE_%` 时，CSS 写成无单位的倍数（`lineHeightPx ÷ fontSize`），这样同一段里字号更大的部分会按自己的字号撑高这一行（2026-10-24，`text/mixed-styles` 从 2.15% 降到 0.83%）；单位是 `PIXELS` 时写像素。
+- 行高（2026-10-24 改过两次）：
+  - 单位是 `INTRINSIC_%`（自动）时，Figma 实际用的是**四舍五入到整像素**的行高：16px 的 Inter 在 REST 里是 19.36，但 5 行的段落框高是 95 = 5 × 19；所有单行文字的框高也都是取整后的行高。所以自动行高 = `round(lineHeightPx ÷ 基础字号 × 这段的字号)`（`text/wrap` 0.93% → 0.02%）。
+  - 同一段里字号不同的部分各自算行高，写在每个 `<span>` 上，大字会撑高所在的行（`text/mixed-styles` 2.15% → 0.57%）。
+  - `PIXELS` 直接用 `lineHeightPx`；`FONT_SIZE_%` 按字号等比例算，不取整（用例里都是整数，没法确认 Figma 取不取整）。
+  - 样式覆盖表里自己写了 `lineHeightPx` 的那段，用它自己的值。
 - 已知差别：一段里混着不同字号时，Figma 的行距是"上一行基线到这一行基线 = 这一行的行高"，CSS 是按每行的上下高度往下堆，大字在第一行时第二行会差 2～3px。
 - 下划线、删除线用字体文件里写的粗细和位置（`text-decoration-thickness` / `text-underline-position: from-font`）。浏览器默认的粗细是字号的 1/10（22px 时 2.2px），Figma 用的是 Inter 自带的 0.068em（22px 时 1.5px）。
 - **基线取整**（2026-10-24）：同一段文字，Chrome 和 Figma 的基线会差 1px，和字号有关（第一份报告里 11、12、13、14、18、22、28px 都偏高 1px，10、15、16、20、24px 对齐）。统计了 79 个用例里全部单行文字后找到的规律：
   - Chrome：先把字体的上沿（ascent）和下沿（descent）分别四舍五入成整**设备像素**，行高减去这两个数再除以 2、**向下取整**，加上取整后的上沿，就是基线离文本框顶部的距离（设备像素，除以 `devicePixelRatio` 换回 CSS 像素）。最早是在 Playwright 模拟的 2 倍屏下找到的规律，那时 Chrome 按 CSS 整像素取整；改成真实 2 倍屏截图以后（§7）把屏幕倍数加进公式，同样对得上。
   - Figma：基线 = 上沿 × 字号 + (行高 − (上沿 + 下沿) × 字号) ÷ 2，自动高度的文本框还要加上"框高 − 行数 × 行高"（框高取整留下的零头，不超过 0.5px）的一半，最后**四舍五入到整像素**（导出 2 倍图时也是按 1 倍的整像素对齐）。
-  - 两者的差用 `position: relative; top` 补到文字上。只对 Inter、顶部对齐的文字做；Inter 3.19 的上沿 2728/2816、下沿 680/2816。
+  - 两者的差用 `position: relative; top` 补到文字上，只对顶部对齐的文字做。
+  - **两边用的字体高度数据不一样**：Figma 用字体 OS/2 表里的 typo 上沿 / 下沿，macOS 上的 Chrome 用 hhea 表。Inter 3.19 两组一样（2728 / 680，UPM 2816）；Noto Sans SC 差很多（typo 880 / 120，hhea 1160 / 288，UPM 1000），所以 `figma-text.tsx` 里按字体分别记两组（`FONT_METRICS`），不认识的字体不补。Noto Sans SC 的自动行高在 Figma 里是 1.2 倍字号，也不是按 hhea 算的 1.448 倍（`text/cjk-mixed` 1.77% → 0.00%）。
 - `textAutoResize` 为 `WIDTH_AND_HEIGHT` 时不换行（`white-space: pre`），其他情况按节点宽度换行。
 - 垂直对齐用 flex 的 `justify-content`。
 - 混合样式：按 `characterStyleOverrides` 把文字切成几段，每段套 `styleOverrideTable` 里的样式。

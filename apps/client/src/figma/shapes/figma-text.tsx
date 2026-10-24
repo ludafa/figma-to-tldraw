@@ -28,10 +28,23 @@ const TEXT_TRANSFORM: Partial<
 };
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
-function lineHeightCss(style: FigmaTypeStyle): string | number {
+function resolvedLineHeight(
+  base: FigmaTypeStyle,
+  override?: FigmaTypeStyle,
+): number {
+  const style = { ...base, ...override };
   const size = style.fontSize ?? 16;
-  const px = style.lineHeightPx ?? size * 1.2;
-  return style.lineHeightUnit === 'PIXELS' ? `${px}px` : px / size;
+  let px: number;
+  if (
+    override?.lineHeightPx !== undefined ||
+    style.lineHeightUnit === 'PIXELS'
+  ) {
+    px = style.lineHeightPx ?? size * 1.2;
+  } else {
+    const baseSize = base.fontSize ?? 16;
+    px = ((base.lineHeightPx ?? baseSize * 1.2) / baseSize) * size;
+  }
+  return style.lineHeightUnit === 'INTRINSIC_%' ? Math.round(px) : px;
 }
 
 function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
@@ -60,7 +73,7 @@ function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
 interface Run {
   text: string;
   style: FigmaTypeStyle;
-  ownLineHeight?: boolean;
+  lineHeight: number;
 }
 
 function textRuns(node: FigmaNode): Run[] {
@@ -78,7 +91,7 @@ function textRuns(node: FigmaNode): Run[] {
       runs.push({
         text: chars.slice(start, i),
         style: override ? { ...base, ...override } : base,
-        ownLineHeight: override?.lineHeightPx !== undefined,
+        lineHeight: resolvedLineHeight(base, override),
       });
       start = i;
     }
@@ -102,8 +115,17 @@ function paragraphs(runs: Run[]): Run[][] {
   return out;
 }
 
-const INTER_ASCENT = 2728 / 2816;
-const INTER_DESCENT = 680 / 2816;
+// See apps/docs/figma-to-tldraw/tech.md §6.4.
+const FONT_METRICS: Record<
+  string,
+  { figma: [number, number]; chrome: [number, number] }
+> = {
+  Inter: {
+    figma: [2728 / 2816, 680 / 2816],
+    chrome: [2728 / 2816, 680 / 2816],
+  },
+  'Noto Sans SC': { figma: [0.88, 0.12], chrome: [1.16, 0.288] },
+};
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
 function baselineShift(
@@ -112,19 +134,17 @@ function baselineShift(
   paragraphCount: number,
   dpr: number,
 ): number {
-  if (
-    (style.fontFamily ?? 'Inter') !== 'Inter' ||
-    (style.textAlignVertical ?? 'TOP') !== 'TOP'
-  ) {
+  const metrics = FONT_METRICS[style.fontFamily ?? 'Inter'];
+  if (!metrics || (style.textAlignVertical ?? 'TOP') !== 'TOP') {
     return 0;
   }
   const size = style.fontSize ?? 16;
-  const lh = style.lineHeightPx ?? size * 1.2;
-  const a = INTER_ASCENT * size;
-  const d = INTER_DESCENT * size;
-  const ad = Math.round(a * dpr);
-  const dd = Math.round(d * dpr);
+  const lh = resolvedLineHeight(style);
+  const ad = Math.round(metrics.chrome[0] * size * dpr);
+  const dd = Math.round(metrics.chrome[1] * size * dpr);
   const chrome = (ad + Math.floor((lh * dpr - ad - dd) / 2)) / dpr;
+  const a = metrics.figma[0] * size;
+  const d = metrics.figma[1] * size;
   const auto =
     style.textAutoResize === 'HEIGHT' ||
     style.textAutoResize === 'WIDTH_AND_HEIGHT';
@@ -138,7 +158,7 @@ function baselineShift(
 export function TextContent({ shape }: { shape: FigmaShape }) {
   const { w, h, node } = shape.props;
   const style = node.style ?? {};
-  const lineHeight = style.lineHeightPx ?? (style.fontSize ?? 16) * 1.2;
+  const lineHeight = resolvedLineHeight(style);
   const autoResize = style.textAutoResize ?? 'NONE';
   const truncate = style.textTruncation === 'ENDING';
   const clampLines = truncate
@@ -165,9 +185,7 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
             key={j}
             style={{
               ...runStyle(run.style, node),
-              lineHeight: run.ownLineHeight
-                ? lineHeightCss(run.style)
-                : undefined,
+              lineHeight: `${run.lineHeight}px`,
             }}
           >
             {run.text}
@@ -188,7 +206,7 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
 
   const inner: CSSProperties = {
     ...runStyle(style, node),
-    lineHeight: lineHeightCss(style),
+    lineHeight: `${lineHeight}px`,
     position: 'relative',
     top: baselineShift(style, h, paras.length, window.devicePixelRatio || 1),
     textAlign:
