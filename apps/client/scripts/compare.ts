@@ -29,6 +29,7 @@ const SHOT_OFFSET = 40;
 const SCALE = 2;
 const MIN_WINDOW = { width: 1200, height: 1400 };
 const WORKERS = 4;
+const STRIP_HEIGHT = 4000;
 
 function matches(dir: string, patterns: string[]): boolean {
   if (patterns.length === 0) {
@@ -98,18 +99,41 @@ async function shoot(
       timeout: 30_000,
     });
     const warnings = await page.evaluate(() => window.__figmaWarnings ?? []);
-    const png = await page.screenshot({
-      clip: {
-        x: SHOT_OFFSET,
-        y: SHOT_OFFSET,
-        width: area.width,
-        height: area.height,
-      },
-    });
-    return { png, warnings };
+    // See apps/docs/figma-to-tldraw/tech.md §12.2.
+    const strips: Buffer[] = [];
+    for (let y = 0; y < area.height; y += STRIP_HEIGHT) {
+      strips.push(
+        await page.screenshot({
+          clip: {
+            x: SHOT_OFFSET,
+            y: SHOT_OFFSET + y,
+            width: area.width,
+            height: Math.min(STRIP_HEIGHT, area.height - y),
+          },
+        }),
+      );
+    }
+    return { png: stitch(strips), warnings };
   } finally {
     await page.close();
   }
+}
+
+function stitch(strips: Buffer[]): Buffer {
+  if (strips.length === 1) {
+    return strips[0];
+  }
+  const pngs = strips.map((s) => PNG.sync.read(s));
+  const out = new PNG({
+    width: pngs[0].width,
+    height: pngs.reduce((h, p) => h + p.height, 0),
+  });
+  let y = 0;
+  for (const p of pngs) {
+    PNG.bitblt(p, out, 0, 0, p.width, p.height, 0, y);
+    y += p.height;
+  }
+  return PNG.sync.write(out);
 }
 
 async function compareCase(
