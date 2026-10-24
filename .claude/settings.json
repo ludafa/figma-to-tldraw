@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm bootstrap)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm format)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm build)",
+      "Bash(pnpm --filter * run *)",
+      "Bash(pnpm --filter @figma-to-tldraw/* run *)",
+      "Bash(pnpm --filter @figma-to-tldraw/* exec *)",
+      "Bash(pnpm --filter @figma-to-tldraw/* dlx shadcn@latest add *)",
+      "Bash(pnpm --filter @figma-to-tldraw/* dlx shadcn@latest list *)",
+      "Bash(npx kubb generate)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(curl -s http://localhost:3000/*)",
+      "Bash(curl -s http://localhost:5173/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // .tool_response.filePath // empty'); case \"$f\" in \"$CLAUDE_PROJECT_DIR\"/*) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR\" && sh scripts/format.sh \"$f\" >/dev/null 2>&1; exit 0",
+            "timeout": 30,
+            "statusMessage": "scripts/format.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

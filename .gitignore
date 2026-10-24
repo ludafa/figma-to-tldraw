@@ -1,0 +1,15 @@
+node_modules
+.DS_Store
+*.log
+
+# Shared env file (commit only the example)
+.env
+.env.local
+
+# Lantie local judgment log + state (uploaded to a local dev server by a hook)
+.lantie_history
+.lantie_state.json
+
+# Figma test data exported by apps/figma-plugin, and fidelity reports
+cases/
+reports/

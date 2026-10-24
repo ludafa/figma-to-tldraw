@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "sortImports": {
+    "groups": [
+      "side_effect",
+      "builtin",
+      "external",
+      ["internal", "subpath"],
+      ["parent", "sibling", "index"],
+      "style",
+      "unknown"
+    ]
+  },
+  "ignorePatterns": [
+    "pnpm-lock.yaml",
+    "apps/server/openapi.yml",
+    "apps/server/drizzle/**",
+    "apps/client/src/routeTree.gen.ts",
+    "apps/figma-plugin/**",
+    "cases/**",
+    "reports/**"
+  ],
+  "overrides": [
+    {
+      "files": ["*.yml", "*.yaml"],
+      "options": { "proseWrap": "always", "singleQuote": false }
+    },
+    {
+      "files": ["apps/client/**"],
+      "options": {
+        "sortTailwindcss": {
+          "stylesheet": "./apps/client/src/main.css",
+          "functions": ["cn", "cva"]
+        }
+      }
+    }
+  ]
+}

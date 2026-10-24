@@ -1,0 +1,16 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm v11 replaced onlyBuiltDependencies/neverBuiltDependencies with the
+# allowBuilds map (pkg: true|false). `pnpm approve-builds` edits this list.
+# All four legitimately need their install/build scripts:
+#   better-sqlite3 (native addon), esbuild (platform binary), msw (worker), es5-ext (postinstall)
+allowBuilds:
+  better-sqlite3: true
+  es5-ext: true
+  esbuild: true
+  msw: true
+
+minimumReleaseAgeExclude:
+  - hono@4.12.31

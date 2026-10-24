@@ -1,0 +1,44 @@
+{
+  "folders": [
+    {
+      "name": "root",
+      "path": ".",
+    },
+    {
+      "name": "server",
+      "path": "apps/server",
+    },
+    {
+      "name": "client",
+      "path": "apps/client",
+    },
+    {
+      "name": "docs",
+      "path": "apps/docs",
+    },
+  ],
+  "settings": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "explicit",
+    },
+    "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][yaml][markdown][html][css]": {
+      "editor.defaultFormatter": "oxc.oxc-vscode",
+      "editor.formatOnSave": true,
+      "editor.formatOnSaveMode": "file",
+    },
+    "tailwindCSS.experimental.classRegex": [
+      ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+      ["cx\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+      ["cn\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ],
+    "tailwindCSS.includeLanguages": {
+      "typescriptreact": "javascript",
+    },
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "files.eol": "\n",
+  },
+  "extensions": {
+    "recommendations": ["oxc.oxc-vscode", "bradlc.vscode-tailwindcss"],
+  },
+}

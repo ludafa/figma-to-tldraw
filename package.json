@@ -1,0 +1,35 @@
+{
+  "name": "figma-to-tldraw",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.0",
+  "scripts": {
+    "bootstrap": "pnpm --filter @figma-to-tldraw/server run db:generate && pnpm --filter @figma-to-tldraw/server run db:migrate && pnpm --filter @figma-to-tldraw/server run generate:openapi && pnpm --filter @figma-to-tldraw/client run generate:api",
+    "dev:server": "pnpm --filter @figma-to-tldraw/server run dev",
+    "dev:client": "pnpm --filter @figma-to-tldraw/client run dev",
+    "test": "pnpm -r run test",
+    "lint": "oxlint && oxfmt --check && pnpm docs:check",
+    "lint:fix": "pnpm format && oxlint",
+    "format": "sh scripts/format.sh",
+    "docs:index": "node scripts/docs/index.mjs",
+    "docs:check-refs": "node scripts/docs/check-refs.mjs",
+    "docs:check": "node scripts/docs/index.mjs --check && node scripts/docs/check-refs.mjs",
+    "typecheck": "pnpm -r run typecheck",
+    "build": "pnpm -r run build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
+    "tslib": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "lint-staged": {
+    "*": "sh scripts/format.sh"
+  }
+}

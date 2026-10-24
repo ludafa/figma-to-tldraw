@@ -1,0 +1,81 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
+  "categories": {
+    "correctness": "error"
+  },
+  "options": {
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "warn"
+  },
+  "env": {
+    "builtin": true,
+    "es2022": true
+  },
+  "ignorePatterns": [
+    "apps/server/drizzle/**",
+    "apps/client/src/gen/**",
+    "apps/client/src/routeTree.gen.ts",
+    "apps/figma-plugin/**",
+    "cases/**",
+    "reports/**"
+  ],
+  "rules": {
+    // See apps/docs/lint-format/tech.md §3.
+    "no-array-constructor": "error",
+    "no-case-declarations": "error",
+    "no-empty": "error",
+    "no-fallthrough": "error",
+    "no-prototype-builtins": "error",
+    "no-regex-spaces": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-rest-params": "error",
+    "prefer-spread": "error",
+    "preserve-caught-error": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-function-type": "error",
+
+    "no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "typescript/ban-ts-comment": [
+      "error",
+      {
+        "ts-ignore": "allow-with-description",
+        "ts-expect-error": "allow-with-description"
+      }
+    ],
+    "import/no-duplicates": "warn",
+    "curly": ["error", "all"],
+    "one-var": ["error", "never"]
+  },
+  "overrides": [
+    {
+      "files": ["apps/client/**"],
+      "plugins": ["react"],
+      "env": { "browser": true },
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+        "react/incompatible-library": "warn",
+        "react/unsupported-syntax": "warn"
+      }
+    },
+    {
+      "files": ["apps/server/**"],
+      "env": { "node": true }
+    },
+    {
+      // See apps/docs/lint-format/tech.md §3.1.
+      "files": ["**/*.js", "**/*.mjs", "**/*.cjs"],
+      "env": { "node": true },
+      "rules": { "no-undef": "error" }
+    }
+  ]
+}

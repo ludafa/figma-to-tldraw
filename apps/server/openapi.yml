@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  title: Figma to tldraw API
+  version: 1.0.0
+components:
+  schemas:
+    Note:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - title
+        - body
+        - createdAt
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          examples:
+            - Not found
+      required:
+        - error
+    CreateNoteInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+      required:
+        - title
+        - body
+  parameters: {}
+paths:
+  /api/notes:
+    get:
+      tags:
+        - Notes
+      summary: List the current user’s notes
+      responses:
+        "200":
+          description: Notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Note"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      tags:
+        - Notes
+      summary: Create a note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+webhooks: {}
