@@ -1,19 +1,12 @@
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Button } from '@/components/ui/button';
 
 import { authClient } from '../lib/auth-client';
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
-
-  async function handleSignOut() {
-    await authClient.signOut();
-    await navigate({ to: '/login' });
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -38,11 +31,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </span>
             )}
             <ThemeToggle />
-            {session?.user && (
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                Sign out
-              </Button>
-            )}
           </div>
         </div>
       </header>

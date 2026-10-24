@@ -1,7 +1,7 @@
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 
 import { AppLayout } from '../layouts/app-layout';
-import { authClient } from '../lib/auth-client';
+import { ensureTestSession } from '../lib/auth-client';
 
 export const Route = createFileRoute('/_app')({
   component: () => (
@@ -9,10 +9,5 @@ export const Route = createFileRoute('/_app')({
       <Outlet />
     </AppLayout>
   ),
-  beforeLoad: async () => {
-    const session = await authClient.getSession();
-    if (!session.data) {
-      throw redirect({ to: '/login' });
-    }
-  },
+  beforeLoad: ensureTestSession,
 });

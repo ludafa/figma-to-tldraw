@@ -56,7 +56,7 @@ These are load-bearing — change them only with the user's explicit go-ahead.
 ### Client
 
 - **Routes are file-based.** The TanStack Router Vite plugin rewrites `src/routeTree.gen.ts` whenever route files change. Don't hand-edit `routeTree.gen.ts`. Don't reintroduce the imperative `createRouter`/`createRoute` style.
-- **Auth guards live in `_app.tsx` / `_auth.tsx`.** `beforeLoad` does a `authClient.getSession()` and `redirect(...)` based on whether a session exists. Page components do not re-check.
+- **Auth guards live in `_app.tsx` / `_auth.tsx`.** The client always runs as the test account `test@test.com`: `_app.tsx`'s `beforeLoad` is `ensureTestSession()` (signs in, registering the account on first use), and `_auth.tsx` redirects `/login` and `/register` to `/`. Page components do not re-check. See [`apps/docs/auth/`](apps/docs/auth/README.md).
 - **API access goes through `src/gen/clients`.** Never `fetch('/api/...')` directly — Kubb-generated functions carry types and credentials. If a function you need doesn't exist, regenerate (see `regen-api-client` skill) or add the missing route on the server first.
 - **Vite is real `vite@8`** — Vite 8 ships Rolldown (bundler) + Oxc (transformer) natively, so the old `rolldown-vite` package and its `overrides` pin are gone. There is no `vite` override in `pnpm-workspace.yaml` anymore; the client depends on `vite@^8` directly.
 - **Tailwind v4 is CSS-first.** No `tailwind.config.*`. Theme tokens are CSS custom properties in `src/main.css`. Add new tokens under both `:root` and `.dark`.
