@@ -406,8 +406,8 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 ### 10.1 原稿链接
 
 - 节点链接：`https://www.figma.com/design/<file key>/?node-id=<节点 ID，冒号换成短横>`，节点 ID 用 `index.json` 里每条用例的 `nodeId`。
-- 插件导出的数据里没有 file key：插件 API 的 `figma.fileKey` 只给私有插件，要在 manifest 里开 `enablePrivatePluginApi`，没试。三份文件的 key 是从 Figma 桌面版的本地设置 `~/Library/Application Support/Figma/settings.json` 读到的（打开着的标签页 `windows[].tabs[]` 的 `path` 是 `/file/<key>`，`title` 是文件名），写死在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`。按文件名对上：每条用例的 `source.figmaFile`，没有 `source` 的（插件生成的 79 个）用 `index.json` 顶层的 `figmaFile`。
-- 两份社区稿子是复制到用户草稿里的副本，节点链接打开的是副本，只有用户自己能看；所以另外给一个"社区原稿"按钮，指向社区页面（Untitled UI `community/file/1020079203222518115`，Gemini `community/file/1346359039607478680`）。
+- 插件导出的数据里没有 file key：插件 API 的 `figma.fileKey` 只给私有插件，要在 manifest 里开 `enablePrivatePluginApi`，没试。文件的 key（2026-10-25 起 11 份，§12） 是从 Figma 桌面版的本地设置 `~/Library/Application Support/Figma/settings.json` 读到的（打开着的标签页 `windows[].tabs[]` 的 `path` 是 `/file/<key>`，`title` 是文件名），写死在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`。按文件名对上：每条用例的 `source.figmaFile`，没有 `source` 的（插件生成的 79 个）用 `index.json` 顶层的 `figmaFile`。
+- 社区稿子是复制到用户草稿里的副本，节点链接打开的是副本，只有用户自己能看；所以另外给一个"社区原稿"按钮，指向社区页面（Untitled UI `community/file/1020079203222518115`，Gemini `community/file/1346359039607478680`；2026-10-25 加的 8 份见 `FIGMA_FILES`，链接是按文件名在网上搜到的社区页面）。
 - 换了 Figma 文件或重新复制以后，要改 `FIGMA_FILES`，否则链接打不开（见 §8）。
 
 ### 10.2 差异归因
@@ -437,7 +437,7 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 `apps/client/src/showcase/groups.ts`（新）：
 
 - 分组：`real/` 下按前两级（`real/<文件名>`），其余按第一级目录；顺序是 `index.json` 里第一次出现的顺序。每组一行中文标题，写这组测哪些 Figma 特性。
-- 说明：图片滤镜组和两份真实稿子各一段，内容取自 [verification.md §6](verification.md#6-真实稿子考试2026-10-24) 的结论；两张留作考试的稿子各加一句"修规则时没看过它的差异图"。说明只写自动算不出来、已经查清楚的原因；**改了渲染规则、原因变了时要同步改这里**（见 §8）。
+- 说明：图片滤镜组和每份真实稿子各一段（2026-10-25 起 10 份，§12），内容取自 [verification.md §6](verification.md#6-真实稿子考试2026-10-24) 和 [§7](verification.md#7-再加-8-套真实稿子2026-10-25) 的结论；两张留作考试的稿子各加一句"修规则时没看过它的差异图"。说明只写自动算不出来、已经查清楚的原因；**改了渲染规则、原因变了时要同步改这里**（见 §8）。
 
 ### 10.4 tldraw 画布和三张图同比例
 
@@ -454,16 +454,16 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 
 内容按这个顺序（`apps/client/src/pages/how-it-works.tsx`（新）里的几个常量）：
 
-| 章节                | 内容                                                                      | 出处                                                      |
-| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 开头                | 一句话核心思路 + 最新一次对比的四个数字                                   | 数字实时读 `results.json`（`loadLatestReport()`），不写死 |
-| 1. 整条链路         | 插件 → `cases/` → 转换 → tldraw 画布 → 对比，五步                         | §1                                                        |
-| 2. 每个节点一个图形 | 四种自定义图形的表 + 节点树演示（下面）                                   | §3、§4                                                    |
-| 3. 几个关键做法     | 自己写插件、照着 Figma 画、子图形自己裁剪、矩阵算位置、算不准的交给 Figma | §1.2、§5、§4.2、§6.8                                      |
-| 4. 怎么量"像不像"   | Gemini 一页的 Figma 图 / tldraw 截图 / 差异图三联，四条要点               | §7、§9.4、§10.2                                           |
-| 5. 怎么一步步变像   | 79 个单项用例 → 按特性修 → 真实稿子考试 → 再修、留两页只考不调            | verification.md §4～§6                                    |
-| 6. 找到的几条规律   | Inter 版本、自动行高、文字基线、虚线、0.125px 偏移、对比度单位            | §6.2、§6.4、§6.8、§7                                      |
-| 7. 还做不到的       | 组透明度、没有网页版的字体、滤镜参数、缩放旋转、Demo 不做的事             | §4.1、§6.9、§8                                            |
+| 章节                | 内容                                                                                                                    | 出处                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 开头                | 一句话核心思路 + 最新一次对比的四个数字                                                                                 | 数字实时读 `results.json`（`loadLatestReport()`），不写死 |
+| 1. 整条链路         | 插件 → `cases/` → 转换 → tldraw 画布 → 对比，五步                                                                       | §1                                                        |
+| 2. 每个节点一个图形 | 四种自定义图形的表 + 节点树演示（下面）                                                                                 | §3、§4                                                    |
+| 3. 几个关键做法     | 自己写插件、照着 Figma 画、子图形自己裁剪、矩阵算位置、算不准的交给 Figma                                               | §1.2、§5、§4.2、§6.8                                      |
+| 4. 怎么量"像不像"   | Gemini 一页的 Figma 图 / tldraw 截图 / 差异图三联，四条要点                                                             | §7、§9.4、§10.2                                           |
+| 5. 怎么一步步变像   | 79 个单项用例 → 按特性修 → 真实稿子考试 → 再修、留两页只考不调 → 再加 8 套真实稿子（2026-10-25）                        | verification.md §4～§7                                    |
+| 6. 找到的几条规律   | Inter 版本、自动行高、文字基线、虚线、0.125px 偏移、对比度单位；2026-10-25 加水平翻转、只有描边的投影、背景模糊要有填充 | §6.2、§6.4、§6.8、§7、§12.3、§12.4、§12.6                 |
+| 7. 还做不到的       | 组透明度、没有网页版的字体（2026-10-25 加上商业字体）、滤镜参数、缩放旋转、Demo 不做的事                                | §4.1、§6.9、§8、§12.1                                     |
 
 第 4 节的三张图直接用最新报告里的 `expected.png`、`actual.png`、`diff.png`（`reportUrl()`），所以要先跑过对比。除了开头的四个数字，其余数字都是历史结果，写死在页面里；**这几节是 tech.md、verification.md 的摘要，改了相关做法时要一起改**（见 §8）。
 
@@ -476,7 +476,7 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 
 ## 12. 再加 8 套真实稿子（2026-10-25，用户追加）
 
-两套真实稿子不够（用户追加："把真实稿子堆到 10 套"，偏手机 App 和落地页）。又从 Figma 社区复制了 8 份免费文件，导出 33 页，合进 `cases/real/`，一共 151 个用例。文件名单、file key 和社区链接在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`（§10.1）。
+两套真实稿子不够（用户追加："把真实稿子堆到 10 套"，偏手机 App 和落地页）。又从 Figma 社区复制了 8 份免费文件，导出 33 页，合进 `cases/real/`，一共 151 个用例。文件名单、file key 和社区链接在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`（§10.1），成绩见 [verification.md §7](verification.md#7-再加-8-套真实稿子2026-10-25)。
 
 第一次跑（规则不改）33 页平均 4.71%，11 页小于 1%。下面几处是按特性修的，每一处都不是只针对某一张图。
 

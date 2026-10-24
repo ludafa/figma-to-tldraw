@@ -37,10 +37,14 @@
 7. 打开 `/canvas?case=real/google-gemini---built-with-material-3-de/gemini-plugin-file-cover` → 工具条只有 1 条警告："缺字体：Product Sans 400（用 Google Sans Flex 近似代替）"；"Hello, Team" 里的 a 是双层的。
 8. 打开 `/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop` → 截图模式（加 `&shot=1`）下整页都在画面里，包括超出 960 高的部分。
 9. 打开 `/canvas?case=image-filter/combined` → 下面那块色卡变暗、变暖、对比更强，和 `cases/image-filter/combined/expected@2x.png` 一样，工具条没有警告。
-10. 打开 `/showcase` → 顶部四个数字和最新报告一致（118、0.07%、118、47）；卡片按分组排，切到"按差异从大到小"后第一张是 `gemini-macbook-pro-14---extension-screen`（0.97%）。
+10. 打开 `/showcase` → 顶部四个数字和最新报告一致（2026-10-25：151、0.13%、148、47）；卡片按分组排，有 10 个"真实稿子"分组，每组都有"社区原稿"链接；切到"按差异从大到小"后第一张是 Social App 的 `design-message`（1.94%）。
 11. 点开任意卡片 → 四格依次是 Figma 截图、tldraw 画布、差异图、差异分析，三张图大小一样、内容位置对得上；在画布上拖动会平移，点"复位"回到原位；按 → / ← 切换用例，Esc 回列表。
 12. 打开 `/showcase?case=real/google-gemini---built-with-material-3-de/gemini-macbook-pro-14---extension-screen` → "在 Figma 里打开"跳到用户草稿里的这一页，"社区原稿"跳到社区页面；差异分析写"最多的是文字，占 73%"；鼠标移到第一行「Turn Gemini Extension on or off anytime」上，差异图里这行标题被蓝框框住。
 13. 打开 `/how-it-works`（或在 `/showcase` 点"核心思路"）→ 开头四个数字和 `/showcase` 一样；第 2 节点左边的 "Primary button"，右边画布上的 Sign in 按钮被选中；在画布上点 "Forgot password?"，左边这一行高亮；第 4 节三张图都显示出来。
+14. 打开 `/canvas?case=real/freshgo---food-apps-food-delivery-app-ui/02-design-home` → 和 `expected@2x.png` 比，水平翻转过的那张图片方向一样，没有上下颠倒。
+15. 打开 `/canvas?case=real/saas-website-ui-kit-framer-website-kit-c/light-page-desktop` → 只有描边的卡片外面是淡淡的一圈影子，不是整块的深影子。换成 `light-page-mobile` → 页脚卡片 "Enhance your productivity by connecting" 后面换行。
+16. 打开 `/canvas?case=real/50-landing-page-designs-community/designs-29` → 左边文字区块右下角后面的那艘船是清楚的，没有被糊掉。
+17. `pnpm --filter @figma-to-tldraw/client compare real/saas-website-ui-kit-framer-website-kit-c/light-page-mobile` → 9497 高的页面能截图，不报错，差异 1% 以下。
 
 ## 4. 各次实际结果
 
@@ -133,6 +137,14 @@
 - `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 20 条通过（这次没加单测，页面是静态内容加一个演示）。
 - 用 agent-browser 在 Chrome 里看过（1440×900，亮色）：整页七节都在；节点树 25 行，类型从画布读出来（FRAME → figma-frame、ELLIPSE → figma-vector 等）；点 "Primary button" 行选中画布上的按钮，在画布上点 "Forgot password?" 高亮对应的行。手动验收第 13 条通过。
 - 发现并修好：演示画布用了白色背景，白底的登录页看不出边界，改回 tldraw 默认的浅灰。整页截图时第 4 节的图和画布是空白的，是懒加载还没触发，正常滚动浏览时都显示。
+
+### 2026-10-25（再加 8 套真实稿子，用户追加）
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm --filter @figma-to-tldraw/client test` 6 个文件 21 条通过（`to-shapes.test.ts` 新增 1 条：镜像）。`pnpm docs:check-refs`：98 处代码引用、189 个文档链接都对。
+- 全量对比 `reports/fidelity/20261025-001604/`：151 个用例平均 0.13%，148 个小于 1%，47 个逐像素一致；原来 118 个分数都没变。详细见 §7。
+- 字宽实测（tech.md §12.1 的办法）：装上的字体里，样本多的平均比值都在 0.997～1.002 之间；Inter 400 共 483 段，平均 1.0001。
+- 用 agent-browser 在 Chrome 里看过（1280 宽，暗色）：`/showcase` 列表页 10 个真实稿子分组都有标题、平均差异和"社区原稿"链接；Social App `design-message` 详情页的"在 Figma 里打开"指向 `vc9Y8rli90BbmvQeMQ00oM`、"社区原稿"指向社区页面，差异分析写"最多的是文字，占 99%"；`/how-it-works` 第 5 节多了一步、第 6 节 9 条规律排成 3 × 3。手动验收第 10 条通过；第 14～17 条是在修的过程中对着差异图看过的，没有再按清单逐条点一遍。
+- 过程中发现并修好：一次截很长的页面会报错或缺块（分段截图）；字体包版本不对（DM Sans 退回 4.5.9、Lato 换成 2.0）；水平翻转、只有描边的投影、U+2028、没有填充的背景模糊（tech.md §12）。
 
 ## 5. Demo 结论（2026-10-24）
 
@@ -259,3 +271,66 @@ Gemini 7 页：
 补上字体代替、重置字体特性以后全量重跑（`reports/fidelity/20261024-223846/`，118 个用例，实测）：**平均差异 0.07%，118 / 118 个小于 1%**。原来 79 个、图片滤镜 8 个、Untitled UI 24 页的分数都没变；Gemini 7 页平均 1.27% → 0.53%，最大 0.97%（`extension-screen`）。31 个真实稿子平均 0.14%，全部小于 1%。警告只剩"Product Sans 用 Google Sans Flex 近似代替"。留作考试的两页：`public-links-screen` 0.79% → 0.22%（字体代替规则对它也管用，拟合字宽时没看它的差异图），`informational-pages-mobile-2` 0.17% 没变。
 
 剩下的差异都是文字字形（代替字体和 Product Sans 本来就不一样）和图片取样，属于目标里说的"1% 以下的细微差异"，没有继续追。
+
+## 7. 再加 8 套真实稿子（2026-10-25）
+
+两套不够，用户要求堆到 10 套，偏手机 App 和落地页（用户追加）。还是只用 Figma 社区的免费文件，复制到用户草稿由我用 computer use 做；收费的（Emmable，49 美元）和要额外同意条款的跳过。
+
+| 文件                                       | 挑了哪些                                       | 用例数 | 字体                                            | 每页节点数 | 宽度       |
+| ------------------------------------------ | ---------------------------------------------- | ------ | ----------------------------------------------- | ---------- | ---------- |
+| 50+ Landing page designs                   | designs-25～30 六张落地页                      | 6      | Poppins、Montserrat、Lato                       | 12～81     | 1440       |
+| Social App - Free UI Kit                   | 登录、首页、发现、消息、编辑资料               | 5      | Circular Std、Proxima Nova、SF Pro Text、Nunito | 72～205    | 375        |
+| Free Banking Mobile App UI Kit（Bankpick） | 卡片、记录、首页、统计、引导页 2               | 5      | Poppins、Inter、SF Pro Display                  | 84～312    | 375        |
+| SaaS Website UI Kit — Framer Website Kit   | 浅色桌面、浅色手机、深色桌面                   | 3      | DM Sans、Inter、Switzer                         | 139～393   | 1200 / 430 |
+| Mobile E-Learning App Design               | 引导、分类、分类首页、详情                     | 4      | Urbanist、Inter（含 Light）                     | 21～116    | 375        |
+| Golio - Free Landing Page UI Kit           | 3 个整站模板（代理公司、公司官网、个人作品集） | 3      | Lexend、Inter                                   | 350～444   | 1920       |
+| FreshGo - Food Delivery App UI KIT         | 引导、首页、详情                               | 3      | Inter、SF Pro                                   | 37～123    | 375        |
+| Furniture E-commerce                       | 首页、商品详情、购物车、登录                   | 4      | Lato、Montserrat                                | 187～426   | 1920       |
+
+（节点数按快照里的整棵树数，含根节点和隐藏节点。）导出时只有 1 条问题：Bankpick 引导页 2 有 3 个路径（Path 266 / 292 / 318）SVG 导出失败，那一块画不出来，整页差异 0.17%，没有继续查。
+
+### 7.1 第一次跑（规则不改）
+
+报告 `reports/fidelity/20261024-235115/`（实测，同 §5 的环境）：**33 页平均 4.71%，11 页小于 1%**。Framer 手机页截图报错，记 100%；不算它，32 页平均 1.73%。
+
+| 原因                                                                                              | 出现在                                        | 怎么修                                   |
+| ------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------- |
+| 字体没装或者版本不对（Poppins、Montserrat、Lato、DM Sans、Urbanist、Lexend、Nunito、Inter Light） | 除 Golio 外几乎每页                           | 装和 Figma 同版本的字体（tech.md §12.1） |
+| 页面太长，一次截图报错或缺块                                                                      | Framer 手机页（9497 高）、家具首页（6782 高） | 分段截图（tech.md §12.2）                |
+| 水平翻转的图层画成了上下颠倒                                                                      | FreshGo 首页、Framer 两张浅色页               | 镜像拆成翻转 + 旋转（tech.md §12.3）     |
+| 没有填充、只有描边的卡片投影太深                                                                  | Framer 两张浅色页                             | 按描边那一圈画投影（tech.md §12.4）      |
+| 文字里的 U+2028 没换行                                                                            | Framer 手机页                                 | 换成段内换行（tech.md §12.5）            |
+| 没有可见填充的容器画了背景模糊                                                                    | designs-29                                    | 没填充就不画（tech.md §12.6）            |
+| 商业字体（Circular Std、Proxima Nova、SF Pro）                                                    | Social App 全部、几套手机稿的状态栏           | 没有合法的网页版，先接受                 |
+
+### 7.2 一项一项修
+
+每行是改完以后重跑受影响的用例（实测）：
+
+| 修了什么                               | 报告              | 结果                                                                                                                                  |
+| -------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 装字体（tech.md §12.1）                | `20261025-000039` | 33 页平均 4.71% → 3.85%，小于 1% 的 11 → 25 页；designs-29 3.80% → 1.17%、designs-28 3.17% → 0.37%、E-Learning 分类首页 2.18% → 0.14% |
+| 分段截图（§12.2）                      | `20261025-000244` | 家具首页 8.82% → 0.23%；Framer 手机页从报错变成 5.12%                                                                                 |
+| 镜像（§12.3）                          | `20261025-000617` | FreshGo 首页 3.36% → 0.39%；Framer 浅色桌面 3.21% → 0.88%、浅色手机 5.12% → 1.74%                                                     |
+| 只有描边的投影、U+2028（§12.4、§12.5） | `20261025-001159` | Framer 浅色桌面 0.88% → 0.25%、浅色手机 1.74% → 0.70%                                                                                 |
+| 背景模糊要有填充（§12.6）              | `20261025-001541` | designs-29 1.17% → 0.36%；另外 3 个带背景模糊的用例（`effect/background-blur`、Social App 编辑资料、Framer 深色桌面）不变             |
+
+### 7.3 最后结果
+
+全量重跑 `reports/fidelity/20261025-001604/`（151 个用例，实测）：**平均 0.13%，148 / 151 小于 1%，47 个逐像素一致**。原来的 118 个用例每个的分数都没变（和 `20261024-230214` 逐个比，差值都小于 0.01%），平均还是 0.066%。
+
+| 套                       | 用例数 | 第一次平均 | 第一次小于 1% | 最后平均 | 最后小于 1% | 最后最大 |
+| ------------------------ | ------ | ---------- | ------------- | -------- | ----------- | -------- |
+| 50+ Landing page designs | 6      | 2.74%      | 0             | 0.34%    | 6           | 0.85%    |
+| Social App               | 5      | 1.23%      | 2             | 1.23%    | 2           | 1.94%    |
+| Bankpick                 | 5      | 1.00%      | 2             | 0.11%    | 5           | 0.17%    |
+| Framer SaaS              | 3      | 34.89%     | 1             | 0.57%    | 3           | 0.75%    |
+| E-Learning               | 4      | 1.74%      | 0             | 0.18%    | 4           | 0.21%    |
+| Golio                    | 3      | 0.12%      | 3             | 0.06%    | 3           | 0.12%    |
+| FreshGo                  | 3      | 1.14%      | 2             | 0.15%    | 3           | 0.39%    |
+| Furniture                | 4      | 3.07%      | 1             | 0.14%    | 4           | 0.23%    |
+| **8 套合计**             | 33     | 4.71%      | 11            | 0.38%    | 30          | 1.94%    |
+
+还超过 1% 的 3 页都是 Social App：design-message 1.94%、design-sign-in 1.58%、design-discover 1.31%。差异像素 97% 以上落在文字上，差得最多的都是 Circular Std / Proxima Nova 的文字（拿不到的商业字体，tech.md §12.1）。修的这几项都没碰到 Social App，所以它的分数一直没变。
+
+其余 1% 以下的差异没有逐张细看。看过的几张：designs-30（0.85%）主要在 "Asterisk image" 矢量和 Lato 800 的大标题上；Framer 深色桌面（0.75%）主要在 DM Sans 700 的大标题上，字宽比值是对的（0.9997），差在字形边缘。
