@@ -181,6 +181,34 @@ function baselineShift(
   return Math.round(figma) - chrome;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §6.4.
+function runLineStyle(
+  run: Run,
+  base: FigmaTypeStyle,
+  baseLineHeight: number,
+): CSSProperties {
+  const metrics = FONT_METRICS[run.style.fontFamily ?? 'Inter'];
+  const baseMetrics = FONT_METRICS[base.fontFamily ?? 'Inter'];
+  if (run.lineHeight <= baseLineHeight || !metrics || !baseMetrics) {
+    return { lineHeight: `${run.lineHeight}px` };
+  }
+  const half = ([a, d]: [number, number], size: number, lineHeight: number) =>
+    a * size + (lineHeight - (a + d) * size) / 2;
+  const size = run.style.fontSize ?? 16;
+  const ascent = half(metrics.chrome, size, run.lineHeight);
+  const baseDescent =
+    baseLineHeight -
+    half(baseMetrics.chrome, base.fontSize ?? 16, baseLineHeight);
+  const lineHeight = ascent + baseDescent;
+  const raise = ascent - half(metrics.chrome, size, lineHeight);
+  return {
+    lineHeight: `${lineHeight}px`,
+    verticalAlign: `${raise}px`,
+    position: 'relative',
+    top: raise,
+  };
+}
+
 export function TextContent({ shape }: { shape: FigmaShape }) {
   const { w, h, node } = shape.props;
   const style = node.style ?? {};
@@ -211,7 +239,7 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
             key={j}
             style={{
               ...runStyle(run.style, node),
-              lineHeight: `${run.lineHeight}px`,
+              ...runLineStyle(run, style, lineHeight),
             }}
           >
             {run.text}
