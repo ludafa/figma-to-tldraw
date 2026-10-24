@@ -34,8 +34,13 @@ export function BackdropBlur({
   shape: FigmaShape;
   clipPath: string | undefined;
 }) {
-  const filter = backgroundBlurCss(shape.props.node.effects);
-  if (!filter || shape.props.node.isMask) {
+  const { node } = shape.props;
+  const filter = backgroundBlurCss(node.effects);
+  // See apps/docs/figma-to-tldraw/tech.md §12.6.
+  const hasFill = visiblePaints(node.fills).some(
+    (p) => (p.opacity ?? 1) > 0 && (p.color?.a ?? 1) > 0,
+  );
+  if (!filter || node.isMask || !hasFill) {
     return null;
   }
   return (
