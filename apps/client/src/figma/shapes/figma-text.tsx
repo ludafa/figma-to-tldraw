@@ -58,14 +58,28 @@ function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
     textTransform: style.textCase ? TEXT_TRANSFORM[style.textCase] : undefined,
     fontVariant: style.textCase === 'SMALL_CAPS' ? 'small-caps' : undefined,
   };
+  // See apps/docs/figma-to-tldraw/tech.md §6.4.
+  const metrics = FONT_METRICS[style.fontFamily ?? 'Inter'];
   if (style.textDecoration === 'UNDERLINE') {
     css.textDecorationLine = 'underline';
-  } else if (style.textDecoration === 'STRIKETHROUGH') {
-    css.textDecorationLine = 'line-through';
-  }
-  if (css.textDecorationLine) {
     css.textDecorationThickness = 'from-font';
     css.textUnderlinePosition = 'from-font';
+    if (metrics) {
+      css.textUnderlineOffset = `${metrics.underline[1] / 2}em`;
+    }
+  } else if (style.textDecoration === 'STRIKETHROUGH') {
+    if (metrics) {
+      const [position, size] = metrics.strike;
+      Object.assign(css, {
+        backgroundImage: 'linear-gradient(currentColor, currentColor)',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: `100% ${size}em`,
+        backgroundPositionY: `${metrics.chrome[0] - position}em`,
+      } satisfies CSSProperties);
+    } else {
+      css.textDecorationLine = 'line-through';
+      css.textDecorationThickness = 'from-font';
+    }
   }
   return css;
 }
@@ -118,13 +132,25 @@ function paragraphs(runs: Run[]): Run[][] {
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
 const FONT_METRICS: Record<
   string,
-  { figma: [number, number]; chrome: [number, number] }
+  {
+    figma: [number, number];
+    chrome: [number, number];
+    underline: [number, number];
+    strike: [number, number];
+  }
 > = {
   Inter: {
     figma: [2728 / 2816, 680 / 2816],
     chrome: [2728 / 2816, 680 / 2816],
+    underline: [464 / 2816, 192 / 2816],
+    strike: [922 / 2816, 192 / 2816],
   },
-  'Noto Sans SC': { figma: [0.88, 0.12], chrome: [1.16, 0.288] },
+  'Noto Sans SC': {
+    figma: [0.88, 0.12],
+    chrome: [1.16, 0.288],
+    underline: [0.125, 0.05],
+    strike: [0.325, 0.05],
+  },
 };
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
