@@ -1,0 +1,313 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font: 13px/1.5 Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    color: #111827;
+  }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  p.hint { margin: 0 0 12px; color: #6B7280; }
+  .step { border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+  .step b { display: block; margin-bottom: 4px; }
+  .step span { display: block; color: #6B7280; margin-bottom: 8px; }
+  button {
+    width: 100%;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: #2563EB;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.secondary { background: #111827; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { margin: 8px 0 4px; font-weight: 600; min-height: 20px; }
+  #log {
+    height: 120px;
+    overflow: auto;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+  }
+  .err { color: #DC2626; }
+</style>
+</head>
+<body>
+  <h1>Fidelity 测试用例</h1>
+  <p class="hint">先生成用例，再导出测试数据。</p>
+
+  <div class="step">
+    <b>1. 生成测试用例</b>
+    <span>新建一个 “Test Cases” 页面，自动画出所有用例。</span>
+    <button id="gen">生成测试用例</button>
+  </div>
+
+  <div class="step">
+    <b>2. 导出测试数据</b>
+    <span>导出当前页面的顶层 frame（有选中时只导出选中的），打包成 zip。</span>
+    <button id="exp" class="secondary">导出测试数据</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="log"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// ZIP（只打包不压缩，足够用）
+// ---------------------------------------------------------------------------
+// ZIP-BEGIN
+var CRC_TABLE = (function () {
+  var t = new Uint32Array(256);
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  var c = 0xffffffff;
+  for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function makeZip(files) {
+  var enc = new TextEncoder();
+  var now = new Date();
+  var time = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  var date = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+  var parts = [];
+  var central = [];
+  var offset = 0;
+  var centralSize = 0;
+
+  files.forEach(function (f) {
+    var name = enc.encode(f.name);
+    var data = f.data;
+    var crc = crc32(data);
+
+    var local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true); // 文件名用 UTF-8
+    local.setUint16(8, 0, true); // 不压缩
+    local.setUint16(10, time, true);
+    local.setUint16(12, date, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    local.setUint16(28, 0, true);
+    parts.push(new Uint8Array(local.buffer), name, data);
+
+    var cen = new DataView(new ArrayBuffer(46));
+    cen.setUint32(0, 0x02014b50, true);
+    cen.setUint16(4, 20, true);
+    cen.setUint16(6, 20, true);
+    cen.setUint16(8, 0x0800, true);
+    cen.setUint16(10, 0, true);
+    cen.setUint16(12, time, true);
+    cen.setUint16(14, date, true);
+    cen.setUint32(16, crc, true);
+    cen.setUint32(20, data.length, true);
+    cen.setUint32(24, data.length, true);
+    cen.setUint16(28, name.length, true);
+    cen.setUint16(30, 0, true);
+    cen.setUint16(32, 0, true);
+    cen.setUint16(34, 0, true);
+    cen.setUint16(36, 0, true);
+    cen.setUint32(38, 0, true);
+    cen.setUint32(42, offset, true);
+    central.push(new Uint8Array(cen.buffer), name);
+
+    offset += 30 + name.length + data.length;
+    centralSize += 46 + name.length;
+  });
+
+  var end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(4, 0, true);
+  end.setUint16(6, 0, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  end.setUint16(20, 0, true);
+
+  return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: 'application/zip' });
+}
+// ZIP-END
+
+// ---------------------------------------------------------------------------
+// 生成用的示例图片（四个角有不同颜色的标记，方便看裁剪和缩放对不对）
+// ---------------------------------------------------------------------------
+async function makeImage(w, h, hue, label) {
+  var c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  var g = c.getContext('2d');
+
+  var grad = g.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, 'hsl(' + hue + ', 80%, 62%)');
+  grad.addColorStop(1, 'hsl(' + ((hue + 70) % 360) + ', 75%, 38%)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+
+  g.strokeStyle = 'rgba(255,255,255,0.35)';
+  g.lineWidth = 2;
+  for (var x = 40; x < w; x += 40) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+  for (var y = 40; y < h; y += 40) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+
+  g.fillStyle = 'rgba(255,255,255,0.85)';
+  g.beginPath();
+  g.arc(w * 0.32, h * 0.42, Math.min(w, h) * 0.18, 0, Math.PI * 2);
+  g.fill();
+
+  var m = Math.round(Math.min(w, h) * 0.12);
+  g.fillStyle = '#EF4444'; g.fillRect(0, 0, m, m);
+  g.fillStyle = '#22C55E'; g.fillRect(w - m, 0, m, m);
+  g.fillStyle = '#3B82F6'; g.fillRect(0, h - m, m, m);
+  g.fillStyle = '#FACC15'; g.fillRect(w - m, h - m, m, m);
+
+  g.fillStyle = '#FFFFFF';
+  g.font = 'bold ' + Math.round(Math.min(w, h) * 0.12) + 'px sans-serif';
+  g.textAlign = 'center';
+  g.fillText(label, w / 2, h * 0.84);
+
+  var blob = await new Promise(function (r) { c.toBlob(r, 'image/png'); });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+// ---------------------------------------------------------------------------
+// 界面
+// ---------------------------------------------------------------------------
+var $status = document.getElementById('status');
+var $log = document.getElementById('log');
+var $gen = document.getElementById('gen');
+var $exp = document.getElementById('exp');
+
+function log(text, isErr) {
+  var line = document.createElement('div');
+  if (isErr) line.className = 'err';
+  line.textContent = text;
+  $log.appendChild(line);
+  $log.scrollTop = $log.scrollHeight;
+}
+
+function busy(on) {
+  $gen.disabled = on;
+  $exp.disabled = on;
+}
+
+function send(msg) {
+  parent.postMessage({ pluginMessage: msg }, '*');
+}
+
+$gen.onclick = async function () {
+  busy(true);
+  $log.innerHTML = '';
+  $status.textContent = '准备示例图片…';
+  try {
+    var images = {
+      landscape: await makeImage(640, 400, 200, 'LANDSCAPE'),
+      portrait: await makeImage(400, 600, 330, 'PORTRAIT'),
+      square: await makeImage(400, 400, 140, 'SQUARE'),
+    };
+    send({ type: 'generate', images: images });
+  } catch (e) {
+    log('生成图片失败：' + e.message, true);
+    busy(false);
+  }
+};
+
+$exp.onclick = function () {
+  busy(true);
+  $log.innerHTML = '';
+  $status.textContent = '开始导出…';
+  send({ type: 'export' });
+};
+
+var exportState = null;
+
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+function finishExport() {
+  var s = exportState;
+  var enc = new TextEncoder();
+  var index = {
+    exportedAt: new Date().toISOString(),
+    figmaFile: s.fileName,
+    page: s.pageName,
+    expectedScale: 2,
+    cases: s.cases,
+    errors: s.errors,
+  };
+  s.files.push({ name: 'cases/index.json', data: enc.encode(JSON.stringify(index, null, 2)) });
+
+  var blob = makeZip(s.files);
+  var d = new Date();
+  var stamp = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'figma-test-cases-' + stamp + '.zip';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+
+  var mb = (blob.size / 1024 / 1024).toFixed(1);
+  $status.textContent = '导出完成：' + s.cases.length + ' 个用例，' + mb + ' MB' + (s.errors.length ? '，' + s.errors.length + ' 个失败' : '');
+  exportState = null;
+  busy(false);
+}
+
+onmessage = function (event) {
+  var msg = event.data.pluginMessage;
+  if (!msg) return;
+
+  if (msg.type === 'log') {
+    log(msg.text);
+  } else if (msg.type === 'progress') {
+    $status.textContent = '处理中 ' + (msg.done + 1) + ' / ' + msg.total;
+    log(msg.text);
+  } else if (msg.type === 'generate-done') {
+    $status.textContent = '生成完成：' + msg.ok + ' / ' + msg.total + ' 个用例，页面 “' + msg.page + '”';
+    if (msg.failed.length) {
+      log('以下用例生成失败（其他用例不受影响）：', true);
+      msg.failed.forEach(function (t) { log('  ' + t, true); });
+    }
+    busy(false);
+  } else if (msg.type === 'export-start') {
+    exportState = { files: [], cases: [], errors: [], fileName: msg.fileName, pageName: msg.pageName };
+  } else if (msg.type === 'export-case') {
+    var enc = new TextEncoder();
+    msg.files.forEach(function (f) {
+      exportState.files.push({ name: 'cases/' + f.path, data: f.bytes ? f.bytes : enc.encode(f.text) });
+    });
+    exportState.cases.push(msg.summary);
+    msg.summary.warnings.forEach(function (w) { log('  ⚠ ' + w, true); });
+  } else if (msg.type === 'export-error') {
+    exportState.errors.push({ name: msg.name, error: msg.text });
+    log('导出失败：' + msg.name + '：' + msg.text, true);
+  } else if (msg.type === 'export-done') {
+    finishExport();
+  } else if (msg.type === 'error') {
+    $status.textContent = '出错了';
+    log(msg.text, true);
+    exportState = null;
+    busy(false);
+  }
+};
+</script>
+</body>
+</html>
