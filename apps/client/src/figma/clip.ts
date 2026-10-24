@@ -34,6 +34,52 @@ function outlinePath(shape: FigmaShape, m: Matrix2x3): string {
   return roundedRectPath(0, 0, w, h, cornerRadii(node), m);
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §4.1.
+function isOpaqueBox(shape: TLShape): boolean {
+  if (!isFigmaShape(shape) || shape.opacity < 1 || shape.props.mask) {
+    return false;
+  }
+  const { node } = shape.props;
+  if (
+    node.isMask ||
+    (node.blendMode && !['PASS_THROUGH', 'NORMAL'].includes(node.blendMode)) ||
+    node.effects?.some((e) => e.visible !== false) ||
+    (node.strokes?.some((p) => p.visible !== false) &&
+      node.strokeAlign !== 'INSIDE')
+  ) {
+    return false;
+  }
+  const arc = node.arcData;
+  const plainVector =
+    shape.type === 'figma-vector' &&
+    (node.type === 'RECTANGLE' ||
+      (node.type === 'ELLIPSE' &&
+        (!arc ||
+          (arc.innerRadius === 0 &&
+            Math.abs(arc.endingAngle - arc.startingAngle) >=
+              2 * Math.PI - 1e-4))));
+  if (
+    (node.opacity ?? 1) < 1 ||
+    !(
+      shape.type === 'figma-rect' ||
+      (shape.type === 'figma-frame' && node.clipsContent) ||
+      plainVector
+    )
+  ) {
+    return false;
+  }
+  return (node.fills ?? []).some(
+    (p) =>
+      p.visible !== false &&
+      p.type === 'SOLID' &&
+      (p.opacity ?? 1) === 1 &&
+      (p.color?.a ?? 1) === 1 &&
+      (!p.blendMode || p.blendMode === 'NORMAL'),
+  );
+}
+
+const EVERYWHERE = 'M -100000 -100000 H 100000 V 100000 H -100000 Z';
+
 export function clipPathsFor(editor: Editor, shapeId: TLShapeId): string[] {
   const shape = editor.getShape(shapeId);
   if (!isFigmaShape(shape)) {
@@ -47,24 +93,39 @@ export function clipPathsFor(editor: Editor, shapeId: TLShapeId): string[] {
     );
 
   const paths: string[] = [];
-  const chain: TLShape[] = [shape, ...editor.getShapeAncestors(shape.id)];
-  for (const item of chain) {
+  const chain: TLShape[] = [
+    shape,
+    ...editor.getShapeAncestors(shape.id).reverse(),
+  ];
+  chain.forEach((item, i) => {
     if (!isFigmaShape(item)) {
-      continue;
+      return;
     }
     if (
       item !== shape &&
       item.type === 'figma-frame' &&
       item.props.node.clipsContent
     ) {
-      paths.push(pathOf(item));
+      paths.push(`path('${pathOf(item)}')`);
     }
     if (item.props.mask) {
       const mask = editor.getShape(item.props.mask as TLShapeId);
       if (isFigmaShape(mask)) {
-        paths.push(pathOf(mask));
+        paths.push(`path('${pathOf(mask)}')`);
       }
     }
-  }
+    if (item !== shape && item.type === 'figma-frame' && item.opacity < 1) {
+      const below = chain[i - 1];
+      const siblings = editor.getSortedChildIdsForParent(item.id);
+      for (const id of siblings.slice(siblings.indexOf(below.id) + 1)) {
+        const above = editor.getShape(id);
+        if (above && isOpaqueBox(above)) {
+          paths.push(
+            `path(evenodd, '${EVERYWHERE} ${pathOf(above as FigmaShape)}')`,
+          );
+        }
+      }
+    }
+  });
   return paths;
 }

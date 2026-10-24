@@ -119,7 +119,7 @@ export function FigmaShapeContainer({
           top: 0,
           width: w,
           height: h,
-          clipPath: `path('${d}')`,
+          clipPath: d,
         }}
       >
         {content}
@@ -138,7 +138,7 @@ export function FigmaShapeContainer({
       }}
     >
       {/* See apps/docs/figma-to-tldraw/tech.md §6.3. */}
-      {backdrop?.(clipPaths[0] ? `path('${clipPaths[0]}')` : undefined)}
+      {backdrop?.(clipPaths[0])}
       {content}
     </HTMLContainer>
   );
