@@ -1,0 +1,58 @@
+/* See apps/docs/figma-to-tldraw/tech.md §6.4 and §6.6. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/400-italic.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/noto-sans-sc/400.css';
+
+.figma-vector > svg {
+  display: block;
+  overflow: visible;
+}
+
+.tl-shape:has([data-figma-blend='darken']) {
+  mix-blend-mode: darken;
+}
+.tl-shape:has([data-figma-blend='multiply']) {
+  mix-blend-mode: multiply;
+}
+.tl-shape:has([data-figma-blend='color_burn']) {
+  mix-blend-mode: color-burn;
+}
+.tl-shape:has([data-figma-blend='lighten']) {
+  mix-blend-mode: lighten;
+}
+.tl-shape:has([data-figma-blend='screen']) {
+  mix-blend-mode: screen;
+}
+.tl-shape:has([data-figma-blend='color_dodge']) {
+  mix-blend-mode: color-dodge;
+}
+.tl-shape:has([data-figma-blend='overlay']) {
+  mix-blend-mode: overlay;
+}
+.tl-shape:has([data-figma-blend='soft_light']) {
+  mix-blend-mode: soft-light;
+}
+.tl-shape:has([data-figma-blend='hard_light']) {
+  mix-blend-mode: hard-light;
+}
+.tl-shape:has([data-figma-blend='difference']) {
+  mix-blend-mode: difference;
+}
+.tl-shape:has([data-figma-blend='exclusion']) {
+  mix-blend-mode: exclusion;
+}
+.tl-shape:has([data-figma-blend='hue']) {
+  mix-blend-mode: hue;
+}
+.tl-shape:has([data-figma-blend='saturation']) {
+  mix-blend-mode: saturation;
+}
+.tl-shape:has([data-figma-blend='color']) {
+  mix-blend-mode: color;
+}
+.tl-shape:has([data-figma-blend='luminosity']) {
+  mix-blend-mode: luminosity;
+}

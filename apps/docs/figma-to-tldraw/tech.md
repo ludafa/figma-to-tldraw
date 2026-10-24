@@ -95,6 +95,7 @@ tldraw 子图形的 `x`、`y`、`rotation` 是相对父图形的局部坐标。�
 x, y = 局部矩阵的平移；rotation = atan2(b, a)
 ```
 
+- 矩阵统一写成 `[[a, c, tx], [b, d, ty]]`，和插件 API 的 `absoluteTransform` 一样（`types.ts` 的 `Matrix2x3`，工具函数在 `matrix.ts`）。
 - 最外层 frame 放在画布原点：所有页面矩阵都先减去它的平移。
 - frame / rect / text：页面矩阵 = `transforms[id].m`，宽高 = `transforms[id].w/h`。插件 API 的 `relativeTransform` 遇到父节点是 GROUP 或布尔运算时不是相对直接父级的，所以统一用 `absoluteTransform` 自己算。
 - vector：插件导出的 SVG 已经是转好角度的样子，大小等于 `absoluteRenderBounds`。所以页面矩阵 = 平移到 `absoluteRenderBounds` 的左上角、不旋转，宽高 = `absoluteRenderBounds` 的宽高。
@@ -113,6 +114,8 @@ tldraw 3.x 不让自定义图形裁剪子图形（§2），所以反过来：**�
 3. 一层祖先套一层 `div`，每层 `clip-path: path(...)`。几层嵌套的 `div` 坐标系相同，效果就是几个形状取交集。
 
 在组件里通过 `useEditor()` 读祖先的页面矩阵，tldraw 会自动追踪，拖动父图形时子图形会重新计算。代码在 `apps/client/src/figma/clip.ts`。
+
+路径怎么换算（`geometry.ts`）：圆角矩形的四个角和椭圆都用三次贝塞尔曲线近似（系数 0.5523），这样所有轮廓都只有 M、L、C、Z 几种命令；`transformPath()` 把一条绝对坐标的路径（Figma 写出来的路径只用 M、L、H、V、C、Q、Z）的每个点乘上矩阵后重新输出。CSS 的 `clip-path: path()` 不接受变换，只能把矩阵算进路径里。
 
 ### 5.2 蒙版
 
@@ -136,7 +139,12 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 | GRADIENT_DIAMOND        | 同上，`div` 分成四个象限，每个象限一个斜向的 `linear-gradient`                                                                         |
 | IMAGE                   | `div` 背景图：FILL = `cover`，FIT = `contain`，TILE = 按 `meta.imageSizes × scalingFactor` 平铺，CROP = 按 `imageTransform` 放大和偏移 |
 
-渐变矩阵：REST 里给的是 `gradientHandlePositions`（三个控制点，节点归一化坐标）。设三点为 p0、p1、p2，换成像素后，渐变空间 (s, t) 到像素的矩阵是 `p0 + s·(p1−p0) + t·(p2−p0)`；线性渐变沿 s 从 0 到 1；径向渐变以 (0.5, 0.5) 为圆心——Figma 的径向和角度渐变以 p0 为圆心，所以径向用 `p0 + s·2(p1−p0) + t·2(p2−p0)` 平移半个单位。实现在 `gradientMatrix()`。
+渐变矩阵（`paint.tsx` 的 `gradientMatrix()`）：REST 里给的是 `gradientHandlePositions`，三个控制点 p0、p1、p2，坐标是节点归一化坐标（左上 (0,0)，右下 (1,1)）。乘上节点宽高换成像素后，渐变空间 (s, t) 到像素的矩阵是 `p0 + s·(p1−p0) + t·(p2−p0)`：
+
+- 线性：颜色沿 s 从 0（p0）到 1（p1）变化，等色线平行于 p2−p0。SVG 里写 `x1=0 x2=1`，`gradientTransform` 用这个矩阵。2026-10-24 用 `fill/linear-gradient-rotated` 的数据验算过：插件里设的 `gradientTransform` 求逆后正好得到 REST 里的三个点。
+- 径向、角度、菱形：以 p0 为圆心，p1−p0 和 p2−p0 是两条半轴，也就是渐变空间里以原点为圆心的单位圆。径向在 SVG 里写 `cx=0 cy=0 r=1`。
+- 角度和菱形用 CSS 画：一个 `div` 代表渐变空间里 [−8, 8] 的正方形（每单位 100px），用上面的矩阵乘上缩放和平移后作为 CSS `transform`。角度用 `conic-gradient(from 90deg)`，从 p1 方向开始顺时针转；菱形分成四个象限，每个象限一个 45° 方向的 `linear-gradient`，颜色位置按 |s|+|t| 换算。
+- 图片的 STRETCH（Figma 界面上的 CROP）：`imageTransform` 把节点归一化坐标映射到图片归一化坐标，所以图片框在节点里的位置是 `缩放(w,h) × imageTransform⁻¹ × 缩放(1/w,1/h)`，作为 CSS `transform` 加在一个 w×h、`background-size: 100% 100%` 的 `div` 上。
 
 ### 6.2 描边
 
@@ -173,7 +181,7 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 
 ### 6.5 圆角
 
-`cornerRadius` 或 `rectangleCornerRadii`（四个角不同）→ CSS `border-radius`。圆角超过短边一半时，CSS 和 Figma 都会按比例缩小，结果一致。
+`cornerRadius` 或 `rectangleCornerRadii`（四个角不同）→ CSS `border-radius`。相邻两个圆角之和超过边长时，CSS 会把所有圆角按同一比例缩小；`geometry.ts` 的 `clampRadii()` 用同样的规则算 SVG 描边和裁剪路径，保证三处一致。Figma 遇到超大圆角也是缩小（`radius/pill-clamped` 用例）。
 
 ### 6.6 混合模式
 
