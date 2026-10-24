@@ -29,7 +29,9 @@ cases/
     images/<hash>.png        用到的图片
 ```
 
-`cases/` 和 `reports/` 都不提交进 git（图片和截图体积大），在 `.gitignore`、`.oxlintrc.json`、`.oxfmtrc.json` 里都排除了。开发服务器通过 `vite.config.ts` 里的小插件把 `cases/` 提供成 `/cases/...`。
+`cases/` 和 `reports/` 都不提交进 git（图片和截图体积大），在 `.gitignore`、`.oxlintrc.json`、`.oxfmtrc.json` 里都排除了。开发服务器通过 `apps/client/vite-plugins/serve-cases.ts`（在 `vite.config.ts` 里注册）把 `cases/` 提供成 `/cases/...`，只认 `cases/` 里面的文件，路径里带 `..` 跳出去的一律 404。
+
+`/canvas` 页面（2026-10-24）：左侧是按分类分组的用例列表，当前用例写在网址里（`/canvas?case=fill/solid`）；顶部工具条可以把 `expected@2x.png` 按 frame 尺寸盖在画布上，"半透明"用 50% 透明度，"差异"用 `mix-blend-mode: difference`（完全一样的地方是黑色）。原图放在 tldraw 的 `OnTheCanvas` 层，跟着镜头一起移动缩放。没有 `case` 参数时显示 `fixtures/hello.json`。
 
 ### 1.2 snapshot.json
 

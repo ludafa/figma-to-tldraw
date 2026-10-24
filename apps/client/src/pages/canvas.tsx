@@ -1,46 +1,270 @@
 import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
-import { type Editor, Tldraw } from 'tldraw';
+import { getRouteApi, Link } from '@tanstack/react-router';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { type Editor, type TLComponents, Tldraw } from 'tldraw';
+
+import { cn } from '@/lib/utils';
 
 import hello from '../figma/fixtures/hello.json';
+import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
 import type { FigmaShape } from '../figma/shape-types';
 import { figmaShapeUtils } from '../figma/shapes';
 import { snapshotToShapes } from '../figma/to-shapes';
-import type { Snapshot } from '../figma/types';
+import type { CaseIndex, Snapshot } from '../figma/types';
+
+// See apps/docs/figma-to-tldraw/tech.md §7.
 
 declare global {
   interface Window {
     editor?: Editor;
+    __figmaReady?: boolean;
+    __figmaWarnings?: string[];
   }
 }
 
-function showSnapshot(editor: Editor, snapshot: Snapshot, id: string) {
+const route = getRouteApi('/canvas');
+
+const SHOT_OFFSET = 40;
+
+type OverlayMode = 'off' | 'half' | 'diff';
+
+const OVERLAY_MODES: { mode: OverlayMode; label: string }[] = [
+  { mode: 'off', label: '不叠加' },
+  { mode: 'half', label: '半透明' },
+  { mode: 'diff', label: '差异' },
+];
+
+interface Overlay {
+  src: string;
+  width: number;
+  height: number;
+  mode: OverlayMode;
+}
+
+const OverlayContext = createContext<Overlay | null>(null);
+
+function ExpectedOverlay() {
+  const overlay = useContext(OverlayContext);
+  if (!overlay || overlay.mode === 'off') {
+    return null;
+  }
+  return (
+    <img
+      src={overlay.src}
+      alt=""
+      draggable={false}
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: overlay.width,
+        height: overlay.height,
+        maxWidth: 'none',
+        opacity: overlay.mode === 'half' ? 0.5 : 1,
+        mixBlendMode: overlay.mode === 'diff' ? 'difference' : undefined,
+        pointerEvents: 'none',
+        zIndex: 100000,
+      }}
+    />
+  );
+}
+
+const components: TLComponents = { OnTheCanvas: ExpectedOverlay };
+
+function showSnapshot(
+  editor: Editor,
+  snapshot: Snapshot,
+  id: string,
+  assetBase: string,
+): string[] {
   const { shapes, warnings } = snapshotToShapes(snapshot, {
     idPrefix: id,
-    assetBase: '',
+    assetBase,
   });
-  for (const w of warnings) {
-    console.warn(w);
-  }
   editor.run(() => {
+    editor.selectNone();
     editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
     editor.createShapes<FigmaShape>(shapes);
   });
-  editor.setCamera({ x: 40, y: 40, z: 1 });
+  editor.setCamera({ x: SHOT_OFFSET, y: SHOT_OFFSET, z: 1 });
+  return [...snapshot.meta.warnings, ...warnings];
+}
+
+function groupCases(index: CaseIndex) {
+  const groups = new Map<string, CaseIndex['cases']>();
+  for (const c of index.cases) {
+    const group = c.dir.split('/')[0];
+    groups.set(group, [...(groups.get(group) ?? []), c]);
+  }
+  return [...groups];
+}
+
+function CaseList({ index, current }: { index: CaseIndex; current?: string }) {
+  return (
+    <nav className="flex w-60 shrink-0 flex-col overflow-y-auto border-r bg-background py-2 text-sm">
+      {groupCases(index).map(([group, cases]) => (
+        <section key={group} className="px-2 py-1">
+          <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground">
+            {group}
+          </h2>
+          {cases.map((c) => (
+            <Link
+              key={c.dir}
+              to="/canvas"
+              search={{ case: c.dir }}
+              className={cn(
+                'block truncate rounded-md px-2 py-1 hover:bg-muted',
+                c.dir === current && 'bg-muted font-medium',
+              )}
+            >
+              {c.dir.slice(group.length + 1)}
+            </Link>
+          ))}
+        </section>
+      ))}
+    </nav>
+  );
+}
+
+function Toolbar({
+  title,
+  mode,
+  onMode,
+  warnings,
+}: {
+  title: string;
+  mode: OverlayMode;
+  onMode: (mode: OverlayMode) => void;
+  warnings: string[];
+}) {
+  return (
+    <div className="pointer-events-auto absolute top-2 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-3 py-1.5 text-sm shadow-sm">
+      <span className="font-medium">{title}</span>
+      <div className="flex gap-1">
+        {OVERLAY_MODES.map((m) => (
+          <button
+            key={m.mode}
+            type="button"
+            onClick={() => onMode(m.mode)}
+            className={cn(
+              'rounded-md px-2 py-0.5 hover:bg-muted',
+              mode === m.mode && 'bg-muted font-medium',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {warnings.length > 0 && (
+        <span className="text-amber-600" title={warnings.join('\n')}>
+          {warnings.length} 条警告
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function CanvasPage() {
-  function handleMount(editor: Editor) {
-    if (import.meta.env.DEV) {
-      window.editor = editor;
+  const search = route.useSearch();
+  const shot = search.shot === 1;
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [index, setIndex] = useState<CaseIndex | null>(null);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [mode, setMode] = useState<OverlayMode>('off');
+
+  useEffect(() => {
+    if (shot) {
+      return;
     }
-    showSnapshot(editor, hello as unknown as Snapshot, 'fixture/hello');
+    loadCaseIndex()
+      .then(setIndex)
+      .catch((e: unknown) => console.warn(e));
+  }, [shot]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+    let cancelled = false;
+    window.__figmaReady = false;
+    const dir = search.case;
+    const load = dir
+      ? loadCase(dir)
+      : Promise.resolve(hello as unknown as Snapshot);
+    const assetBase = dir ? caseUrl(dir) : '';
+    load
+      .then(async (snap) => {
+        if (cancelled) {
+          return;
+        }
+        const list = showSnapshot(
+          editor,
+          snap,
+          dir ?? 'fixture/hello',
+          assetBase,
+        );
+        for (const w of list) {
+          console.warn(w);
+        }
+        setSnapshot(snap);
+        setWarnings(list);
+        await waitForAssets(snap, assetBase);
+        if (!cancelled) {
+          window.__figmaWarnings = list;
+          window.__figmaReady = true;
+        }
+      })
+      .catch((e: unknown) => {
+        console.error(e);
+        window.__figmaWarnings = [String(e)];
+        window.__figmaReady = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, search.case]);
+
+  function handleMount(e: Editor) {
+    if (import.meta.env.DEV) {
+      window.editor = e;
+    }
+    setEditor(e);
   }
 
+  const overlay: Overlay | null =
+    search.case && snapshot
+      ? {
+          src: caseUrl(search.case, 'expected@2x.png'),
+          width: snapshot.meta.width,
+          height: snapshot.meta.height,
+          mode,
+        }
+      : null;
+
   return (
-    <div className="fixed inset-0">
-      <Tldraw shapeUtils={figmaShapeUtils} onMount={handleMount} />
+    <div className="fixed inset-0 flex">
+      {!shot && index && <CaseList index={index} current={search.case} />}
+      <div className={cn('relative flex-1', shot && 'figma-shot')}>
+        <OverlayContext.Provider value={overlay}>
+          <Tldraw
+            shapeUtils={figmaShapeUtils}
+            components={components}
+            hideUi={shot}
+            onMount={handleMount}
+          />
+        </OverlayContext.Provider>
+        {!shot && (
+          <Toolbar
+            title={search.case ?? '示例'}
+            mode={mode}
+            onMode={setMode}
+            warnings={warnings}
+          />
+        )}
+      </div>
     </div>
   );
 }

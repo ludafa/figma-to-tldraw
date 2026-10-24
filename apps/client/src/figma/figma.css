@@ -56,3 +56,8 @@
 .tl-shape:has([data-figma-blend='luminosity']) {
   mix-blend-mode: luminosity;
 }
+
+/* See apps/docs/figma-to-tldraw/tech.md §7. */
+.figma-shot .tl-background {
+  background-color: #fff;
+}
