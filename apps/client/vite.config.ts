@@ -5,7 +5,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
 
-import { serveCases } from './vite-plugins/serve-cases';
+import { serveDir } from './vite-plugins/serve-dir';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -28,7 +28,8 @@ export default defineConfig(({ mode }) => {
       tanstackRouter(),
       react(),
       tailwindcss(),
-      serveCases(path.resolve(__dirname, '../../cases')),
+      serveDir('/cases/', path.resolve(__dirname, '../../cases')),
+      serveDir('/reports/', path.resolve(__dirname, '../../reports')),
     ],
     resolve: {
       alias: {

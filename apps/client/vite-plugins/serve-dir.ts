@@ -6,6 +6,7 @@ import type { Connect, Plugin } from 'vite';
 // See apps/docs/figma-to-tldraw/tech.md §1.1.
 
 const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -15,19 +16,23 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
-export function serveCases(casesDir: string): Plugin {
-  const root = path.resolve(casesDir);
+export function serveDir(prefix: string, dir: string): Plugin {
+  const root = path.resolve(dir);
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (!url.pathname.startsWith('/cases/')) {
+    if (!url.pathname.startsWith(prefix)) {
       next();
       return;
     }
     const file = path.resolve(
       root,
-      decodeURIComponent(url.pathname.slice('/cases/'.length)),
+      decodeURIComponent(url.pathname.slice(prefix.length)),
     );
-    if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) {
+    if (
+      !file.startsWith(root + path.sep) ||
+      !fs.existsSync(file) ||
+      !fs.statSync(file).isFile()
+    ) {
       res.statusCode = 404;
       res.end('Not found');
       return;
@@ -41,7 +46,7 @@ export function serveCases(casesDir: string): Plugin {
     fs.createReadStream(file).pipe(res);
   };
   return {
-    name: 'figma-serve-cases',
+    name: `figma-serve-dir:${prefix}`,
     configureServer(server) {
       server.middlewares.use(middleware);
     },

@@ -29,7 +29,9 @@ cases/
     images/<hash>.png        用到的图片
 ```
 
-`cases/` 和 `reports/` 都不提交进 git（图片和截图体积大），在 `.gitignore`、`.oxlintrc.json`、`.oxfmtrc.json` 里都排除了。开发服务器通过 `apps/client/vite-plugins/serve-cases.ts`（在 `vite.config.ts` 里注册）把 `cases/` 提供成 `/cases/...`，只认 `cases/` 里面的文件，路径里带 `..` 跳出去的一律 404。
+`cases/` 和 `reports/` 都不提交进 git（图片和截图体积大），在 `.gitignore`、`.oxlintrc.json`、`.oxfmtrc.json` 里都排除了。开发服务器通过 `apps/client/vite-plugins/serve-dir.ts` 的 `serveDir(前缀, 目录)`（在 `vite.config.ts` 里注册）把 `cases/` 提供成 `/cases/...`、`reports/` 提供成 `/reports/...`，只认目录里面的文件，路径里带 `..` 跳出去的、指向文件夹的一律 404。
+
+> 2026-10-24 修订：原来是只管 `cases/` 的 `serve-cases.ts`，展示页（§10）要读对比报告，改成通用的 `serveDir`，多挂一个 `/reports/`。
 
 `/canvas` 页面（2026-10-24）：左侧是按分类分组的用例列表，当前用例写在网址里（`/canvas?case=fill/solid`）；顶部工具条可以把 `expected@2x.png` 按 frame 尺寸盖在画布上，"半透明"用 50% 透明度，"差异"用 `mix-blend-mode: difference`（完全一样的地方是黑色）。原图放在 tldraw 的 `OnTheCanvas` 层，跟着镜头一起移动缩放。没有 `case` 参数时显示 `fixtures/hello.json`。
 
@@ -309,7 +311,7 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 2. 每个用例打开 `/canvas?case=<dir>&shot=1`，用真实的 2 倍屏（见下面的实现细节）。截图模式隐藏 tldraw 界面、左侧列表、选中框，把用例放在画布左上角、缩放 100%，避开右下角水印。
 3. 等页面把 `window.__figmaReady` 设成 `true`（图形、字体、图片都加载完）。
 4. 只截用例的渲染范围那一块（宽高 = 渲染范围 × 2，见 §9.4），和 `expected@2x.png` 用 pixelmatch 对比，存差异图。尺寸不一样时不比较，记为 100%。
-5. 输出到 `reports/fidelity/<时间>/`：`index.html`（按差异从大到小排，每行三张图）、`results.json`，每个用例的 `expected.png`、`actual.png`、`diff.png`。`reports/fidelity/latest` 指向最新一次。
+5. 输出到 `reports/fidelity/<时间>/`：`index.html`（按差异从大到小排，每行三张图）、`results.json`，每个用例的 `expected.png`、`actual.png`、`diff.png`。`reports/fidelity/latest` 指向最新一次。`results.json` 里每个用例还带 `breakdown`：差异像素落在哪类节点、哪几个节点上（2026-10-24，§10.2）。`results.json` 的类型在 `apps/client/src/figma/report.ts`（新），展示页也用它。
 
 差异百分比 = pixelmatch 判为不同的像素数 ÷ 总像素数，阈值 `threshold: 0.1`（pixelmatch 默认），开着抗锯齿检测。
 
@@ -328,15 +330,18 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 
 ## 8. 风险
 
-| 风险                                                                                          | 应对                                                                                                                     |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 组透明度：子图形分别变透明，重叠处比 Figma 深                                                 | 上层是不透明简单形状时，把下层被盖住的部分裁掉（§4.1，已做）；其他情况要把那一小块合成一个图形来画（架构改动，先问用户） |
-| 混合模式、背景模糊被 `.tl-shape` 的层叠上下文隔开                                             | §6.6 的做法；实测不行再想办法                                                                                            |
-| 浏览器和 Figma 的字体渲染、换行不同                                                           | 用同样的字体文件；剩下的细微差异接受                                                                                     |
-| Tailwind 的样式重置影响渲染                                                                   | 渲染组件里把样式写全，不依赖浏览器默认值                                                                                 |
-| 平滑圆角（iOS 风格）CSS 画不出来                                                              | 用 SVG 路径近似，或接受差异                                                                                              |
-| 稿子用了没有网页版的字体（如 Product Sans）                                                   | 报"缺字体"警告（§9.6）；有近似的开源字体时用它代替（§6.9），否则用后备字体；要完全一致只能由用户提供字体文件             |
-| 图片滤镜用的是 Figma 渲染好的图（§6.8）：在 tldraw 里改不了滤镜参数；大照片每种滤镜多一张 PNG | Demo 不改滤镜，先接受；以后要改再按 §6.8 记下的规律自己画                                                                |
+| 风险                                                                                                | 应对                                                                                                                     |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 组透明度：子图形分别变透明，重叠处比 Figma 深                                                       | 上层是不透明简单形状时，把下层被盖住的部分裁掉（§4.1，已做）；其他情况要把那一小块合成一个图形来画（架构改动，先问用户） |
+| 混合模式、背景模糊被 `.tl-shape` 的层叠上下文隔开                                                   | §6.6 的做法；实测不行再想办法                                                                                            |
+| 浏览器和 Figma 的字体渲染、换行不同                                                                 | 用同样的字体文件；剩下的细微差异接受                                                                                     |
+| Tailwind 的样式重置影响渲染                                                                         | 渲染组件里把样式写全，不依赖浏览器默认值                                                                                 |
+| 平滑圆角（iOS 风格）CSS 画不出来                                                                    | 用 SVG 路径近似，或接受差异                                                                                              |
+| 稿子用了没有网页版的字体（如 Product Sans）                                                         | 报"缺字体"警告（§9.6）；有近似的开源字体时用它代替（§6.9），否则用后备字体；要完全一致只能由用户提供字体文件             |
+| 图片滤镜用的是 Figma 渲染好的图（§6.8）：在 tldraw 里改不了滤镜参数；大照片每种滤镜多一张 PNG       | Demo 不改滤镜，先接受；以后要改再按 §6.8 记下的规律自己画                                                                |
+| 展示页的 Figma file key 写死在代码里（§10.1），换了文件或重新复制就失效；链接只对用户自己的草稿有效 | 换文件时改 `FIGMA_FILES`；以后可以试插件的 `figma.fileKey`（要开 `enablePrivatePluginApi`，未验证）                      |
+| 差异归因按轴对齐的框算（§10.2），旋转、异形节点和跑出框的文字会算到别的节点上                       | 只用来看"大概在哪"；要精确再按真实形状算                                                                                 |
+| 展示页的分组说明（§10.3）是手写的，渲染规则改了原因会变                                             | 改规则、重新考试后同步改 `groups.ts` 里的说明                                                                            |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -383,3 +388,58 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 `load.ts` 的 `waitForAssets` 加载完字体后，返回缺了哪些字体，`/canvas` 把它们放进警告（工具条和 `window.__figmaWarnings`，报告里会显示）：`缺字体：Product Sans 400（没有对应的网页字体）`。
 
 判断办法：用 `fonts.ts` 的 `primaryFontShorthand()` 只拿第一个字体名去 `document.fonts.load`，返回空列表就是缺。不能用带后备字体的完整写法，因为那样会返回后备字体 Inter，看起来像加载成功了。
+
+## 10. 展示页 /showcase（2026-10-24，用户追加）
+
+`/showcase` 把每个用例的四样东西放在一起：Figma 原稿的链接、Figma 导出的截图、我们画出来的 tldraw 画布、差异分析（用户追加）。和 `/canvas` 一样不需要登录，路由直接放在 `routes/` 下面。
+
+- **列表页** `/showcase`：顶部四个数字（用例数、平均差异、小于 1% 的个数、逐像素一致的个数）；下面按分组排卡片，缩略图是 `expected@2x.png`，右下角是差异百分比和一个颜色点（绿 < 0.1%、黄 0.1%～1%、红 ≥ 1% 或出错）。可以切成"按差异从大到小"。
+- **详情页** `/showcase?case=<dir>`：标题旁是差异和结论（逐像素一致 / 几乎一致 / 细微差异 / 明显差异）；右上角"在 Figma 里打开""社区原稿""在调试页打开"；下面四格：Figma 截图、tldraw 画布、差异图、差异分析。键盘 ← → 切换上一个、下一个，Esc 回列表（焦点在画布里时不响应）。
+- **数据从哪来**：用例列表、快照、截图走 `/cases/`；对比结果和差异图读 `/reports/fidelity/latest/` 下的 `results.json` 和 `cases/<dir>/diff.png`（§1.1）。没有报告时列表页提示先跑对比；报告里没有的用例显示"没有结果"。所以**展示页显示的永远是最近一次对比的结果**，只跑了一部分用例时其余的会显示"没有结果"。
+
+代码：`apps/client/src/pages/showcase.tsx`（新）和 `apps/client/src/routes/showcase.tsx`（新），组件在 `apps/client/src/showcase/`（新）：`case-list.tsx` 列表、`case-detail.tsx` 详情、`case-canvas.tsx` 画布、`diff-analysis.tsx` 差异分析、`score.tsx` 差异等级、`sources.ts` 原稿链接、`groups.ts` 分组和说明、`use-fit-scale.ts` 缩放。
+
+### 10.1 原稿链接
+
+- 节点链接：`https://www.figma.com/design/<file key>/?node-id=<节点 ID，冒号换成短横>`，节点 ID 用 `index.json` 里每条用例的 `nodeId`。
+- 插件导出的数据里没有 file key：插件 API 的 `figma.fileKey` 只给私有插件，要在 manifest 里开 `enablePrivatePluginApi`，没试。三份文件的 key 是从 Figma 桌面版的本地设置 `~/Library/Application Support/Figma/settings.json` 读到的（打开着的标签页 `windows[].tabs[]` 的 `path` 是 `/file/<key>`，`title` 是文件名），写死在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`。按文件名对上：每条用例的 `source.figmaFile`，没有 `source` 的（插件生成的 79 个）用 `index.json` 顶层的 `figmaFile`。
+- 两份社区稿子是复制到用户草稿里的副本，节点链接打开的是副本，只有用户自己能看；所以另外给一个"社区原稿"按钮，指向社区页面（Untitled UI `community/file/1020079203222518115`，Gemini `community/file/1346359039607478680`）。
+- 换了 Figma 文件或重新复制以后，要改 `FIGMA_FILES`，否则链接打不开（见 §8）。
+
+### 10.2 差异归因
+
+`apps/client/src/figma/diff-attribution.ts`（新）的 `attributeDiff(snapshot, diff, scale)`。`compare.ts` 每比完一个用例调用一次，结果写进 `results.json` 的 `breakdown`，展示页直接显示：
+
+1. **谁盖在最上面**：按 Figma 的叠放顺序遍历节点树（先父后子，后面的兄弟在上面；`itemReverseZIndex` 的倒过来，§4.3），把节点的范围"涂"进一张和渲染范围一样大的格子图（1 格 = 1 个设计像素），后涂的盖住先涂的，所以每格记的是最上面的节点。范围用 `absoluteBoundingBox` 和 `absoluteRenderBounds` 的并集（阴影、超出框的文字都在渲染范围里）；裁剪内容的 frame 里，子节点只涂裁剪框以内的部分。**只有真的盖住下面内容的节点才涂整个范围**：
+
+   | 节点                                                                                   | 涂哪里                                                               |
+   | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+   | 根节点、文字、矢量                                                                     | 整个范围                                                             |
+   | 有不透明填充（纯色 alpha = 1、渐变每一档 alpha = 1、图片），本身透明度 1、混合模式正常 | 整个范围                                                             |
+   | 只有半透明填充、描边或阴影                                                             | 只涂一圈：范围减去"框往里缩一个描边宽"的部分，也就是描边和框外的阴影 |
+   | 什么都不画的容器（没有填充、描边、阴影）                                               | 不涂                                                                 |
+
+   这样半透明遮罩下面的文字、透明容器下面的背景不会被上面的节点"抢走"。蒙版节点不涂；矢量和布尔运算不往下走（整个画成一张 SVG，§3）；`absoluteRenderBounds` 是 `null` 的跳过（§9.3）。
+
+   > 2026-10-24 修订：第一版每个可见节点都涂整个范围。`gemini-plugin-file-cover` 的差异有 82% 算给了一块 52% 透明的渐变遮罩 "Rectangle 1"，实际不一样的是遮罩下面聊天截图里的 Product Sans 文字；这一页 146 个节点里还有 91 个是不画东西的容器。改成上表的规则。
+
+2. **数差异像素**：扫 pixelmatch 输出的差异图，纯红 `(255, 0, 0)` 的像素就是算进差异的那些（黄色是抗锯齿，不算；其余是变淡的灰度原图）。坐标 ÷ 2 找到格子，记到那个节点头上。
+3. **汇总**：按节点种类汇总成 `byKind`：文字（`TEXT`）、图标和矢量（`VECTOR`、`BOOLEAN_OPERATION`、`STAR`、`REGULAR_POLYGON`、`LINE`）、图片（有可见的图片填充）、背景和形状（其余：frame、矩形、椭圆等）。再按像素数取前 8 个节点放进 `nodes`，每个带名字、类型、在渲染范围里的框；文字节点再带前 40 个字和字体。
+
+这是近似：用的是轴对齐的框，不是真实形状；代替字体比 Figma 宽时，跑出文字框的那部分会算给下面的节点。够回答"差异主要出在哪类东西上、哪几个节点上"。测试：`diff-attribution.test.ts`。
+
+### 10.3 分组和说明
+
+`apps/client/src/showcase/groups.ts`（新）：
+
+- 分组：`real/` 下按前两级（`real/<文件名>`），其余按第一级目录；顺序是 `index.json` 里第一次出现的顺序。每组一行中文标题，写这组测哪些 Figma 特性。
+- 说明：图片滤镜组和两份真实稿子各一段，内容取自 [verification.md §6](verification.md#6-真实稿子考试2026-10-24) 的结论；两张留作考试的稿子各加一句"修规则时没看过它的差异图"。说明只写自动算不出来、已经查清楚的原因；**改了渲染规则、原因变了时要同步改这里**（见 §8）。
+
+### 10.4 tldraw 画布和三张图同比例
+
+- `case-canvas.tsx` 的 `CaseCanvas` 是一个真的 `<Tldraw>`（`hideUi`、`autoFocus={false}`，不抢键盘），用 `apps/client/src/figma/editor.ts`（新）的 `putSnapshot()` 把用例画上去（和 `/canvas` 共用这段），然后切到抓手工具：拖动是平移，不会把图形拖走。
+- `use-fit-scale.ts` 的 `useFitScale(area, 留白)`：缩放 = min((一栏的宽度 − 2 × 24) ÷ 渲染范围宽, max((窗口高度 − 260 − 2 × 24) ÷ 渲染范围高, 0.5), 2)。最大 2 倍是因为截图是 2 倍图；高度方向最少 0.5 倍，是因为 2000 多高的手机长页面按窗口高度缩下来只剩 0.27 倍，字都看不清，宁可让页面往下滚。Figma 截图、tldraw 画布、差异图三格用同一个缩放、同样大的框，四周各留 24px 白边，画布的镜头设成 `{ x: 24 ÷ 缩放 − area.x, y: 24 ÷ 缩放 − area.y, z: 缩放 }`，所以三张图的位置一一对上。窗口大小变了会重新算；"复位"按钮重新画图形、重设镜头。
+- 留白的另一个原因：tldraw 在画布右下角画水印（没有许可证时必须显示，不能隐藏），不留白时水印正好压在设计稿右下角。
+- 鼠标在画布上时滚轮是平移画布、不滚页面（tldraw 的默认行为）。
+- 差异分析的节点列表里，鼠标移到（或用 Tab 选到）某个节点上，Figma 截图和差异图上会用蓝框框出它的位置（`box × 缩放`）。
+- 颜色：节点种类用四个分类色、差异等级用三个状态色，写成 `apps/client/src/main.css` 里的变量（`--series-1`～`--series-4`、`--status-good` / `--status-warning` / `--status-critical`，亮色和暗色各一套）。四个分类色用 dataviz 的校验脚本查过色盲区分度，亮色、暗色都通过；亮色下后两个颜色对白底的对比度不到 3:1，所以每个色块旁边都有文字标签和百分比，不只靠颜色。

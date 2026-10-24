@@ -205,6 +205,7 @@ export interface CaseSummary {
   imageCount: number;
   fonts: string[];
   warnings: string[];
+  source?: { figmaFile?: string; page?: string; exportedAt?: string };
 }
 
 export interface CaseIndex {

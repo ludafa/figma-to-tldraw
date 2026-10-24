@@ -1,13 +1,15 @@
 ---
 name: figma-to-tldraw
 title: Figma 还原到 tldraw
-description: 把 Figma 设计稿画到 tldraw 画布上并量还原度的 Demo：Figma 插件（apps/figma-plugin/，生成 79 个测试用例、导出 cases/ 快照）、快照格式（snapshot.json 的 meta / rest / svgs / transforms）、节点树拆成 tldraw 自定义图形的转换（apps/client/src/figma/to-shapes.ts）、figma-frame / figma-rect / figma-text / figma-vector 四种图形怎么画填充、描边、阴影、文字、裁剪和蒙版、/canvas 页面、Playwright + pixelmatch 对比脚本和报告。改渲染、加新的 Figma 特性、看还原度报告、改插件导出格式时来读。
+description: 把 Figma 设计稿画到 tldraw 画布上并量还原度的 Demo：Figma 插件（apps/figma-plugin/，生成 79 个测试用例、导出 cases/ 快照）、快照格式（snapshot.json 的 meta / rest / svgs / transforms）、节点树拆成 tldraw 自定义图形的转换（apps/client/src/figma/to-shapes.ts）、figma-frame / figma-rect / figma-text / figma-vector 四种图形怎么画填充、描边、阴影、文字、裁剪和蒙版、/canvas 页面、Playwright + pixelmatch 对比脚本和报告（含差异归因 diff-attribution.ts）、把原稿链接 / Figma 截图 / tldraw 画布 / 差异分析逐个用例放在一起的展示页 /showcase。改渲染、加新的 Figma 特性、看还原度报告、改展示页、改插件导出格式时来读。
 changes: [2026-10-24]
 status: 开发中
 code:
   - apps/figma-plugin/
   - apps/client/src/figma/
   - apps/client/src/pages/canvas.tsx
+  - apps/client/src/pages/showcase.tsx
+  - apps/client/src/showcase/
   - apps/client/scripts/compare.ts
   - apps/client/scripts/import-cases.ts
 ---
@@ -26,14 +28,15 @@ code:
 - Demo 结果：79 个用例平均差异 0.004%，全部小于 1%，65 个逐像素一致；已知限制和下一步见 [verification.md §5](verification.md#5-demo-结论2026-10-24)（2026-10-24）
 - 用 Figma 社区的 31 个整页考了一次（不改规则）：只用 Inter 的 Untitled UI 24 页都在 0.17% 以下；Gemini 7 页平均 8.39%，原因是缺字体、First on top 叠放、图片滤镜、文字渐变，之后按特性修了叠放、Red Hat Display、文字渐变、图片滤镜四项，Product Sans 用开源的 Google Sans Flex 近似代替；最后 118 个用例平均 0.07%，全部小于 1%（2026-10-24，见 [verification.md §6](verification.md#6-真实稿子考试2026-10-24)）
 - 图片滤镜不自己算，插件导出时让 Figma 渲染一份带滤镜的图（2026-10-24，见 [tech.md §6.8](tech.md#68-图片滤镜2026-10-24真实稿子考试补)）
+- 展示页 `/showcase` 逐个用例放原稿链接、Figma 截图、可交互的 tldraw 画布和差异分析；差异分析里的"差异出在哪"由对比脚本把每个不同的像素归到盖在最上面的节点算出来（用户追加，2026-10-24，见 [tech.md §10](tech.md#10-展示页-showcase2026-10-24用户追加)）
 - 取数据用自己写的 Figma 插件，不用 REST API 和 MCP；Demo 阶段不做 WebSocket、写入 Figma、去默认值和性能优化（交接文档已定）
 
 ## 文件
 
-| 文件                               | 内容                                                                                                                                                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [tech.md](tech.md)                 | §1 链路和快照格式；§2 tldraw 3.x 的限制；§3 四种自定义图形；§4 节点树拆成图形的转换；§5 裁剪和蒙版；§6 样式怎么画；§7 对比脚本；§8 风险；§9 用真实稿子考试：插件导出真实稿子、`import-cases` 合并用例、按渲染范围截图、大窗口、缺字体警告 |
-| [verification.md](verification.md) | §1 单测；§2 端到端检查；§3 手动验收清单；§4 各次实际结果，包括每份还原度报告的平均差异和差异最大的用例；§5 Demo 结论：最后一份报告、各分类前后对比、已知限制和下一步；§6 真实稿子考试：用了哪些社区稿子、成绩、没还原的原因归类           |
+| 文件                               | 内容                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [tech.md](tech.md)                 | §1 链路和快照格式；§2 tldraw 3.x 的限制；§3 四种自定义图形；§4 节点树拆成图形的转换；§5 裁剪和蒙版；§6 样式怎么画；§7 对比脚本；§8 风险；§9 用真实稿子考试：插件导出真实稿子、`import-cases` 合并用例、按渲染范围截图、大窗口、缺字体警告；§10 展示页 `/showcase`：原稿链接怎么拼、差异归因、分组说明、画布和截图同比例 |
+| [verification.md](verification.md) | §1 单测；§2 端到端检查；§3 手动验收清单；§4 各次实际结果，包括每份还原度报告的平均差异和差异最大的用例；§5 Demo 结论：最后一份报告、各分类前后对比、已知限制和下一步；§6 真实稿子考试：用了哪些社区稿子、成绩、没还原的原因归类                                                                                         |
 
 ## 相关模块
 

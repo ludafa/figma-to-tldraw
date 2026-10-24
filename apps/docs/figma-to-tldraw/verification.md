@@ -4,25 +4,27 @@
 
 ## 1. 自动测试
 
-| 测试文件                                      | 测什么                                                                                                                                                                                                                                 | 日期       |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `apps/client/src/figma/to-shapes.test.ts`     | 节点树拆成图形：根节点放原点、子节点相对父节点、旋转节点用 `transforms`、隐藏节点跳过、兄弟顺序、不认识的类型给警告、矢量按渲染范围摆放和蒙版、画不出东西的矢量直接跳过、First on top 倒过来排、带滤镜的图片用渲染好的图（缺图给警告） | 2026-10-24 |
-| `apps/client/src/figma/paint.test.ts`         | 文字渐变用的 SVG 渐变图：尺寸等于文字框、变换矩阵按渐变手柄算、颜色正确；角度渐变不生成                                                                                                                                                | 2026-10-24 |
-| `apps/client/src/figma/image-filters.test.ts` | 带滤镜图片的 key：只列不为 0 的滤镜、固定顺序、保留 3 位小数；没有滤镜时不生成                                                                                                                                                         | 2026-10-24 |
-| `apps/client/src/figma/fonts.test.ts`         | 字体代替：Product Sans 后面紧跟 Google Sans Flex 和字宽设置，判断缺字体时只看第一个字体；别的字体不受影响                                                                                                                              | 2026-10-24 |
-| `apps/client/src/figma/geometry.test.ts`      | 圆角矩形拆成四条边和四个角（虚线按段排用），段长正确；没有圆角时不出现长度为 0 的角                                                                                                                                                    | 2026-10-24 |
+| 测试文件                                         | 测什么                                                                                                                                                                                                                                 | 日期       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `apps/client/src/figma/to-shapes.test.ts`        | 节点树拆成图形：根节点放原点、子节点相对父节点、旋转节点用 `transforms`、隐藏节点跳过、兄弟顺序、不认识的类型给警告、矢量按渲染范围摆放和蒙版、画不出东西的矢量直接跳过、First on top 倒过来排、带滤镜的图片用渲染好的图（缺图给警告） | 2026-10-24 |
+| `apps/client/src/figma/paint.test.ts`            | 文字渐变用的 SVG 渐变图：尺寸等于文字框、变换矩阵按渐变手柄算、颜色正确；角度渐变不生成                                                                                                                                                | 2026-10-24 |
+| `apps/client/src/figma/image-filters.test.ts`    | 带滤镜图片的 key：只列不为 0 的滤镜、固定顺序、保留 3 位小数；没有滤镜时不生成                                                                                                                                                         | 2026-10-24 |
+| `apps/client/src/figma/fonts.test.ts`            | 字体代替：Product Sans 后面紧跟 Google Sans Flex 和字宽设置，判断缺字体时只看第一个字体；别的字体不受影响                                                                                                                              | 2026-10-24 |
+| `apps/client/src/figma/diff-attribution.test.ts` | 差异归因：红色像素算给盖在最上面的节点，按种类汇总、按像素数排序，文字节点带内容和字体；裁剪框外的部分不算给子节点；First on top 倒过来排；半透明遮罩、只有描边的框、不画东西的容器不抢下面的像素                                      | 2026-10-24 |
+| `apps/client/src/figma/geometry.test.ts`         | 圆角矩形拆成四条边和四个角（虚线按段排用），段长正确；没有圆角时不出现长度为 0 的角                                                                                                                                                    | 2026-10-24 |
 
 命令：`pnpm --filter @figma-to-tldraw/client test`。
 
 ## 2. 端到端检查
 
-| 检查                                                        | 预期                                                                  | 日期       |
-| ----------------------------------------------------------- | --------------------------------------------------------------------- | ---------- |
-| `pnpm dev` 后打开 `http://localhost:5173/canvas`            | 左侧是用例列表，画布上是示例 frame                                    | 2026-10-24 |
-| `curl localhost:5173/cases/index.json`                      | 200，返回用例列表                                                     | 2026-10-24 |
-| `pnpm --filter @figma-to-tldraw/client compare`             | 跑完全部用例，在 `reports/fidelity/<时间>/` 生成报告，`latest` 指向它 | 2026-10-24 |
-| `pnpm --filter @figma-to-tldraw/client import-cases <zip>…` | 打印每个 zip 导入了哪些用例，`cases/index.json` 里原来的用例还在      | 2026-10-24 |
-| `pnpm lint`、`pnpm typecheck`、`pnpm test`                  | 都通过                                                                | 2026-10-24 |
+| 检查                                                        | 预期                                                                                                  | 日期       |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
+| `pnpm dev` 后打开 `http://localhost:5173/canvas`            | 左侧是用例列表，画布上是示例 frame                                                                    | 2026-10-24 |
+| `curl localhost:5173/cases/index.json`                      | 200，返回用例列表                                                                                     | 2026-10-24 |
+| `pnpm --filter @figma-to-tldraw/client compare`             | 跑完全部用例，在 `reports/fidelity/<时间>/` 生成报告，`latest` 指向它                                 | 2026-10-24 |
+| `pnpm --filter @figma-to-tldraw/client import-cases <zip>…` | 打印每个 zip 导入了哪些用例，`cases/index.json` 里原来的用例还在                                      | 2026-10-24 |
+| `curl localhost:5173/reports/fidelity/latest/results.json`  | 200，返回最近一次对比结果（每个用例带 `breakdown`）；`/reports/fidelity/latest/` 这种文件夹地址是 404 | 2026-10-24 |
+| `pnpm lint`、`pnpm typecheck`、`pnpm test`                  | 都通过                                                                                                | 2026-10-24 |
 
 ## 3. 手动验收清单
 
@@ -35,6 +37,9 @@
 7. 打开 `/canvas?case=real/google-gemini---built-with-material-3-de/gemini-plugin-file-cover` → 工具条只有 1 条警告："缺字体：Product Sans 400（用 Google Sans Flex 近似代替）"；"Hello, Team" 里的 a 是双层的。
 8. 打开 `/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop` → 截图模式（加 `&shot=1`）下整页都在画面里，包括超出 960 高的部分。
 9. 打开 `/canvas?case=image-filter/combined` → 下面那块色卡变暗、变暖、对比更强，和 `cases/image-filter/combined/expected@2x.png` 一样，工具条没有警告。
+10. 打开 `/showcase` → 顶部四个数字和最新报告一致（118、0.07%、118、47）；卡片按分组排，切到"按差异从大到小"后第一张是 `gemini-macbook-pro-14---extension-screen`（0.97%）。
+11. 点开任意卡片 → 四格依次是 Figma 截图、tldraw 画布、差异图、差异分析，三张图大小一样、内容位置对得上；在画布上拖动会平移，点"复位"回到原位；按 → / ← 切换用例，Esc 回列表。
+12. 打开 `/showcase?case=real/google-gemini---built-with-material-3-de/gemini-macbook-pro-14---extension-screen` → "在 Figma 里打开"跳到用户草稿里的这一页，"社区原稿"跳到社区页面；差异分析写"最多的是文字，占 73%"；鼠标移到第一行「Turn Gemini Extension on or off anytime」上，差异图里这行标题被蓝框框住。
 
 ## 4. 各次实际结果
 
@@ -113,6 +118,14 @@
 这些都属于目标里说的"1% 以下的细微差异"，没有继续追。
 
 第 5 步：用 Figma 社区的两份稿子导出 31 个整页，不改渲染规则跑全部 110 个用例（`reports/fidelity/20261024-215318/`，用时 1 分 45 秒）。原来 79 个不变（平均 0.004%），31 个新用例平均 1.91%、25 个小于 1%。详细结果和问题归类见 §6。导出时遇到 136 个 SVG 导出失败，查下来都是被裁掉、画不出东西的图标，插件改成跳过（tech.md §9.1）。
+
+### 2026-10-24（展示页，用户追加）
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 6 个文件 20 条通过（新增 `diff-attribution.test.ts` 3 条）。
+- 全量对比重跑两次（加差异归因前后的渲染没变）：`reports/fidelity/20261024-225829/`、`reports/fidelity/20261024-230214/`，都是 118 个用例平均 0.07%、118 个小于 1%、47 个逐像素一致，和 `20261024-223846` 一样。每个用例的 `breakdown.byKind` 加起来都等于 `diffPixels`（脚本核对，118/118）。
+- 第一版归因把 `gemini-plugin-file-cover` 82% 的差异算给了一块半透明渐变遮罩 "Rectangle 1"，改成"只有盖住下面内容的节点才涂整个范围"（tech.md §10.2）后，这一页 100% 在文字上：「Hello, Team …」（Product Sans）、「Unofficial Recreation」（Red Hat Display 700，粗体比 Figma 窄，tech.md §6.4）。8 个图片滤镜用例 100% 在图片上；Gemini 其余页面 73%～100% 在文字上。
+- 用 agent-browser 在 Chrome 里看过（1440×900，暗色和亮色）：列表页、按差异排序、Gemini 详情页、Untitled UI 手机长页面（0.5 倍，页面可以往下滚）、`text/cjk-mixed`；节点悬停的蓝框、← → Esc 键盘切换都正常。手动验收 10～12 条通过；"在 Figma 里打开"没有在浏览器里实际点开（链接指向用户的草稿，需要用户登录 Figma）。
+- 发现并修好：tldraw 水印压在设计稿右下角（三格四周加 24px 白边）；长页面缩得太小（高度方向最少 0.5 倍）；只差十几个像素时比例显示成 0%（改成 <1%）。
 
 ## 5. Demo 结论（2026-10-24）
 

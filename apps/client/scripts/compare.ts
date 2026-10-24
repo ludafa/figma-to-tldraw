@@ -5,7 +5,9 @@ import pixelmatch from 'pixelmatch';
 import { type Browser, chromium } from 'playwright';
 import { PNG } from 'pngjs';
 
+import { attributeDiff } from '../src/figma/diff-attribution';
 import { type RenderArea, renderArea } from '../src/figma/render-area';
+import type { FidelityResult as Result } from '../src/figma/report';
 import type { Snapshot } from '../src/figma/types';
 
 // See apps/docs/figma-to-tldraw/tech.md §7.
@@ -17,17 +19,6 @@ interface CaseSummary {
   dir: string;
   width: number;
   height: number;
-}
-
-interface Result {
-  dir: string;
-  width: number;
-  height: number;
-  diff: number;
-  diffPixels: number;
-  sizeMismatch: boolean;
-  warnings: string[];
-  error?: string;
 }
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
@@ -69,12 +60,15 @@ function onWhite(png: PNG): PNG {
   return out;
 }
 
-// See apps/docs/figma-to-tldraw/tech.md §9.
-function areaOf(c: CaseSummary): RenderArea {
-  const snapshot = JSON.parse(
+function snapshotOf(c: CaseSummary): Snapshot {
+  return JSON.parse(
     fs.readFileSync(path.join(CASES_DIR, c.dir, 'snapshot.json'), 'utf8'),
   ) as Snapshot;
-  return renderArea(snapshot);
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §9.
+function areaOf(c: CaseSummary): RenderArea {
+  return renderArea(snapshotOf(c));
 }
 
 function windowFor(areas: RenderArea[]): { width: number; height: number } {
@@ -134,8 +128,9 @@ async function compareCase(
     PNG.sync.write(expected),
   );
   const base = { dir: c.dir, width: c.width, height: c.height };
+  const snapshot = snapshotOf(c);
   try {
-    const { png, warnings } = await shoot(browser, c, areaOf(c));
+    const { png, warnings } = await shoot(browser, c, renderArea(snapshot));
     fs.writeFileSync(path.join(caseOut, 'actual.png'), png);
     const actual = PNG.sync.read(png);
     if (actual.width !== expected.width || actual.height !== expected.height) {
@@ -166,6 +161,8 @@ async function compareCase(
       diffPixels,
       sizeMismatch: false,
       warnings,
+      // See apps/docs/figma-to-tldraw/tech.md §10.2.
+      breakdown: attributeDiff(snapshot, diff, SCALE),
     };
   } catch (e) {
     return {

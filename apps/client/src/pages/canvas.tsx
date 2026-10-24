@@ -7,12 +7,11 @@ import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
+import { putSnapshot } from '../figma/editor';
 import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
-import type { FigmaShape } from '../figma/shape-types';
 import { figmaShapeUtils } from '../figma/shapes';
-import { snapshotToShapes } from '../figma/to-shapes';
 import type { CaseIndex, Snapshot } from '../figma/types';
 
 // See apps/docs/figma-to-tldraw/tech.md §7.
@@ -83,15 +82,7 @@ function showSnapshot(
   id: string,
   assetBase: string,
 ): string[] {
-  const { shapes, warnings } = snapshotToShapes(snapshot, {
-    idPrefix: id,
-    assetBase,
-  });
-  editor.run(() => {
-    editor.selectNone();
-    editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
-    editor.createShapes<FigmaShape>(shapes);
-  });
+  const warnings = putSnapshot(editor, snapshot, id, assetBase);
   // See apps/docs/figma-to-tldraw/tech.md §7 and §9.
   const area = renderArea(snapshot);
   editor.setCamera({
@@ -99,7 +90,7 @@ function showSnapshot(
     y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y,
     z: 1,
   });
-  return [...snapshot.meta.warnings, ...warnings];
+  return warnings;
 }
 
 function groupCases(index: CaseIndex) {
