@@ -538,3 +538,17 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 测试：`to-shapes.test.ts` 的 "turns mirrored transforms into an unrotated box with flipX"：镜像 frame、它的子节点、一个垂直翻转的矩形，位置、旋转和 `flipX` 都对。
 
 效果：FreshGo 首页 3.36% → 0.39%，Framer 桌面页 3.21% → 0.88%，Framer 手机页 5.12% → 1.74%。
+
+### 12.4 只有描边的图层的投影
+
+Figma 的投影是**图层自己的形状**投出来的：填充和描边画到的地方当作完全不透明，按这个形状加偏移、扩展、模糊。子图层不参与。CSS 的 `box-shadow` 永远按整个框投影。有填充的框两者一样；**没有填充、只有描边**的框就不一样了：Figma 只有描边那一圈投影，模糊以后比整块框的影子淡得多；`showShadowBehindNode` 打开时，框里面也能看到这一圈影子。
+
+做法（`box.tsx` 的 `StrokeShadow`，新）：满足"有可见的投影、没有可见的填充、有可见的描边、`strokeWeight > 0`、不是四边不同粗细"时，不用 `box-shadow`，改画一个 SVG：
+
+- 按描边对齐方式算出描边中线（内描边往里缩半个线宽，外描边往外扩半个），圆角矩形用 `roundedRectPath`、椭圆用 `ellipsePath`。
+- 每个投影一条路径：`stroke` = 投影颜色，线宽 = 描边粗细 + 2 × 扩展，按偏移平移，`feGaussianBlur` 的 `stdDeviation` = 模糊半径 ÷ 2（和 §6.3 的换算一样）。
+- 所有投影都没开 `showShadowBehindNode` 时，加一个遮罩把框里面挖掉（Figma 默认不在图层后面画影子）。
+
+四边不同粗细的描边还是用 `box-shadow`，没有做。
+
+效果：Framer 桌面页 0.88% → 0.25%；Framer 手机页 1.74% → 0.70%（和 §12.5 一起）。
