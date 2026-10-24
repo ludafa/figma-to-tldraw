@@ -27,6 +27,7 @@ declare global {
 const route = getRouteApi('/canvas');
 
 const SHOT_OFFSET = 40;
+const TLDRAW_LAYER_OFFSET = 0.125;
 
 type OverlayMode = 'off' | 'half' | 'diff';
 
@@ -88,7 +89,12 @@ function showSnapshot(
     editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
     editor.createShapes<FigmaShape>(shapes);
   });
-  editor.setCamera({ x: SHOT_OFFSET, y: SHOT_OFFSET, z: 1 });
+  // See apps/docs/figma-to-tldraw/tech.md §7.
+  editor.setCamera({
+    x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET,
+    y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET,
+    z: 1,
+  });
   return [...snapshot.meta.warnings, ...warnings];
 }
 

@@ -222,6 +222,7 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 - `expected@2x.png` 里 frame 外面（比如圆角外）是透明的，对比前先把它叠到白底上，和截图的白色画布一致。
 - "准备好了"的判断在 `load.ts` 的 `waitForAssets`：用 `document.fonts.load` 按每段文字的字体和内容加载字体（Noto Sans SC 是按字符分包的，要带上文字才会加载对的包），图片全部 `decode()` 完，再等 `document.fonts.ready` 和两帧。
 - 4 个页面并行截图，每个用例新开一个页面。
+- tldraw 画图形的那一层故意多平移了 0.125px（`DefaultCanvas` 里 `translate(x + offset)`，缩放 100% 时 offset = 0.125，为了避免某些浏览器渲染发虚）。不处理的话所有图形都偏 1/4 个设备像素，深色 frame 的上边和左边会有一条半透明的边。截图模式把镜头设成 `40 - 0.125`，抵消这个偏移（2026-10-24，`page/gallery` 从 2.02% 降到 1.03%）。
 
 ## 8. 风险
 

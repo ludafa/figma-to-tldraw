@@ -73,3 +73,6 @@
 |                                                                  | page/product-list       | 0.34%  | 0.13%  |
 |                                                                  | component/instances     | 0.06%  | 0.00%  |
 |                                                                  | container/clip-on       | 0.17%  | 0.01%  |
+| 截图时抵消 tldraw 画布层的 0.125px 偏移（tech.md §7）            | page/gallery            | 2.02%  | 1.03%  |
+
+全量重跑（`reports/fidelity/20261024-205207/`）：**平均差异 0.53% → 0.10%，小于 1% 的 73 → 77 / 79**。还剩两个超过 1%：`container/group-opacity` 2.64%（组透明度，需要架构改动，见 tech.md §4.1）、`page/gallery` 1.03%。
