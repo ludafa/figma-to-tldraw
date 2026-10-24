@@ -24,7 +24,8 @@ code:
 - 每个 Figma 节点对应一个 tldraw 自定义图形，推翻了交接文档里"Demo 先整个 section 一个图形"的做法（用户拍板，2026-10-24，见 [tech.md §3](tech.md#3-自定义图形2026-10-24)）
 - tldraw 3.x 只有自带的 `frame` 能裁剪子图形，所以裁剪和蒙版由子图形自己用 CSS `clip-path` 做（2026-10-24，见 [tech.md §2](tech.md#2-tldraw-3x-的限制2026-10-24) 和 [§5](tech.md#5-裁剪和蒙版2026-10-24)）
 - Demo 结果：79 个用例平均差异 0.004%，全部小于 1%，65 个逐像素一致；已知限制和下一步见 [verification.md §5](verification.md#5-demo-结论2026-10-24)（2026-10-24）
-- 用 Figma 社区的 31 个整页考了一次（不改规则）：只用 Inter 的 Untitled UI 24 页都在 0.17% 以下；Gemini 7 页平均 8.39%，原因是缺字体、First on top 叠放、图片滤镜、文字渐变，先修哪些等用户决定（2026-10-24，见 [verification.md §6](verification.md#6-真实稿子考试2026-10-24)）
+- 用 Figma 社区的 31 个整页考了一次（不改规则）：只用 Inter 的 Untitled UI 24 页都在 0.17% 以下；Gemini 7 页平均 8.39%，原因是缺字体、First on top 叠放、图片滤镜、文字渐变，之后按特性修了叠放、Red Hat Display、文字渐变、图片滤镜四项，Gemini 平均降到 1.27%，剩下的是缺 Product Sans（2026-10-24，见 [verification.md §6](verification.md#6-真实稿子考试2026-10-24)）
+- 图片滤镜不自己算，插件导出时让 Figma 渲染一份带滤镜的图（2026-10-24，见 [tech.md §6.8](tech.md#68-图片滤镜2026-10-24真实稿子考试补)）
 - 取数据用自己写的 Figma 插件，不用 REST API 和 MCP；Demo 阶段不做 WebSocket、写入 Figma、去默认值和性能优化（交接文档已定）
 
 ## 文件

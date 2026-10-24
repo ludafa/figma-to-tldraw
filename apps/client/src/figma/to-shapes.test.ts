@@ -212,6 +212,45 @@ describe('snapshotToShapes', () => {
     expect(bottomToTop).toEqual(['c', 'b', 'a']);
   });
 
+  it('uses the baked image for filtered image fills and warns when it is missing', () => {
+    const fill = (id: string) => ({
+      id,
+      name: id,
+      type: 'RECTANGLE',
+      absoluteBoundingBox: box(0, 0, 10, 10),
+      fills: [
+        { type: 'IMAGE' as const, imageRef: id, filters: { exposure: 0.5 } },
+      ],
+    });
+    const doc: FigmaNode = {
+      id: '1:1',
+      name: 'root',
+      type: 'FRAME',
+      absoluteBoundingBox: box(0, 0, 100, 100),
+      children: [fill('a'), fill('b')],
+    };
+    const { shapes, warnings } = snapshotToShapes(
+      snapshot(doc, {
+        meta: {
+          ...snapshot(doc).meta,
+          images: { a: 'images/a.png', b: 'images/b.png' },
+          filteredImages: { 'a?exposure=0.5': 'images/a-filtered-1.png' },
+        },
+      }),
+      opts,
+    );
+    const images = shapes.map(
+      (s) => (s.props as { images: Record<string, string> }).images,
+    );
+    expect(images[1]).toEqual({
+      a: '/cases/t/images/a.png',
+      'a?exposure=0.5': '/cases/t/images/a-filtered-1.png',
+    });
+    expect(images[2]).toEqual({ b: '/cases/t/images/b.png' });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('b');
+  });
+
   it('warns about unsupported node types', () => {
     const doc: FigmaNode = {
       id: '1:1',

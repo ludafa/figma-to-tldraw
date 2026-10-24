@@ -8,6 +8,7 @@ import {
   roundedRectPath,
   roundedRectPieces,
 } from './geometry';
+import { filteredImageKey } from './image-filters';
 import { multiply, toCss, toSvg } from './matrix';
 import type { FigmaNode, FigmaPaint, Matrix2x3 } from './types';
 
@@ -208,7 +209,13 @@ function TransformedGradient({
 }
 
 function ImageLayer({ paint, ctx }: { paint: FigmaPaint; ctx: PaintContext }) {
-  const url = paint.imageRef ? ctx.images[paint.imageRef] : undefined;
+  // See apps/docs/figma-to-tldraw/tech.md §6.8.
+  const key = paint.imageRef
+    ? filteredImageKey(paint.imageRef, paint.filters)
+    : undefined;
+  const url =
+    (key && ctx.images[key]) ||
+    (paint.imageRef ? ctx.images[paint.imageRef] : undefined);
   if (!url) {
     return null;
   }

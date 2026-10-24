@@ -50,6 +50,16 @@ export type FigmaTransform = [
   [number, number, number],
 ];
 
+export interface FigmaImageFilters {
+  exposure?: number;
+  contrast?: number;
+  saturation?: number;
+  temperature?: number;
+  tint?: number;
+  highlights?: number;
+  shadows?: number;
+}
+
 export interface FigmaPaint {
   type:
     | 'SOLID'
@@ -71,6 +81,7 @@ export interface FigmaPaint {
   imageTransform?: FigmaTransform;
   scalingFactor?: number;
   rotation?: number;
+  filters?: FigmaImageFilters;
 }
 
 export interface FigmaEffect {
@@ -171,6 +182,7 @@ export interface SnapshotMeta {
   expectedScale: number;
   fonts: string[];
   images: Record<string, string>;
+  filteredImages?: Record<string, string>;
   imageSizes?: Record<string, { width: number; height: number }>;
   masks?: Record<string, string>;
   warnings: string[];

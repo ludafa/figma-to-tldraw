@@ -6,9 +6,10 @@ import {
   type TLShapePartial,
 } from 'tldraw';
 
+import { filteredImageKey } from './image-filters';
 import { decompose, IDENTITY, invert, multiply, translation } from './matrix';
 import type { FigmaShape, FigmaShapeType } from './shape-types';
-import type { FigmaNode, Matrix2x3, Snapshot } from './types';
+import type { FigmaNode, FigmaPaint, Matrix2x3, Snapshot } from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §4.
 
@@ -68,11 +69,9 @@ function stripChildren(node: FigmaNode): FigmaNode {
   return rest;
 }
 
-function imageRefs(node: FigmaNode): string[] {
+function imagePaints(node: FigmaNode): FigmaPaint[] {
   const paints = [...(node.fills ?? []), ...(node.strokes ?? [])];
-  return paints.flatMap((p) =>
-    p.type === 'IMAGE' && p.imageRef ? [p.imageRef] : [],
-  );
+  return paints.filter((p) => p.type === 'IMAGE' && p.imageRef);
 }
 
 export function snapshotToShapes(
@@ -153,10 +152,23 @@ export function snapshotToShapes(
     const id = shapeIdFor(opts.idPrefix, node.id);
 
     const images: Record<string, string> = {};
-    for (const ref of imageRefs(node)) {
+    for (const paint of imagePaints(node)) {
+      const ref = paint.imageRef!;
       const rel = snapshot.meta.images[ref];
       if (rel) {
         images[ref] = opts.assetBase + rel;
+      }
+      // See apps/docs/figma-to-tldraw/tech.md §6.8.
+      const key = filteredImageKey(ref, paint.filters);
+      if (key) {
+        const baked = snapshot.meta.filteredImages?.[key];
+        if (baked) {
+          images[key] = opts.assetBase + baked;
+        } else {
+          warnings.push(
+            `图片滤镜没有效果（缺少渲染好的图）：${node.name}（${node.id}）`,
+          );
+        }
       }
     }
 
