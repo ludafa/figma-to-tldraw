@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as CanvasRouteImport } from './routes/canvas'
+import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as ShowcaseRouteImport } from './routes/showcase'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
@@ -28,6 +29,11 @@ const AuthRoute = AuthRouteImport.update({
 const CanvasRoute = CanvasRouteImport.update({
   id: '/canvas',
   path: '/canvas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowItWorksRoute = HowItWorksRouteImport.update({
+  id: '/how-it-works',
+  path: '/how-it-works',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShowcaseRoute = ShowcaseRouteImport.update({
@@ -54,6 +60,7 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/canvas': typeof CanvasRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/showcase': typeof ShowcaseRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
@@ -61,6 +68,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/canvas': typeof CanvasRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/showcase': typeof ShowcaseRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/canvas': typeof CanvasRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/showcase': typeof ShowcaseRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
@@ -77,14 +86,16 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/canvas' | '/showcase' | '/login' | '/register'
+  fullPaths:
+    '/' | '/canvas' | '/how-it-works' | '/showcase' | '/login' | '/register'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/canvas' | '/showcase' | '/login' | '/register'
+  to: '/' | '/canvas' | '/how-it-works' | '/showcase' | '/login' | '/register'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/canvas'
+    | '/how-it-works'
     | '/showcase'
     | '/_auth/login'
     | '/_auth/register'
@@ -95,6 +106,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   CanvasRoute: typeof CanvasRoute
+  HowItWorksRoute: typeof HowItWorksRoute
   ShowcaseRoute: typeof ShowcaseRoute
 }
 
@@ -119,6 +131,13 @@ declare module '@tanstack/react-router' {
       path: '/canvas'
       fullPath: '/canvas'
       preLoaderRoute: typeof CanvasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-it-works': {
+      id: '/how-it-works'
+      path: '/how-it-works'
+      fullPath: '/how-it-works'
+      preLoaderRoute: typeof HowItWorksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/showcase': {
@@ -178,6 +197,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   CanvasRoute: CanvasRoute,
+  HowItWorksRoute: HowItWorksRoute,
   ShowcaseRoute: ShowcaseRoute,
 }
 export const routeTree = rootRouteImport

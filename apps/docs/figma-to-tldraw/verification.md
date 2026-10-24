@@ -40,6 +40,7 @@
 10. 打开 `/showcase` → 顶部四个数字和最新报告一致（118、0.07%、118、47）；卡片按分组排，切到"按差异从大到小"后第一张是 `gemini-macbook-pro-14---extension-screen`（0.97%）。
 11. 点开任意卡片 → 四格依次是 Figma 截图、tldraw 画布、差异图、差异分析，三张图大小一样、内容位置对得上；在画布上拖动会平移，点"复位"回到原位；按 → / ← 切换用例，Esc 回列表。
 12. 打开 `/showcase?case=real/google-gemini---built-with-material-3-de/gemini-macbook-pro-14---extension-screen` → "在 Figma 里打开"跳到用户草稿里的这一页，"社区原稿"跳到社区页面；差异分析写"最多的是文字，占 73%"；鼠标移到第一行「Turn Gemini Extension on or off anytime」上，差异图里这行标题被蓝框框住。
+13. 打开 `/how-it-works`（或在 `/showcase` 点"核心思路"）→ 开头四个数字和 `/showcase` 一样；第 2 节点左边的 "Primary button"，右边画布上的 Sign in 按钮被选中；在画布上点 "Forgot password?"，左边这一行高亮；第 4 节三张图都显示出来。
 
 ## 4. 各次实际结果
 
@@ -126,6 +127,12 @@
 - 第一版归因把 `gemini-plugin-file-cover` 82% 的差异算给了一块半透明渐变遮罩 "Rectangle 1"，改成"只有盖住下面内容的节点才涂整个范围"（tech.md §10.2）后，这一页 100% 在文字上：「Hello, Team …」（Product Sans）、「Unofficial Recreation」（Red Hat Display 700，粗体比 Figma 窄，tech.md §6.4）。8 个图片滤镜用例 100% 在图片上；Gemini 其余页面 73%～100% 在文字上。
 - 用 agent-browser 在 Chrome 里看过（1440×900，暗色和亮色）：列表页、按差异排序、Gemini 详情页、Untitled UI 手机长页面（0.5 倍，页面可以往下滚）、`text/cjk-mixed`；节点悬停的蓝框、← → Esc 键盘切换都正常。手动验收 10～12 条通过；"在 Figma 里打开"没有在浏览器里实际点开（链接指向用户的草稿，需要用户登录 Figma）。
 - 发现并修好：tldraw 水印压在设计稿右下角（三格四周加 24px 白边）；长页面缩得太小（高度方向最少 0.5 倍）；只差十几个像素时比例显示成 0%（改成 <1%）。
+
+### 2026-10-24（思路介绍页，用户追加）
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 20 条通过（这次没加单测，页面是静态内容加一个演示）。
+- 用 agent-browser 在 Chrome 里看过（1440×900，亮色）：整页七节都在；节点树 25 行，类型从画布读出来（FRAME → figma-frame、ELLIPSE → figma-vector 等）；点 "Primary button" 行选中画布上的按钮，在画布上点 "Forgot password?" 高亮对应的行。手动验收第 13 条通过。
+- 发现并修好：演示画布用了白色背景，白底的登录页看不出边界，改回 tldraw 默认的浅灰。整页截图时第 4 节的图和画布是空白的，是懒加载还没触发，正常滚动浏览时都显示。
 
 ## 5. Demo 结论（2026-10-24）
 

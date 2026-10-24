@@ -99,6 +99,12 @@ export function CaseList({
           画布，以及两张图逐像素对比的差异分析。点开任意一张卡片看详情。
         </p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link
+            to="/how-it-works"
+            className="font-medium underline-offset-4 hover:underline"
+          >
+            核心思路 →
+          </Link>
           <a
             href="/reports/fidelity/latest/index.html"
             target="_blank"
