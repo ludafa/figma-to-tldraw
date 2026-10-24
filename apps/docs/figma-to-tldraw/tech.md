@@ -552,3 +552,9 @@ Figma 的投影是**图层自己的形状**投出来的：填充和描边画到�
 四边不同粗细的描边还是用 `box-shadow`，没有做。
 
 效果：Framer 桌面页 0.88% → 0.25%；Framer 手机页 1.74% → 0.70%（和 §12.5 一起）。
+
+### 12.5 文字里的 U+2028
+
+Figma 把 U+2028（LINE SEPARATOR）当成段内换行：换到下一行，但不算新段落，不加段间距。实测 Chrome 没有在这里换行（Framer 手机页页脚的卡片 "…by connecting \u2028with your favorite tools…"：Figma 在 connecting 后面换行，我们没换，后面几行的断行跟着全变了）。
+
+做法：`figma-text.tsx` 的 `paragraphs()` 按 `\n` 分段以后，把每段里的 U+2028 换成 `\n`，在同一段里换行。

@@ -142,7 +142,11 @@ function paragraphs(runs: Run[]): Run[][] {
         out.push([]);
       }
       if (part) {
-        out[out.length - 1].push({ ...run, text: part });
+        // See apps/docs/figma-to-tldraw/tech.md §12.5.
+        out[out.length - 1].push({
+          ...run,
+          text: part.replaceAll(' ', '\n'),
+        });
       }
     });
   }
