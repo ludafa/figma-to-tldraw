@@ -189,6 +189,34 @@ async function makeImage(w, h, hue, label) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §6.8.
+function makeRamp() {
+  var w = 256;
+  var c = document.createElement('canvas');
+  c.width = w;
+  c.height = 96;
+  var g = c.getContext('2d');
+  var rows = [
+    function (x) { return 'rgb(' + x + ',' + x + ',' + x + ')'; },
+    function (x) { return 'rgb(' + x + ',0,0)'; },
+    function (x) { return 'rgb(0,' + x + ',0)'; },
+    function (x) { return 'rgb(0,0,' + x + ')'; },
+    function (x) { return 'hsl(' + (x / w) * 360 + ', 100%, 50%)'; },
+    function (x) { return 'hsl(' + (x / w) * 360 + ', 40%, 70%)'; },
+  ];
+  rows.forEach(function (color, row) {
+    for (var x = 0; x < w; x++) {
+      g.fillStyle = color(x);
+      g.fillRect(x, row * 16, 1, 16);
+    }
+  });
+  return new Promise(function (r) { c.toBlob(r, 'image/png'); }).then(function (blob) {
+    return blob.arrayBuffer();
+  }).then(function (buf) {
+    return new Uint8Array(buf);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // 界面
 // ---------------------------------------------------------------------------
@@ -223,6 +251,7 @@ $gen.onclick = async function () {
       landscape: await makeImage(640, 400, 200, 'LANDSCAPE'),
       portrait: await makeImage(400, 600, 330, 'PORTRAIT'),
       square: await makeImage(400, 400, 140, 'SQUARE'),
+      ramp: await makeRamp(),
     };
     send({ type: 'generate', images: images });
   } catch (e) {

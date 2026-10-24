@@ -2,7 +2,7 @@
 
 一个 Figma 插件，做两件事：
 
-1. **生成测试用例**：自动新建一个 `Test Cases` 页面，画出 76 个小用例和 3 个真实页面
+1. **生成测试用例**：自动新建一个 `Test Cases` 页面，画出 84 个小用例和 3 个真实页面（2026-10-24 加了 8 个 `image-filter/*` 图片滤镜用例）
 2. **导出测试数据**：把页面上每个顶层 frame 导出成"快照 JSON + 图片 + Figma 渲染图"，打包成一个 zip
 
 ## 使用步骤
@@ -38,6 +38,7 @@ cases/
     snapshot.json
     expected@2x.png
     images/<hash>.png       ← 用到的原始图片
+    images/<hash>-filtered-1.png  ← 带滤镜的图片，Figma 渲染好的版本（有滤镜时才有）
   ...
 ```
 
@@ -53,6 +54,7 @@ cases/
 几点说明：
 
 - **图片**：节点里图片填充的 `imageRef` 就是图片 hash，对应 `meta.images` 里的文件路径
+- **图片滤镜**：图片填充调了曝光、对比度等滤镜时，插件让 Figma 按原图尺寸渲染一份带滤镜的图，`meta.filteredImages` 里记 `<imageRef>?<滤镜>` → 文件路径。渲染时临时建一个矩形，导完马上删掉（详见 `apps/docs/figma-to-tldraw/tech.md` §6.8）
 - **SVG 的位置**：导出的 SVG 包含了描边和阴影，所以它的尺寸可能比节点本身大。摆放时可以用节点的 `absoluteRenderBounds`（包含描边、阴影在内的实际渲染范围），而不是 `absoluteBoundingBox`
 - **隐藏图层**：节点树里还在（`visible: false`），但不会导出它的 SVG
 - **蒙版图层**：单独导出 SVG 会失败，所以不导 SVG，改为在 `meta.masks` 里给出它的 `fillGeometry` 路径（节点自己的坐标系）

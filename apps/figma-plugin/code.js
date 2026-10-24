@@ -692,6 +692,31 @@ add('image/opacity', function (f, ctx) {
   rect(f, 80, 60, 240, 180, [imagePaint(ctx.img.landscape, 'FILL', { opacity: 0.5 })]);
 });
 
+// ---- 图片滤镜 ----
+// See apps/docs/figma-to-tldraw/tech.md §6.8.
+var FILTER_VALUES = [-1, -0.5, 0, 0.5, 1];
+function imageFilterCase(key) {
+  return function (f, ctx) {
+    FILTER_VALUES.forEach(function (v, i) {
+      var filters = {};
+      filters[key] = v;
+      var r = rect(f, 16, 16 + i * 104, 256, 96, [imagePaint(ctx.img.ramp, 'FILL', { filters: filters })]);
+      r.name = key + ' ' + v;
+    });
+  };
+}
+['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'highlights', 'shadows'].forEach(function (key) {
+  add('image-filter/' + key, imageFilterCase(key), 288, 536);
+});
+add('image-filter/combined', function (f, ctx) {
+  rect(f, 16, 16, 256, 96, [imagePaint(ctx.img.ramp, 'FILL')]);
+  rect(f, 16, 120, 256, 96, [
+    imagePaint(ctx.img.ramp, 'FILL', {
+      filters: { exposure: 0.3, contrast: 0.4, saturation: -0.5, temperature: 0.5, highlights: -0.4 },
+    }),
+  ]);
+}, 288, 232);
+
 // ---- 容器 ----
 add('container/nested-frames', function (f) {
   var outer = frame(f, 20, 20, 360, 260, '#EEF2FF', 16);
@@ -1158,7 +1183,7 @@ function caseDir(name) {
   return name.split('/').map(slug).join('/');
 }
 
-// "Test Cases" 页面上的用例按名字分类；其他页面（比如从社区文件里挑的稿子）放到 real/<文件名>/<页面名>-<frame 名>，重名的加序号
+// See apps/docs/figma-to-tldraw/tech.md §9.1.
 function exportDirs(nodes, fileName, pageName) {
   var used = {};
   return nodes.map(function (node) {
@@ -1171,6 +1196,42 @@ function exportDirs(nodes, fileName, pageName) {
     used[dir] = true;
     return dir;
   });
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §6.8.
+var FILTER_KEYS = ['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'highlights', 'shadows'];
+function filteredImageKey(hash, filters) {
+  if (!filters) return null;
+  var parts = [];
+  FILTER_KEYS.forEach(function (k) {
+    var v = Math.round((filters[k] || 0) * 1000) / 1000;
+    if (v !== 0) parts.push(k + '=' + v);
+  });
+  return parts.length ? hash + '?' + parts.join('&') : null;
+}
+
+function filteredImagePaints(restNode, out) {
+  if (restNode.visible === false) return out;
+  (restNode.fills || []).forEach(function (p, i) {
+    var key = p.type === 'IMAGE' && p.imageRef ? filteredImageKey(p.imageRef, p.filters) : null;
+    if (key) out.push({ id: restNode.id, index: i, key: key });
+  });
+  (restNode.children || []).forEach(function (c) {
+    filteredImagePaints(c, out);
+  });
+  return out;
+}
+
+async function bakeFilteredImage(hash, filters) {
+  var size = await figma.getImageByHash(hash).getSizeAsync();
+  var r = figma.createRectangle();
+  try {
+    r.resize(size.width, size.height);
+    r.fills = [{ type: 'IMAGE', imageHash: hash, scaleMode: 'FILL', filters: filters }];
+    return await r.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 1 } });
+  } finally {
+    r.remove();
+  }
 }
 
 async function collect(node, out) {
@@ -1207,7 +1268,7 @@ async function collect(node, out) {
       out.warnings.push('读取字体失败：' + node.name);
     }
   }
-  // absoluteRenderBounds 为 null 表示什么都画不出来（比如整个被父容器裁掉），导出 SVG 必然失败，直接跳过
+  // See apps/docs/figma-to-tldraw/tech.md §9.1.
   if (SVG_TYPES[node.type] && !node.isMask && node.absoluteRenderBounds !== null) {
     try {
       var svg = await node.exportAsync({ format: 'SVG_STRING' });
@@ -1250,6 +1311,23 @@ async function exportOne(node, dir) {
     files.push({ path: dir + '/' + rel, bytes: bytes });
   }
 
+  var filteredFiles = {};
+  var filtered = filteredImagePaints(rest.document, []);
+  for (var j = 0; j < filtered.length; j++) {
+    var f = filtered[j];
+    if (filteredFiles[f.key]) continue;
+    try {
+      var n = await figma.getNodeByIdAsync(f.id);
+      var paint = n && n.fills[f.index];
+      var baked = await bakeFilteredImage(paint.imageHash, paint.filters);
+      var bakedRel = 'images/' + paint.imageHash + '-filtered-' + (Object.keys(filteredFiles).length + 1) + '.png';
+      filteredFiles[f.key] = bakedRel;
+      files.push({ path: dir + '/' + bakedRel, bytes: baked });
+    } catch (e) {
+      out.warnings.push('渲染带滤镜的图片失败：' + f.key);
+    }
+  }
+
   var png = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
   files.push({ path: dir + '/expected@2x.png', bytes: png });
 
@@ -1262,6 +1340,7 @@ async function exportOne(node, dir) {
     expectedScale: 2,
     fonts: Object.keys(out.fonts),
     images: imageFiles,
+    filteredImages: filteredFiles,
     imageSizes: imageSizes,
     masks: out.masks,
     warnings: out.warnings,
@@ -1287,7 +1366,7 @@ async function exportOne(node, dir) {
 
 async function exportCases() {
   var page = figma.currentPage;
-  // 有选中时导出选中的节点（可以在 section 里面），没选中时导出页面上所有顶层 frame
+  // See apps/docs/figma-to-tldraw/tech.md §9.1.
   var selected = page.selection.length > 0;
   var source = selected ? page.selection : page.children;
   var targets = source.filter(function (n) {
