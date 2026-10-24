@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { layerBlurCss, textShadowCss } from '../effects';
-import { fontFamilyCss, fontStyleCss } from '../fonts';
+import { fontFamilyCss, fontStyleCss, fontVariationCss } from '../fonts';
 import { rgba } from '../geometry';
 import { gradientImageCss, visiblePaints } from '../paint';
 import type { FigmaShape } from '../shape-types';
@@ -67,6 +67,9 @@ function resolvedLineHeight(
 function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
   const css: CSSProperties = {
     fontFamily: fontFamilyCss(style),
+    fontVariationSettings: fontVariationCss(style),
+    // See apps/docs/figma-to-tldraw/tech.md §6.9.
+    fontFeatureSettings: 'normal',
     fontWeight: style.fontWeight,
     fontStyle: fontStyleCss(style),
     fontSize: style.fontSize,

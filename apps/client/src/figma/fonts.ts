@@ -4,12 +4,31 @@ import type { FigmaTypeStyle } from './types';
 
 const FALLBACK = '"Inter", "Noto Sans SC", sans-serif';
 
+// See apps/docs/figma-to-tldraw/tech.md §6.9.
+export const FONT_SUBSTITUTES: Record<
+  string,
+  { family: string; name: string; variation: string }
+> = {
+  'Product Sans': {
+    family: 'Google Sans Flex Variable',
+    name: 'Google Sans Flex',
+    variation: '"wdth" 93.5, "opsz" 18',
+  },
+};
+
 export function fontFamilyCss(style: FigmaTypeStyle): string {
   const family = style.fontFamily ?? 'Inter';
   if (family === 'Inter' && style.italic) {
     return `"InterVariable", ${FALLBACK}`;
   }
-  return `"${family}", ${FALLBACK}`;
+  const sub = FONT_SUBSTITUTES[family];
+  return sub
+    ? `"${family}", "${sub.family}", ${FALLBACK}`
+    : `"${family}", ${FALLBACK}`;
+}
+
+export function fontVariationCss(style: FigmaTypeStyle): string | undefined {
+  return FONT_SUBSTITUTES[style.fontFamily ?? '']?.variation;
 }
 
 export function fontStyleCss(style: FigmaTypeStyle): string {

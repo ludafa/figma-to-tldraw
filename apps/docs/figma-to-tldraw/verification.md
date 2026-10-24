@@ -9,6 +9,7 @@
 | `apps/client/src/figma/to-shapes.test.ts`     | 节点树拆成图形：根节点放原点、子节点相对父节点、旋转节点用 `transforms`、隐藏节点跳过、兄弟顺序、不认识的类型给警告、矢量按渲染范围摆放和蒙版、画不出东西的矢量直接跳过、First on top 倒过来排、带滤镜的图片用渲染好的图（缺图给警告） | 2026-10-24 |
 | `apps/client/src/figma/paint.test.ts`         | 文字渐变用的 SVG 渐变图：尺寸等于文字框、变换矩阵按渐变手柄算、颜色正确；角度渐变不生成                                                                                                                                                | 2026-10-24 |
 | `apps/client/src/figma/image-filters.test.ts` | 带滤镜图片的 key：只列不为 0 的滤镜、固定顺序、保留 3 位小数；没有滤镜时不生成                                                                                                                                                         | 2026-10-24 |
+| `apps/client/src/figma/fonts.test.ts`         | 字体代替：Product Sans 后面紧跟 Google Sans Flex 和字宽设置，判断缺字体时只看第一个字体；别的字体不受影响                                                                                                                              | 2026-10-24 |
 | `apps/client/src/figma/geometry.test.ts`      | 圆角矩形拆成四条边和四个角（虚线按段排用），段长正确；没有圆角时不出现长度为 0 的角                                                                                                                                                    | 2026-10-24 |
 
 命令：`pnpm --filter @figma-to-tldraw/client test`。
@@ -31,7 +32,7 @@
 4. 在画布上点一个子图形 → 只选中这一个；拖动根 frame → 子图形跟着动。
 5. 打开 `/canvas?case=不存在` → 工具条显示 1 条警告（读取失败 404），页面不崩。
 6. 打开 `reports/fidelity/latest/index.html` → 顶部有用例数、平均差异、小于 1% 的个数；表格按差异从大到小排，每行三张图。
-7. 打开 `/canvas?case=real/google-gemini---built-with-material-3-de/gemini-plugin-file-cover` → 工具条显示 3 条警告：缺 Product Sans 400、Red Hat Display 400 和 700。
+7. 打开 `/canvas?case=real/google-gemini---built-with-material-3-de/gemini-plugin-file-cover` → 工具条只有 1 条警告："缺字体：Product Sans 400（用 Google Sans Flex 近似代替）"；"Hello, Team" 里的 a 是双层的。
 8. 打开 `/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop` → 截图模式（加 `&shot=1`）下整页都在画面里，包括超出 960 高的部分。
 9. 打开 `/canvas?case=image-filter/combined` → 下面那块色卡变暗、变暖、对比更强，和 `cases/image-filter/combined/expected@2x.png` 一样，工具条没有警告。
 
@@ -194,7 +195,7 @@ Gemini 7 页：
 | 图片滤镜（`filters`：曝光、对比度、饱和度、色调、高光），背景图还叠了 48px 的图层模糊     | thumbnail 2、screenshot 1                                                                        | 中   | 用 CSS `filter` 或 SVG 滤镜近似，色调和高光要自己推算               |
 | 文字的渐变填充（`styleOverrideTable` 里的 `GRADIENT_LINEAR`，如 "Hello, Team"）           | screenshot 2、thumbnail 1、new-chat 1、plugin-file-cover 1                                       | 中   | CSS `background-clip: text`                                         |
 
-考完按我建议的顺序修了四项（用户还没回复先修哪些），每行是改完以后重跑受影响的 Gemini 用例：
+考完按我建议的顺序修了四项，又给 Product Sans 找了代替字体（用户还没回复先修哪些），每行是改完以后重跑受影响的 Gemini 用例：
 
 | 修了什么                                                                   | 用例                                     | 修之前 | 修之后 |
 | -------------------------------------------------------------------------- | ---------------------------------------- | ------ | ------ |
@@ -210,6 +211,8 @@ Gemini 7 页：
 |                                                                            | gemini-dribbble-thumbnail                | 41.58% | 41.54% |
 | 图片滤镜：插件导出时让 Figma 渲染带滤镜的图（tech.md §6.8）                | gemini-dribbble-thumbnail                | 41.54% | 1.09%  |
 |                                                                            | gemini-dribbble-screenshot               | 9.44%  | 0.84%  |
+| Product Sans 用 Google Sans Flex（字宽 93.5）代替（tech.md §6.9）          | Gemini 7 页平均                          | 1.27%  | 0.87%  |
+| Figma 文字的字体特性重置成 `normal`（tech.md §6.9）                        | Gemini 7 页平均                          | 0.87%  | 0.53%  |
 
 封面修完叠放顺序反而变高：卡片上的文字原来被背景盖住，现在露出来了，但用的是后备字体 Inter（缺 Product Sans），比 Figma 宽、换行也不一样，差异算进来了。卡片本身已经和 Figma 一样（文字、图标都在背景上面）。其他 103 个用例里没有 `itemReverseZIndex`，没有重跑。
 
@@ -232,3 +235,7 @@ Gemini 7 页：
 | 真实稿子合计       | 31     | 1.91% → 0.30% | 25 → 26 |                |
 
 还超过 1% 的 5 个都是 Gemini 页面（1.09%～1.91%），警告里只剩缺 Product Sans。留作考试的 `gemini-macbook-pro-14---public-links-screen` 一直是 0.79%（这几项修复都没有涉及它），`informational-pages-mobile-2` 一直是 0.17%。
+
+补上字体代替、重置字体特性以后全量重跑（`reports/fidelity/20261024-223846/`，118 个用例，实测）：**平均差异 0.07%，118 / 118 个小于 1%**。原来 79 个、图片滤镜 8 个、Untitled UI 24 页的分数都没变；Gemini 7 页平均 1.27% → 0.53%，最大 0.97%（`extension-screen`）。31 个真实稿子平均 0.14%，全部小于 1%。警告只剩"Product Sans 用 Google Sans Flex 近似代替"。留作考试的两页：`public-links-screen` 0.79% → 0.22%（字体代替规则对它也管用，拟合字宽时没看它的差异图），`informational-pages-mobile-2` 0.17% 没变。
+
+剩下的差异都是文字字形（代替字体和 Product Sans 本来就不一样）和图片取样，属于目标里说的"1% 以下的细微差异"，没有继续追。

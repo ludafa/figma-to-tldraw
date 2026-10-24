@@ -1,4 +1,4 @@
-import { fontShorthand, primaryFontShorthand } from './fonts';
+import { FONT_SUBSTITUTES, fontShorthand, primaryFontShorthand } from './fonts';
 import type { CaseIndex, FigmaNode, Snapshot } from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §1.1 and §7.
@@ -35,15 +35,20 @@ function collectTexts(node: FigmaNode, out: FigmaNode[]) {
   }
 }
 
-function fontSpecs(
-  snapshot: Snapshot,
-): { font: string; primary: string; family: string; text: string }[] {
+function fontSpecs(snapshot: Snapshot): {
+  font: string;
+  primary: string;
+  family: string;
+  substitute?: string;
+  text: string;
+}[] {
   const texts: FigmaNode[] = [];
   collectTexts(snapshot.rest.document, texts);
   const specs: {
     font: string;
     primary: string;
     family: string;
+    substitute?: string;
     text: string;
   }[] = [];
   for (const node of texts) {
@@ -63,6 +68,7 @@ function fontSpecs(
         font: fontShorthand(s),
         primary: primaryFontShorthand(s),
         family: `${s.fontFamily} ${s.fontWeight ?? 400}${s.italic ? ' italic' : ''}`,
+        substitute: FONT_SUBSTITUTES[s.fontFamily]?.name,
         text: node.characters ?? '',
       });
     }
@@ -104,16 +110,23 @@ export async function waitForAssets(
           .catch(() => []),
       ),
     ),
-    ...Object.values(snapshot.meta.images).map((rel) =>
-      loadImage(assetBase + rel),
-    ),
+    ...[
+      ...Object.values(snapshot.meta.images),
+      ...Object.values(snapshot.meta.filteredImages ?? {}),
+    ].map((rel) => loadImage(assetBase + rel)),
   ]);
   await nextFrame();
   await document.fonts.ready;
   await nextFrame();
   await nextFrame();
   const missing = new Set(
-    specs.filter((_, i) => faces[i].length === 0).map((s) => s.family),
+    specs
+      .filter((_, i) => faces[i].length === 0)
+      .map((s) =>
+        s.substitute
+          ? `缺字体：${s.family}（用 ${s.substitute} 近似代替）`
+          : `缺字体：${s.family}（没有对应的网页字体）`,
+      ),
   );
-  return [...missing].map((f) => `缺字体：${f}（没有对应的网页字体）`);
+  return [...missing];
 }
