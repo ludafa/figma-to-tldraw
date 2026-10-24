@@ -6,6 +6,7 @@ import {
   type Radii,
   rgba,
   roundedRectPath,
+  roundedRectPieces,
 } from './geometry';
 import { multiply, toCss, toSvg } from './matrix';
 import type { FigmaNode, FigmaPaint, Matrix2x3 } from './types';
@@ -325,6 +326,38 @@ function strokePaintAttr(
   return undefined;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §6.2.
+function fitDashes(
+  pattern: number[],
+  length: number,
+): { strokeDasharray: string; strokeDashoffset: number } {
+  const period = pattern.reduce((a, b) => a + b, 0) || 1;
+  const scale = length / (Math.max(1, Math.round(length / period)) * period);
+  const scaled = pattern.map((v) => v * scale);
+  return {
+    strokeDasharray: scaled.join(' '),
+    strokeDashoffset: scaled[0] / 2,
+  };
+}
+
+function ellipsePerimeter(w: number, h: number): number {
+  const a = w / 2;
+  const b = h / 2;
+  return Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
+}
+
+const LINE_CAP: Record<string, 'butt' | 'round' | 'square'> = {
+  NONE: 'butt',
+  ROUND: 'round',
+  SQUARE: 'square',
+};
+
+const LINE_JOIN: Record<string, 'miter' | 'round' | 'bevel'> = {
+  MITER: 'miter',
+  ROUND: 'round',
+  BEVEL: 'bevel',
+};
+
 export function Strokes({
   node,
   w,
@@ -380,9 +413,7 @@ export function Strokes({
   const sh = h - offset * 2;
   const clamped = clampRadii(radii, w, h);
   const r = clamped.map((v) => Math.max(0, v - offset)) as Radii;
-  const dash = node.strokeDashes?.length
-    ? node.strokeDashes.join(' ')
-    : undefined;
+  const dashes = node.strokeDashes?.length ? node.strokeDashes : undefined;
 
   return (
     <svg
@@ -418,20 +449,39 @@ export function Strokes({
         const common = {
           fill: 'none',
           strokeWidth: weight,
-          strokeDasharray: dash,
+          strokeLinecap: LINE_CAP[node.strokeCap ?? 'NONE'] ?? 'butt',
+          strokeLinejoin: LINE_JOIN[node.strokeJoin ?? 'MITER'] ?? 'miter',
           ...attr,
         };
-        return shape === 'ellipse' ? (
-          <ellipse
-            key={i}
-            cx={w / 2}
-            cy={h / 2}
-            rx={sw / 2}
-            ry={sh / 2}
-            {...common}
-          />
-        ) : (
-          <path key={i} d={roundedRectPath(x, y, sw, sh, r)} {...common} />
+        if (shape === 'ellipse') {
+          return (
+            <ellipse
+              key={i}
+              cx={w / 2}
+              cy={h / 2}
+              rx={sw / 2}
+              ry={sh / 2}
+              {...common}
+              {...(dashes ? fitDashes(dashes, ellipsePerimeter(sw, sh)) : {})}
+            />
+          );
+        }
+        if (!dashes) {
+          return (
+            <path key={i} d={roundedRectPath(x, y, sw, sh, r)} {...common} />
+          );
+        }
+        return (
+          <g key={i}>
+            {roundedRectPieces(x, y, sw, sh, r).map((piece, j) => (
+              <path
+                key={j}
+                d={piece.d}
+                {...common}
+                {...fitDashes(dashes, piece.length)}
+              />
+            ))}
+          </g>
         );
       })}
     </svg>

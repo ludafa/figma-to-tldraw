@@ -131,6 +131,59 @@ export function roundedRectPath(
   return segmentsToPath(roundedRectSegments(x, y, w, h, radii), m);
 }
 
+export interface PathPiece {
+  d: string;
+  length: number;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §6.2.
+export function roundedRectPieces(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radii: Radii,
+): PathPiece[] {
+  const segs = roundedRectSegments(x, y, w, h, radii);
+  const pieces: PathPiece[] = [];
+  let cur: Point = [x, y];
+  for (const s of segs) {
+    if (s[0] === 'M') {
+      cur = s[1];
+      continue;
+    }
+    if (s[0] === 'Z') {
+      continue;
+    }
+    const start = cur;
+    const end = s[0] === 'L' ? s[1] : s[3];
+    const chord = Math.hypot(end[0] - start[0], end[1] - start[1]);
+    const length = s[0] === 'L' ? chord : (Math.PI / 2) * (chord / Math.SQRT2);
+    if (length > 1e-6) {
+      pieces.push({
+        d: segmentsToPath([['M', start], s]),
+        length,
+      });
+    }
+    cur = end;
+  }
+  const first = segs[0];
+  const last = pieces.length ? cur : undefined;
+  if (first[0] === 'M' && last) {
+    const length = Math.hypot(first[1][0] - last[0], first[1][1] - last[1]);
+    if (length > 1e-6) {
+      pieces.push({
+        d: segmentsToPath([
+          ['M', last],
+          ['L', first[1]],
+        ]),
+        length,
+      });
+    }
+  }
+  return pieces;
+}
+
 export function ellipsePath(w: number, h: number, m?: Matrix2x3): string {
   return segmentsToPath(ellipseSegments(w, h), m);
 }

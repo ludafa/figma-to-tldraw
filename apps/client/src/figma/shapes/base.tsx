@@ -133,6 +133,8 @@ export function FigmaShapeContainer({
         height: h,
         overflow: 'visible',
         pointerEvents: 'none',
+        strokeLinecap: 'butt',
+        strokeLinejoin: 'miter',
       }}
     >
       {/* See apps/docs/figma-to-tldraw/tech.md §6.3. */}

@@ -162,7 +162,16 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 | CENTER  | 矩形不变，圆角 r                     |
 | OUTSIDE | 矩形向外扩 w/2，圆角 r + w/2         |
 
-虚线用 `stroke-dasharray`，渐变描边用 §6.1 的渐变。四边粗细不同（`individualStrokeWeights`）用 CSS `border` 分别设四边。
+渐变描边用 §6.1 的渐变。四边粗细不同（`individualStrokeWeights`）用 CSS `border` 分别设四边。线帽、拐角按 `strokeCap`（NONE / ROUND / SQUARE）和 `strokeJoin`（MITER / ROUND / BEVEL）设。
+
+**tldraw 的全局样式会改线帽**（2026-10-24）：`tldraw.css` 给 `.tl-html-container` 设了 `stroke-linecap: round; stroke-linejoin: round`，会继承到图形里所有的 SVG，包括 Figma 导出的矢量图（Figma 遇到默认的平头、尖角时不写这两个属性）。所以 `FigmaShapeContainer` 在 `HTMLContainer` 上把它们重置回 SVG 默认的 `butt` / `miter`（`stroke/cap-join` 0.18% → 0.00%）。
+
+**虚线**（2026-10-24）：Figma 画矩形虚线时，把轮廓拆成四条直边和四个圆角，每一段单独排虚线：
+
+- 每段放整数个周期（段长 ÷ 周期四舍五入，至少 1 个），实线和空白按比例拉伸或压缩到正好铺满这一段。比如 240×120、圆角 16、4px 内描边、`[16, 8]` 的虚线，上边 208px 放 9 个周期（周期变成 23.1px），左边 88px 放 4 个（22px）。
+- 每段都从半个实线开始、以半个实线结束，所以拐角处总有一整段实线跨过去。
+
+SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚线按 `geometry.ts` 的 `roundedRectPieces` 拆成几段 `<path>`，每段用自己算出来的 `stroke-dasharray` 和 `stroke-dashoffset`（= 第一个实线长度的一半）。椭圆按整个周长放整数个周期（`stroke/dashed` 1.09% → 0.00%）。
 
 ### 6.3 阴影和模糊
 
