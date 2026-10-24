@@ -7,6 +7,7 @@
 | 测试文件                                  | 测什么                                                                                                                                                                  | 日期       |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | `apps/client/src/figma/to-shapes.test.ts` | 节点树拆成图形：根节点放原点、子节点相对父节点、旋转节点用 `transforms`、隐藏节点跳过、兄弟顺序、不认识的类型给警告、矢量按渲染范围摆放和蒙版、画不出东西的矢量直接跳过 | 2026-10-24 |
+| `apps/client/src/figma/paint.test.ts`     | 文字渐变用的 SVG 渐变图：尺寸等于文字框、变换矩阵按渐变手柄算、颜色正确；角度渐变不生成                                                                                 | 2026-10-24 |
 | `apps/client/src/figma/geometry.test.ts`  | 圆角矩形拆成四条边和四个角（虚线按段排用），段长正确；没有圆角时不出现长度为 0 的角                                                                                     | 2026-10-24 |
 
 命令：`pnpm --filter @figma-to-tldraw/client test`。
@@ -191,17 +192,25 @@ Gemini 7 页：
 | 图片滤镜（`filters`：曝光、对比度、饱和度、色调、高光），背景图还叠了 48px 的图层模糊     | thumbnail 2、screenshot 1                                                                        | 中   | 用 CSS `filter` 或 SVG 滤镜近似，色调和高光要自己推算               |
 | 文字的渐变填充（`styleOverrideTable` 里的 `GRADIENT_LINEAR`，如 "Hello, Team"）           | screenshot 2、thumbnail 1、new-chat 1、plugin-file-cover 1                                       | 中   | CSS `background-clip: text`                                         |
 
-考完先修了两项最容易的（用户还没回复先修哪些，按我建议的顺序做），每行是改完以后重跑 7 个 Gemini 用例：
+考完按我建议的顺序先修了三项（用户还没回复先修哪些），每行是改完以后重跑受影响的 Gemini 用例：
 
-| 修了什么                                          | 用例                                     | 修之前 | 修之后 |
-| ------------------------------------------------- | ---------------------------------------- | ------ | ------ |
-| First on top 叠放：子节点倒过来排（tech.md §4.3） | gemini-macbook-pro-14---new-chat-screen  | 1.84%  | 1.56%  |
-|                                                   | gemini-dribbble-thumbnail                | 41.74% | 41.58% |
-|                                                   | gemini-dribbble-screenshot               | 9.64%  | 9.50%  |
-|                                                   | gemini-macbook-pro-14---extension-screen | 1.41%  | 1.41%  |
-|                                                   | gemini-plugin-file-cover                 | 1.37%  | 1.49%  |
-| 装上 Red Hat Display 400、700（tech.md §6.4）     | gemini-plugin-file-cover                 | 1.49%  | 1.39%  |
+| 修了什么                                                                   | 用例                                     | 修之前 | 修之后 |
+| -------------------------------------------------------------------------- | ---------------------------------------- | ------ | ------ |
+| First on top 叠放：子节点倒过来排（tech.md §4.3）                          | gemini-macbook-pro-14---new-chat-screen  | 1.84%  | 1.56%  |
+|                                                                            | gemini-dribbble-thumbnail                | 41.74% | 41.58% |
+|                                                                            | gemini-dribbble-screenshot               | 9.64%  | 9.50%  |
+|                                                                            | gemini-macbook-pro-14---extension-screen | 1.41%  | 1.41%  |
+|                                                                            | gemini-plugin-file-cover                 | 1.37%  | 1.49%  |
+| 装上 Red Hat Display 400、700（tech.md §6.4）                              | gemini-plugin-file-cover                 | 1.49%  | 1.39%  |
+| 文字渐变填充：叠一层只露渐变文字的 `background-clip: text`（tech.md §6.7） | gemini-macbook-pro-14---new-chat-screen  | 1.56%  | 1.49%  |
+|                                                                            | gemini-plugin-file-cover                 | 1.39%  | 1.34%  |
+|                                                                            | gemini-dribbble-screenshot               | 9.50%  | 9.44%  |
+|                                                                            | gemini-dribbble-thumbnail                | 41.58% | 41.54% |
 
 封面修完叠放顺序反而变高：卡片上的文字原来被背景盖住，现在露出来了，但用的是后备字体 Inter（缺 Product Sans），比 Figma 宽、换行也不一样，差异算进来了。卡片本身已经和 Figma 一样（文字、图标都在背景上面）。其他 103 个用例里没有 `itemReverseZIndex`，没有重跑。
 
-7 个 Gemini 用例重跑（`reports/fidelity/20261024-220745/`）：平均 8.39% → 8.31%。剩下的大头是图片滤镜（两张 Dribbble 图）和缺 Product Sans，文字渐变还没修。
+7 个 Gemini 用例重跑（`reports/fidelity/20261024-220745/`）：平均 8.39% → 8.31%。剩下的大头是图片滤镜（两张 Dribbble 图）和缺 Product Sans。
+
+文字渐变修完以后，"Hello, Team" 从蓝到粉的过渡和 Figma 一样，下面一行灰字没有被染色；剩下的差别是字体（Inter 代替 Product Sans，字更宽）。
+
+三项修完全量重跑（`reports/fidelity/20261024-221207/`，110 个用例）：原来 79 个和 Untitled UI 24 页的分数都没变；Gemini 7 页平均 8.39% → 8.28%，31 个新用例平均 1.91% → 1.89%，小于 1% 的还是 25 个。剩下的大头是两张 Dribbble 图的图片滤镜（41.54%、9.44%）和全部 7 页缺 Product Sans。

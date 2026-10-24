@@ -3,14 +3,31 @@ import type { CSSProperties, ReactNode } from 'react';
 import { layerBlurCss, textShadowCss } from '../effects';
 import { fontFamilyCss, fontStyleCss } from '../fonts';
 import { rgba } from '../geometry';
-import { visiblePaints } from '../paint';
+import { gradientImageCss, visiblePaints } from '../paint';
 import type { FigmaShape } from '../shape-types';
-import type { FigmaNode, FigmaTypeStyle } from '../types';
+import type { FigmaNode, FigmaPaint, FigmaTypeStyle } from '../types';
 import { FigmaShapeContainer, FigmaShapeUtil } from './base';
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
 
+// See apps/docs/figma-to-tldraw/tech.md §6.7.
+function gradientFill(
+  style: FigmaTypeStyle,
+  node: FigmaNode,
+): FigmaPaint | undefined {
+  const fills = visiblePaints(style.fills ?? node.fills);
+  if (fills.some((p) => p.type === 'SOLID')) {
+    return undefined;
+  }
+  return fills.find(
+    (p) => p.type === 'GRADIENT_LINEAR' || p.type === 'GRADIENT_RADIAL',
+  );
+}
+
 function fillColor(style: FigmaTypeStyle, node: FigmaNode): string | undefined {
+  if (gradientFill(style, node)) {
+    return 'transparent';
+  }
   const fills = visiblePaints(style.fills ?? node.fills);
   const solid = fills.find((p) => p.type === 'SOLID');
   return solid?.color ? rgba(solid.color, solid.opacity ?? 1) : undefined;
@@ -223,33 +240,42 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     : undefined;
 
   const paras = paragraphs(textRuns(node));
-  const body: ReactNode[] = paras.map((runs, i) => (
-    <div
-      key={i}
-      style={{
-        marginBottom:
-          i < paras.length - 1 && style.paragraphSpacing
-            ? style.paragraphSpacing
-            : undefined,
-      }}
-    >
-      {runs.length ? (
-        runs.map((run, j) => (
-          <span
-            key={j}
-            style={{
-              ...runStyle(run.style, node),
-              ...runLineStyle(run, style, lineHeight),
-            }}
-          >
-            {run.text}
-          </span>
-        ))
-      ) : (
-        <br />
-      )}
-    </div>
-  ));
+  const gradient = paras
+    .flat()
+    .map((run) => gradientFill(run.style, node))
+    .find((p) => p !== undefined);
+  const body = (gradientLayer: boolean): ReactNode[] =>
+    paras.map((runs, i) => (
+      <div
+        key={i}
+        style={{
+          marginBottom:
+            i < paras.length - 1 && style.paragraphSpacing
+              ? style.paragraphSpacing
+              : undefined,
+        }}
+      >
+        {runs.length ? (
+          runs.map((run, j) => (
+            <span
+              key={j}
+              style={{
+                ...runStyle(run.style, node),
+                ...runLineStyle(run, style, lineHeight),
+                visibility:
+                  gradientLayer && !gradientFill(run.style, node)
+                    ? 'hidden'
+                    : undefined,
+              }}
+            >
+              {run.text}
+            </span>
+          ))
+        ) : (
+          <br />
+        )}
+      </div>
+    ));
 
   const justify =
     style.textAlignVertical === 'CENTER'
@@ -284,22 +310,38 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     } satisfies CSSProperties);
   }
 
+  const outer: CSSProperties = {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: w,
+    height: h,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: justify,
+    filter: layerBlurCss(node.effects),
+  };
+
   return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        width: w,
-        height: h,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: justify,
-        filter: layerBlurCss(node.effects),
-      }}
-    >
-      <div style={inner}>{body}</div>
-    </div>
+    <>
+      <div style={outer}>
+        <div style={inner}>{body(false)}</div>
+      </div>
+      {gradient && (
+        // See apps/docs/figma-to-tldraw/tech.md §6.7.
+        <div
+          style={{
+            ...outer,
+            backgroundImage: gradientImageCss(gradient, w, h),
+            backgroundRepeat: 'no-repeat',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+          }}
+        >
+          <div style={{ ...inner, textShadow: undefined }}>{body(true)}</div>
+        </div>
+      )}
+    </>
   );
 }
 

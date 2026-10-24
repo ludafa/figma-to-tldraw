@@ -110,6 +110,35 @@ export function SvgGradientDef({
   );
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §6.7.
+export function gradientImageCss(
+  paint: FigmaPaint,
+  w: number,
+  h: number,
+): string | undefined {
+  const tag =
+    paint.type === 'GRADIENT_LINEAR'
+      ? 'linearGradient'
+      : paint.type === 'GRADIENT_RADIAL'
+        ? 'radialGradient'
+        : undefined;
+  if (!tag) {
+    return undefined;
+  }
+  const shape =
+    tag === 'linearGradient'
+      ? 'x1="0" y1="0" x2="1" y2="0"'
+      : 'cx="0" cy="0" r="1"';
+  const stops = (paint.gradientStops ?? [])
+    .map((s) => `<stop offset="${s.position}" stop-color="${rgba(s.color)}"/>`)
+    .join('');
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<${tag} id="g" gradientUnits="userSpaceOnUse" ${shape} gradientTransform="${toSvg(gradientMatrix(paint, w, h))}">${stops}</${tag}>` +
+    `<rect width="100%" height="100%" fill="url(#g)" opacity="${paint.opacity ?? 1}"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 function cssStops(paint: FigmaPaint, scale: number, unit: string) {
   return (paint.gradientStops ?? [])
     .map((s) => `${rgba(s.color)} ${s.position * scale}${unit}`)
