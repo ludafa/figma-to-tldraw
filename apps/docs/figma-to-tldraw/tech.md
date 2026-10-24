@@ -6,7 +6,7 @@
 
 ```
 Figma 插件（apps/figma-plugin/）
-   │  生成测试用例 → 导出 zip → 解压成仓库根目录的 cases/
+   │  生成测试用例 → 导出 zip → 解压（或用 import-cases 合并，§9.2）成仓库根目录的 cases/
    ▼
 /canvas 页面（apps/client/src/pages/canvas.tsx）
    │  load.ts 读 cases/ → to-shapes.ts 把节点树拆成图形 → editor.createShapes
@@ -240,7 +240,7 @@ SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚�
 1. 读 `cases/index.json`，可以只跑一部分（`compare fill/solid text/*`）。
 2. 每个用例打开 `/canvas?case=<dir>&shot=1`，用真实的 2 倍屏（见下面的实现细节）。截图模式隐藏 tldraw 界面、左侧列表、选中框，把用例放在画布左上角、缩放 100%，避开右下角水印。
 3. 等页面把 `window.__figmaReady` 设成 `true`（图形、字体、图片都加载完）。
-4. 只截用例 frame 那一块（宽高 = 用例尺寸 × 2），和 `expected@2x.png` 用 pixelmatch 对比，存差异图。尺寸不一样时不比较，记为 100%。
+4. 只截用例的渲染范围那一块（宽高 = 渲染范围 × 2，见 §9.4），和 `expected@2x.png` 用 pixelmatch 对比，存差异图。尺寸不一样时不比较，记为 100%。
 5. 输出到 `reports/fidelity/<时间>/`：`index.html`（按差异从大到小排，每行三张图）、`results.json`，每个用例的 `expected.png`、`actual.png`、`diff.png`。`reports/fidelity/latest` 指向最新一次。
 
 差异百分比 = pixelmatch 判为不同的像素数 ÷ 总像素数，阈值 `threshold: 0.1`（pixelmatch 默认），开着抗锯齿检测。
@@ -249,7 +249,10 @@ SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚�
 
 - 截图模式（`&shot=1`）：不显示左侧列表和工具条，`<Tldraw hideUi>`，画布背景改成纯白（`figma.css` 里的 `.figma-shot`）。镜头固定在 `(40, 40)`、缩放 100%，所以 frame 在页面上的位置是 `(40, 40)`。
 - **用真实的 2 倍屏，不用 Playwright 的 `deviceScaleFactor` 模拟**（2026-10-24）：模拟模式下 Chrome 按 CSS 整像素排版和对齐，165.5px 宽的方块会画成 166px；真实的 Retina 屏是按设备像素（0.5 CSS 像素）排版的，和 Figma 一致。所以脚本用 `chromium.launch({ channel: 'chromium', args: ['--force-device-scale-factor=2', '--window-size=1200,1400'] })` + `newPage({ viewport: null })`。只有"新无头模式"（`channel: 'chromium'`）认这个参数，默认的 headless shell 不认；设了 `viewport` 也会把它覆盖回 1 倍。这样截出来的才是用户在 Retina 屏上真正看到的样子（`page/gallery` 从 1.03% 降到 0.07%）。
-- 浏览器窗口固定 1200×1400，最大的用例（375×812）加上四周 40、右边 200、下边 100 也放得下，右下角的 tldraw 水印落在截图区域外面。用例更大时脚本会报错。
+- 浏览器窗口按用例里最大的渲染范围放大，加上四周 40、右边 200、下边 100，最小 1200×1400，右下角的 tldraw 水印落在截图区域外面（§9.5）。
+
+> 2026-10-24 修订：原来窗口固定 1200×1400、只截 frame 的框，用例更大时脚本报错。真实稿子有 1440 宽的桌面页和超出 frame 的内容，改成按渲染范围算（§9.4、§9.5）。
+
 - `expected@2x.png` 里 frame 外面（比如圆角外）是透明的，对比前先把它叠到白底上，和截图的白色画布一致。
 - "准备好了"的判断在 `load.ts` 的 `waitForAssets`：用 `document.fonts.load` 按每段文字的字体和内容加载字体（Noto Sans SC 是按字符分包的，要带上文字才会加载对的包），图片全部 `decode()` 完，再等 `document.fonts.ready` 和两帧。
 - 4 个页面并行截图，每个用例新开一个页面。
@@ -257,10 +260,58 @@ SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚�
 
 ## 8. 风险
 
-| 风险                                              | 应对                                                                                                                     |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 组透明度：子图形分别变透明，重叠处比 Figma 深     | 上层是不透明简单形状时，把下层被盖住的部分裁掉（§4.1，已做）；其他情况要把那一小块合成一个图形来画（架构改动，先问用户） |
-| 混合模式、背景模糊被 `.tl-shape` 的层叠上下文隔开 | §6.6 的做法；实测不行再想办法                                                                                            |
-| 浏览器和 Figma 的字体渲染、换行不同               | 用同样的字体文件；剩下的细微差异接受                                                                                     |
-| Tailwind 的样式重置影响渲染                       | 渲染组件里把样式写全，不依赖浏览器默认值                                                                                 |
-| 平滑圆角（iOS 风格）CSS 画不出来                  | 用 SVG 路径近似，或接受差异                                                                                              |
+| 风险                                                                                                               | 应对                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 组透明度：子图形分别变透明，重叠处比 Figma 深                                                                      | 上层是不透明简单形状时，把下层被盖住的部分裁掉（§4.1，已做）；其他情况要把那一小块合成一个图形来画（架构改动，先问用户） |
+| 混合模式、背景模糊被 `.tl-shape` 的层叠上下文隔开                                                                  | §6.6 的做法；实测不行再想办法                                                                                            |
+| 浏览器和 Figma 的字体渲染、换行不同                                                                                | 用同样的字体文件；剩下的细微差异接受                                                                                     |
+| Tailwind 的样式重置影响渲染                                                                                        | 渲染组件里把样式写全，不依赖浏览器默认值                                                                                 |
+| 平滑圆角（iOS 风格）CSS 画不出来                                                                                   | 用 SVG 路径近似，或接受差异                                                                                              |
+| 稿子用了没有网页版的字体（如 Product Sans）                                                                        | 报"缺字体"警告（§9.6），用后备字体画；要还原只能由用户提供字体文件                                                       |
+| 真实稿子里还没支持的特性：自动布局的 First on top 叠放（`itemReverseZIndex`）、图片滤镜（`filters`）、文字渐变填充 | 见 verification.md §6 的归类，和用户商量先修哪些                                                                         |
+
+## 9. 用真实稿子考试（2026-10-24）
+
+§4～§6 里不少规则是照着插件生成的 79 个用例反推的。为了知道换一份没见过的稿子效果怎么样，从 Figma 社区复制了两份免费文件（Untitled UI 和 Google Gemini），导出 31 个整页，放在 `cases/real/` 下面，原样跑一遍对比（结果见 [verification.md §6](verification.md#6-真实稿子考试2026-10-24)）。为此改了下面几处。
+
+### 9.1 插件导出真实稿子
+
+`apps/figma-plugin/code.js`：
+
+- **目录名**（`exportDirs()`）：页面名以 `Test Cases` 开头时，还是用 frame 名字当目录（`fill/solid` → `cases/fill/solid/`）。其他页面一律放到 `real/<文件名>/<页面名>-<frame 名>`，每段都转成小写、去掉特殊字符，文件名只取前 40 个字符；重名的加 `-2`、`-3`。原因：真实稿子的 frame 名字里常有 `/`（`Plugin / file cover` 会被拆成两层目录），也经常一页里十几个都叫 `Desktop`、`Mobile`。
+- **选中导出**：画布上有选中时，导出选中的 frame、组件、实例，不管它们在第几层（真实稿子里页面常放在 section 里面，不是顶层 frame）；没选中时还是导出页面上的顶层 frame。
+- **跳过画不出东西的节点**：节点的 `absoluteRenderBounds` 是 `null`（整个被父级裁到外面、或者大小是 0）时，Figma 画不出它，`exportAsync` 导 SVG 会报错。Untitled UI 里有 136 个这样的图标，全都在被裁掉的区域里，对画面没有影响。插件不再导它们的 SVG，也不记警告。
+- `index.json` 顶层带上 `figmaFile`、`page`、`exportedAt`，记录这批用例来自哪个文件的哪一页。
+
+### 9.2 合并进 cases/
+
+`apps/client/scripts/import-cases.ts`（新），命令 `pnpm --filter @figma-to-tldraw/client import-cases <zip>…`：
+
+1. 每个 zip 解压到临时目录。
+2. 把里面的用例目录拷进仓库的 `cases/`，同名目录先删再拷；目录名跑出 `cases/` 时报错。
+3. 按 `dir` 合并 `index.json` 的用例列表：已有的替换，新的追加；每条用例加上 `source: { figmaFile, page, exportedAt }`。
+
+直接解压会用新的 `index.json` 盖掉原来的列表，所以要用这个脚本。
+
+### 9.3 转换时跳过画不出东西的矢量
+
+`to-shapes.ts` 的 `visit()`：矢量节点的 `absoluteRenderBounds` 是 `null`，又不是蒙版时，直接跳过，不建图形也不给警告（插件不会导出它的 SVG，见 §9.1）。蒙版留着，因为后面的兄弟要用它裁剪。
+
+### 9.4 截图范围按渲染范围算
+
+Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds`（包括超出 frame 的子节点和阴影），不是 frame 的框。插件生成的 79 个用例两者一样，真实稿子不一样：Untitled UI 有 3 个桌面页 frame 只有 960 高但不裁剪，内容一直画到 1066～1729；还有两个手机页的内容超出 frame 一点（左右各 2px、上面 1px）。
+
+`apps/client/src/figma/render-area.ts`（新）的 `renderArea(snapshot)` 用根节点的 `absoluteRenderBounds` 减去 `absoluteBoundingBox`，算出渲染范围相对 frame 左上角的位置和大小（没有这两个字段时退回到用例尺寸）。用到它的两处：
+
+- `/canvas` 截图模式的镜头改成 `SHOT_OFFSET - 0.125 - area.x`，让渲染范围的左上角落在 `(40, 40)`；差异叠加层也按渲染范围摆。
+- `compare.ts` 截图时截渲染范围那一块。
+
+### 9.5 大稿子的浏览器窗口
+
+`compare.ts` 的 `windowFor()`：浏览器窗口取所有要跑的用例里最大的渲染范围，加上四周 40、右边 200、下边 100，最小 1200×1400。原来固定 1200×1400，1440 宽的桌面稿和 3000 多高的手机长页面放不下。
+
+### 9.6 缺字体警告
+
+`load.ts` 的 `waitForAssets` 加载完字体后，返回缺了哪些字体，`/canvas` 把它们放进警告（工具条和 `window.__figmaWarnings`，报告里会显示）：`缺字体：Product Sans 400（没有对应的网页字体）`。
+
+判断办法：用 `fonts.ts` 的 `primaryFontShorthand()` 只拿第一个字体名去 `document.fonts.load`，返回空列表就是缺。不能用带后备字体的完整写法，因为那样会返回后备字体 Inter，看起来像加载成功了。

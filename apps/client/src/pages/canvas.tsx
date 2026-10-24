@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
+import { renderArea } from '../figma/render-area';
 import type { FigmaShape } from '../figma/shape-types';
 import { figmaShapeUtils } from '../figma/shapes';
 import { snapshotToShapes } from '../figma/to-shapes';
@@ -39,6 +40,8 @@ const OVERLAY_MODES: { mode: OverlayMode; label: string }[] = [
 
 interface Overlay {
   src: string;
+  x: number;
+  y: number;
   width: number;
   height: number;
   mode: OverlayMode;
@@ -58,8 +61,8 @@ function ExpectedOverlay() {
       draggable={false}
       style={{
         position: 'absolute',
-        left: 0,
-        top: 0,
+        left: overlay.x,
+        top: overlay.y,
         width: overlay.width,
         height: overlay.height,
         maxWidth: 'none',
@@ -89,10 +92,11 @@ function showSnapshot(
     editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
     editor.createShapes<FigmaShape>(shapes);
   });
-  // See apps/docs/figma-to-tldraw/tech.md §7.
+  // See apps/docs/figma-to-tldraw/tech.md §7 and §9.
+  const area = renderArea(snapshot);
   editor.setCamera({
-    x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET,
-    y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET,
+    x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
+    y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y,
     z: 1,
   });
   return [...snapshot.meta.warnings, ...warnings];
@@ -217,9 +221,13 @@ export function CanvasPage() {
         }
         setSnapshot(snap);
         setWarnings(list);
-        await waitForAssets(snap, assetBase);
+        const missing = await waitForAssets(snap, assetBase);
         if (!cancelled) {
-          window.__figmaWarnings = list;
+          for (const w of missing) {
+            console.warn(w);
+          }
+          setWarnings([...list, ...missing]);
+          window.__figmaWarnings = [...list, ...missing];
           window.__figmaReady = true;
         }
       })
@@ -244,8 +252,7 @@ export function CanvasPage() {
     search.case && snapshot
       ? {
           src: caseUrl(search.case, 'expected@2x.png'),
-          width: snapshot.meta.width,
-          height: snapshot.meta.height,
+          ...renderArea(snapshot),
           mode,
         }
       : null;

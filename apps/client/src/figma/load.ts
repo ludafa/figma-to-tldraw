@@ -1,4 +1,4 @@
-import { fontShorthand } from './fonts';
+import { fontShorthand, primaryFontShorthand } from './fonts';
 import type { CaseIndex, FigmaNode, Snapshot } from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §1.1 and §7.
@@ -35,10 +35,17 @@ function collectTexts(node: FigmaNode, out: FigmaNode[]) {
   }
 }
 
-function fontSpecs(snapshot: Snapshot): { font: string; text: string }[] {
+function fontSpecs(
+  snapshot: Snapshot,
+): { font: string; primary: string; family: string; text: string }[] {
   const texts: FigmaNode[] = [];
   collectTexts(snapshot.rest.document, texts);
-  const specs: { font: string; text: string }[] = [];
+  const specs: {
+    font: string;
+    primary: string;
+    family: string;
+    text: string;
+  }[] = [];
   for (const node of texts) {
     const base = node.style ?? {};
     const styles = [
@@ -52,7 +59,12 @@ function fontSpecs(snapshot: Snapshot): { font: string; text: string }[] {
       if (!s.fontFamily) {
         continue;
       }
-      specs.push({ font: fontShorthand(s), text: node.characters ?? '' });
+      specs.push({
+        font: fontShorthand(s),
+        primary: primaryFontShorthand(s),
+        family: `${s.fontFamily} ${s.fontWeight ?? 400}${s.italic ? ' italic' : ''}`,
+        text: node.characters ?? '',
+      });
     }
   }
   return specs;
@@ -75,13 +87,22 @@ function loadImage(src: string): Promise<void> {
 const nextFrame = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
+// See apps/docs/figma-to-tldraw/tech.md §9.
 export async function waitForAssets(
   snapshot: Snapshot,
   assetBase: string,
-): Promise<void> {
-  await Promise.all([
-    ...fontSpecs(snapshot).map((s) =>
-      document.fonts.load(s.font, s.text).catch(() => []),
+): Promise<string[]> {
+  const specs = fontSpecs(snapshot);
+  const [faces] = await Promise.all([
+    Promise.all(
+      specs.map((s) =>
+        Promise.all([
+          document.fonts.load(s.font, s.text),
+          document.fonts.load(s.primary, s.text),
+        ])
+          .then(([, primary]) => primary)
+          .catch(() => []),
+      ),
     ),
     ...Object.values(snapshot.meta.images).map((rel) =>
       loadImage(assetBase + rel),
@@ -91,4 +112,8 @@ export async function waitForAssets(
   await document.fonts.ready;
   await nextFrame();
   await nextFrame();
+  const missing = new Set(
+    specs.filter((_, i) => faces[i].length === 0).map((s) => s.family),
+  );
+  return [...missing].map((f) => `缺字体：${f}（没有对应的网页字体）`);
 }

@@ -19,3 +19,7 @@ export function fontStyleCss(style: FigmaTypeStyle): string {
 export function fontShorthand(style: FigmaTypeStyle, size = 16): string {
   return `${fontStyleCss(style)} ${style.fontWeight ?? 400} ${size}px ${fontFamilyCss(style)}`;
 }
+
+export function primaryFontShorthand(style: FigmaTypeStyle, size = 16): string {
+  return `${fontStyleCss(style)} ${style.fontWeight ?? 400} ${size}px ${fontFamilyCss(style).split(',')[0]}`;
+}

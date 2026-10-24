@@ -5,6 +5,9 @@ import pixelmatch from 'pixelmatch';
 import { type Browser, chromium } from 'playwright';
 import { PNG } from 'pngjs';
 
+import { type RenderArea, renderArea } from '../src/figma/render-area';
+import type { Snapshot } from '../src/figma/types';
+
 // See apps/docs/figma-to-tldraw/tech.md §7.
 
 declare const window: { __figmaReady?: boolean; __figmaWarnings?: string[] };
@@ -33,7 +36,7 @@ const REPORTS_DIR = path.join(ROOT, 'reports/fidelity');
 const BASE_URL = process.env.CANVAS_URL ?? 'http://localhost:5173';
 const SHOT_OFFSET = 40;
 const SCALE = 2;
-const WINDOW = { width: 1200, height: 1400 };
+const MIN_WINDOW = { width: 1200, height: 1400 };
 const WORKERS = 4;
 
 function matches(dir: string, patterns: string[]): boolean {
@@ -66,16 +69,32 @@ function onWhite(png: PNG): PNG {
   return out;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §9.
+function areaOf(c: CaseSummary): RenderArea {
+  const snapshot = JSON.parse(
+    fs.readFileSync(path.join(CASES_DIR, c.dir, 'snapshot.json'), 'utf8'),
+  ) as Snapshot;
+  return renderArea(snapshot);
+}
+
+function windowFor(areas: RenderArea[]): { width: number; height: number } {
+  return {
+    width: Math.max(
+      MIN_WINDOW.width,
+      ...areas.map((a) => Math.ceil(a.width) + SHOT_OFFSET * 2 + 200),
+    ),
+    height: Math.max(
+      MIN_WINDOW.height,
+      ...areas.map((a) => Math.ceil(a.height) + SHOT_OFFSET * 2 + 100),
+    ),
+  };
+}
+
 async function shoot(
   browser: Browser,
   c: CaseSummary,
+  area: RenderArea,
 ): Promise<{ png: Buffer; warnings: string[] }> {
-  if (
-    c.width + SHOT_OFFSET * 2 + 200 > WINDOW.width ||
-    c.height + SHOT_OFFSET * 2 + 100 > WINDOW.height
-  ) {
-    throw new Error(`用例比浏览器窗口大：${c.width}×${c.height}`);
-  }
   const page = await browser.newPage({ viewport: null });
   try {
     await page.goto(
@@ -89,8 +108,8 @@ async function shoot(
       clip: {
         x: SHOT_OFFSET,
         y: SHOT_OFFSET,
-        width: c.width,
-        height: c.height,
+        width: area.width,
+        height: area.height,
       },
     });
     return { png, warnings };
@@ -116,7 +135,7 @@ async function compareCase(
   );
   const base = { dir: c.dir, width: c.width, height: c.height };
   try {
-    const { png, warnings } = await shoot(browser, c);
+    const { png, warnings } = await shoot(browser, c, areaOf(c));
     fs.writeFileSync(path.join(caseOut, 'actual.png'), png);
     const actual = PNG.sync.read(png);
     if (actual.width !== expected.width || actual.height !== expected.height) {
@@ -247,11 +266,12 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
 
   // See apps/docs/figma-to-tldraw/tech.md §7.
+  const win = windowFor(cases.map(areaOf));
   const browser = await chromium.launch({
     channel: 'chromium',
     args: [
       `--force-device-scale-factor=${SCALE}`,
-      `--window-size=${WINDOW.width},${WINDOW.height}`,
+      `--window-size=${win.width},${win.height}`,
     ],
   });
   const results: Result[] = [];

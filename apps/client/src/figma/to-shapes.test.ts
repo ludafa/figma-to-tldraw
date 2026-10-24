@@ -149,6 +149,28 @@ describe('snapshotToShapes', () => {
     expect(shapes.map((s) => s.props?.node?.name)).toEqual(['root', 'shown']);
   });
 
+  it('skips vectors that render nothing without a warning', () => {
+    const doc: FigmaNode = {
+      id: '1:1',
+      name: 'root',
+      type: 'FRAME',
+      clipsContent: true,
+      absoluteBoundingBox: box(0, 0, 100, 100),
+      children: [
+        {
+          id: '1:2',
+          name: 'clipped out',
+          type: 'VECTOR',
+          absoluteBoundingBox: box(200, 0, 10, 10),
+          absoluteRenderBounds: null,
+        },
+      ],
+    };
+    const { shapes, warnings } = snapshotToShapes(snapshot(doc), opts);
+    expect(shapes).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
   it('orders siblings bottom-to-top like Figma', () => {
     const doc: FigmaNode = {
       id: '1:1',

@@ -133,6 +133,14 @@ export function snapshotToShapes(
       );
       return;
     }
+    // See apps/docs/figma-to-tldraw/tech.md §9.
+    if (
+      type === 'figma-vector' &&
+      !node.isMask &&
+      node.absoluteRenderBounds === null
+    ) {
+      return;
+    }
     const place = placement(node, type);
     if (!place) {
       warnings.push(`缺少位置或 SVG：${node.name}（${node.id}）`);
