@@ -8,6 +8,8 @@ packages:
 #   better-sqlite3 (native addon), esbuild (platform binary), msw (worker), es5-ext (postinstall)
 allowBuilds:
   better-sqlite3: true
+  # core-js's postinstall only prints a funding banner.
+  core-js: false
   es5-ext: true
   esbuild: true
   msw: true
