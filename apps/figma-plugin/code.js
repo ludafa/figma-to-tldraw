@@ -1150,13 +1150,27 @@ function utf8Decode(bytes) {
   return s;
 }
 
+function slug(part) {
+  return part.trim().replace(/[^\w\-.一-龥]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
+}
+
 function caseDir(name) {
-  return name
-    .split('/')
-    .map(function (part) {
-      return part.trim().replace(/[^\w\-.一-龥]+/g, '-') || 'untitled';
-    })
-    .join('/');
+  return name.split('/').map(slug).join('/');
+}
+
+// "Test Cases" 页面上的用例按名字分类；其他页面（比如从社区文件里挑的稿子）放到 real/<文件名>/<页面名>-<frame 名>，重名的加序号
+function exportDirs(nodes, fileName, pageName) {
+  var used = {};
+  return nodes.map(function (node) {
+    var base =
+      pageName.indexOf('Test Cases') === 0
+        ? caseDir(node.name)
+        : 'real/' + slug(fileName).toLowerCase().slice(0, 40).replace(/-+$/, '') + '/' + slug(pageName).toLowerCase() + '-' + slug(node.name).toLowerCase();
+    var dir = base;
+    for (var n = 2; used[dir]; n++) dir = base + '-' + n;
+    used[dir] = true;
+    return dir;
+  });
 }
 
 async function collect(node, out) {
@@ -1193,7 +1207,8 @@ async function collect(node, out) {
       out.warnings.push('读取字体失败：' + node.name);
     }
   }
-  if (SVG_TYPES[node.type] && !node.isMask) {
+  // absoluteRenderBounds 为 null 表示什么都画不出来（比如整个被父容器裁掉），导出 SVG 必然失败，直接跳过
+  if (SVG_TYPES[node.type] && !node.isMask && node.absoluteRenderBounds !== null) {
     try {
       var svg = await node.exportAsync({ format: 'SVG_STRING' });
       out.svgs[node.id] = typeof svg === 'string' ? svg : utf8Decode(svg);
@@ -1209,8 +1224,7 @@ async function collect(node, out) {
   }
 }
 
-async function exportOne(node) {
-  var dir = caseDir(node.name);
+async function exportOne(node, dir) {
   var rest = await node.exportAsync({ format: 'JSON_REST_V1' });
   var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {} };
   await collect(node, out);
@@ -1273,21 +1287,24 @@ async function exportOne(node) {
 
 async function exportCases() {
   var page = figma.currentPage;
-  var source = page.selection.length ? page.selection : page.children;
+  // 有选中时导出选中的节点（可以在 section 里面），没选中时导出页面上所有顶层 frame
+  var selected = page.selection.length > 0;
+  var source = selected ? page.selection : page.children;
   var targets = source.filter(function (n) {
-    return n.parent === page && EXPORT_TYPES[n.type] && n.visible !== false;
+    return (selected || n.parent === page) && EXPORT_TYPES[n.type] && n.visible !== false;
   });
   if (!targets.length) {
     post({ type: 'error', text: '当前页面上没有可导出的顶层 frame。' });
     return;
   }
 
+  var dirs = exportDirs(targets, figma.root.name, page.name);
   post({ type: 'export-start', total: targets.length, fileName: figma.root.name, pageName: page.name });
   for (var i = 0; i < targets.length; i++) {
     var node = targets[i];
     post({ type: 'progress', done: i, total: targets.length, text: node.name });
     try {
-      var data = await exportOne(node);
+      var data = await exportOne(node, dirs[i]);
       post({ type: 'export-case', files: data.files, summary: data.summary });
     } catch (e) {
       post({ type: 'export-error', name: node.name, text: e && e.message ? e.message : String(e) });

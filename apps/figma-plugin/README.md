@@ -16,7 +16,15 @@
 5. 点 **生成测试用例**，等它跑完（几秒钟）
 6. 点 **导出测试数据**，浏览器会下载一个 `figma-test-cases-日期.zip`
 
-想加入你自己的设计稿：把它复制到 `Test Cases` 页面上，作为一个**顶层 frame**，名字按 `page/xxx` 这样起，再导出一次就行。只想导出其中几个：先在画布上选中它们，再点导出。
+想加入你自己的设计稿：在设计稿所在的页面上选中要导出的 frame（在第几层都行），运行插件点导出。不在 `Test Cases` 页面上的 frame 会放进 `cases/real/<文件名>/<页面名>-<frame 名>/`，不会和原来的用例混在一起。不选中时导出页面上所有顶层 frame。
+
+导出的 zip 不要直接解压到 `cases/`（会盖掉原来的 `index.json`），用这个命令合并：
+
+```bash
+pnpm --filter @figma-to-tldraw/client import-cases ~/Downloads/figma-test-cases-*.zip
+```
+
+完全被裁掉、画不出东西的节点（`absoluteRenderBounds` 为空）不导出 SVG，也不报警告。
 
 ## 导出的数据长什么样
 
