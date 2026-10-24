@@ -1162,6 +1162,23 @@ function caseDir(name) {
 async function collect(node, out) {
   if (node.visible === false) return;
 
+  // 节点本身的宽高和绝对变换：REST 格式里没有，旋转的节点要靠它摆放
+  if ('absoluteTransform' in node) {
+    out.transforms[node.id] = { m: node.absoluteTransform, w: node.width, h: node.height };
+  }
+  // 蒙版图层单独导出 SVG 会失败，改为导出它的填充路径（节点自己的坐标系）
+  if (node.isMask) {
+    try {
+      out.masks[node.id] = node.fillGeometry
+        .map(function (g) {
+          return g.data;
+        })
+        .join(' ');
+    } catch (e) {
+      out.warnings.push('读取蒙版形状失败：' + node.name + '（' + node.id + '）');
+    }
+  }
+
   if ('fills' in node && node.fills !== figma.mixed && Array.isArray(node.fills)) {
     node.fills.forEach(function (p) {
       if (p.type === 'IMAGE' && p.imageHash) out.images[p.imageHash] = true;
@@ -1176,7 +1193,7 @@ async function collect(node, out) {
       out.warnings.push('读取字体失败：' + node.name);
     }
   }
-  if (SVG_TYPES[node.type]) {
+  if (SVG_TYPES[node.type] && !node.isMask) {
     try {
       var svg = await node.exportAsync({ format: 'SVG_STRING' });
       out.svgs[node.id] = typeof svg === 'string' ? svg : utf8Decode(svg);
@@ -1195,11 +1212,12 @@ async function collect(node, out) {
 async function exportOne(node) {
   var dir = caseDir(node.name);
   var rest = await node.exportAsync({ format: 'JSON_REST_V1' });
-  var out = { svgs: {}, images: {}, fonts: {}, warnings: [] };
+  var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {} };
   await collect(node, out);
 
   var files = [];
   var imageFiles = {};
+  var imageSizes = {};
   var hashes = Object.keys(out.images);
   for (var i = 0; i < hashes.length; i++) {
     var img = figma.getImageByHash(hashes[i]);
@@ -1210,6 +1228,11 @@ async function exportOne(node) {
     var bytes = await img.getBytesAsync();
     var rel = 'images/' + hashes[i] + '.' + imageExt(bytes);
     imageFiles[hashes[i]] = rel;
+    try {
+      imageSizes[hashes[i]] = await img.getSizeAsync();
+    } catch (e) {
+      out.warnings.push('读取图片尺寸失败：' + hashes[i]);
+    }
     files.push({ path: dir + '/' + rel, bytes: bytes });
   }
 
@@ -1225,9 +1248,11 @@ async function exportOne(node) {
     expectedScale: 2,
     fonts: Object.keys(out.fonts),
     images: imageFiles,
+    imageSizes: imageSizes,
+    masks: out.masks,
     warnings: out.warnings,
   };
-  var snapshot = { meta: meta, rest: rest, svgs: out.svgs };
+  var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms };
   files.push({ path: dir + '/snapshot.json', text: JSON.stringify(snapshot, null, 2) });
 
   return {

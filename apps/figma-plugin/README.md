@@ -33,19 +33,21 @@ cases/
   ...
 ```
 
-`snapshot.json` 里有三部分：
+`snapshot.json` 里有四部分：
 
 | 字段 | 内容 |
 | --- | --- |
 | `rest` | `exportAsync({ format: "JSON_REST_V1" })` 的原始结果，也就是节点树 |
 | `svgs` | 矢量类节点（VECTOR、布尔运算、星形、多边形、线、椭圆）单独导出的 SVG，key 是节点 id |
-| `meta` | 用例名、尺寸、用到的字体、图片文件路径、导出时的警告 |
+| `transforms` | 每个可见节点的 `absoluteTransform`（2×3 矩阵）和节点本身的宽高 `{ m, w, h }`。REST 格式里没有这些，旋转的节点要靠它摆放 |
+| `meta` | 用例名、尺寸、用到的字体、图片文件路径、图片原始尺寸（`imageSizes`）、蒙版图层的填充路径（`masks`）、导出时的警告 |
 
 几点说明：
 
 - **图片**：节点里图片填充的 `imageRef` 就是图片 hash，对应 `meta.images` 里的文件路径
 - **SVG 的位置**：导出的 SVG 包含了描边和阴影，所以它的尺寸可能比节点本身大。摆放时可以用节点的 `absoluteRenderBounds`（包含描边、阴影在内的实际渲染范围），而不是 `absoluteBoundingBox`
 - **隐藏图层**：节点树里还在（`visible: false`），但不会导出它的 SVG
+- **蒙版图层**：单独导出 SVG 会失败，所以不导 SVG，改为在 `meta.masks` 里给出它的 `fillGeometry` 路径（节点自己的坐标系）
 - **字体**：`meta.fonts` 列出了用到的字体。浏览器那边要装同样的字体，否则对比结果没有意义
 
 ## 用例清单
