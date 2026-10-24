@@ -110,6 +110,7 @@ function baselineShift(
   style: FigmaTypeStyle,
   boxH: number,
   paragraphCount: number,
+  dpr: number,
 ): number {
   if (
     (style.fontFamily ?? 'Inter') !== 'Inter' ||
@@ -121,8 +122,9 @@ function baselineShift(
   const lh = style.lineHeightPx ?? size * 1.2;
   const a = INTER_ASCENT * size;
   const d = INTER_DESCENT * size;
-  const chrome =
-    Math.round(a) + Math.floor((lh - Math.round(a) - Math.round(d)) / 2);
+  const ad = Math.round(a * dpr);
+  const dd = Math.round(d * dpr);
+  const chrome = (ad + Math.floor((lh * dpr - ad - dd) / 2)) / dpr;
   const auto =
     style.textAutoResize === 'HEIGHT' ||
     style.textAutoResize === 'WIDTH_AND_HEIGHT';
@@ -188,7 +190,7 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     ...runStyle(style, node),
     lineHeight: lineHeightCss(style),
     position: 'relative',
-    top: baselineShift(style, h, paras.length),
+    top: baselineShift(style, h, paras.length, window.devicePixelRatio || 1),
     textAlign:
       style.textAlignHorizontal === 'JUSTIFIED'
         ? 'justify'

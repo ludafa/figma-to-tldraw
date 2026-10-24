@@ -33,6 +33,7 @@ const REPORTS_DIR = path.join(ROOT, 'reports/fidelity');
 const BASE_URL = process.env.CANVAS_URL ?? 'http://localhost:5173';
 const SHOT_OFFSET = 40;
 const SCALE = 2;
+const WINDOW = { width: 1200, height: 1400 };
 const WORKERS = 4;
 
 function matches(dir: string, patterns: string[]): boolean {
@@ -69,13 +70,13 @@ async function shoot(
   browser: Browser,
   c: CaseSummary,
 ): Promise<{ png: Buffer; warnings: string[] }> {
-  const page = await browser.newPage({
-    viewport: {
-      width: Math.ceil(c.width) + SHOT_OFFSET * 2 + 200,
-      height: Math.ceil(c.height) + SHOT_OFFSET * 2 + 100,
-    },
-    deviceScaleFactor: SCALE,
-  });
+  if (
+    c.width + SHOT_OFFSET * 2 + 200 > WINDOW.width ||
+    c.height + SHOT_OFFSET * 2 + 100 > WINDOW.height
+  ) {
+    throw new Error(`用例比浏览器窗口大：${c.width}×${c.height}`);
+  }
+  const page = await browser.newPage({ viewport: null });
   try {
     await page.goto(
       `${BASE_URL}/canvas?case=${encodeURIComponent(c.dir)}&shot=1`,
@@ -245,7 +246,14 @@ async function main() {
   const outDir = path.join(REPORTS_DIR, startedAt);
   fs.mkdirSync(outDir, { recursive: true });
 
-  const browser = await chromium.launch();
+  // See apps/docs/figma-to-tldraw/tech.md §7.
+  const browser = await chromium.launch({
+    channel: 'chromium',
+    args: [
+      `--force-device-scale-factor=${SCALE}`,
+      `--window-size=${WINDOW.width},${WINDOW.height}`,
+    ],
+  });
   const results: Result[] = [];
   let next = 0;
   await Promise.all(

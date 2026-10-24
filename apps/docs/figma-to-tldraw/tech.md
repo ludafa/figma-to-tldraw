@@ -186,9 +186,9 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 - 已知差别：一段里混着不同字号时，Figma 的行距是"上一行基线到这一行基线 = 这一行的行高"，CSS 是按每行的上下高度往下堆，大字在第一行时第二行会差 2～3px。
 - 下划线、删除线用字体文件里写的粗细和位置（`text-decoration-thickness` / `text-underline-position: from-font`）。浏览器默认的粗细是字号的 1/10（22px 时 2.2px），Figma 用的是 Inter 自带的 0.068em（22px 时 1.5px）。
 - **基线取整**（2026-10-24）：同一段文字，Chrome 和 Figma 的基线会差 1px，和字号有关（第一份报告里 11、12、13、14、18、22、28px 都偏高 1px，10、15、16、20、24px 对齐）。统计了 79 个用例里全部单行文字后找到的规律：
-  - Chrome：先把字体的上沿（ascent）和下沿（descent）分别四舍五入成整像素，行高减去这两个数再除以 2、**向下取整**，加上取整后的上沿，就是基线离文本框顶部的距离。
+  - Chrome：先把字体的上沿（ascent）和下沿（descent）分别四舍五入成整**设备像素**，行高减去这两个数再除以 2、**向下取整**，加上取整后的上沿，就是基线离文本框顶部的距离（设备像素，除以 `devicePixelRatio` 换回 CSS 像素）。最早是在 Playwright 模拟的 2 倍屏下找到的规律，那时 Chrome 按 CSS 整像素取整；改成真实 2 倍屏截图以后（§7）把屏幕倍数加进公式，同样对得上。
   - Figma：基线 = 上沿 × 字号 + (行高 − (上沿 + 下沿) × 字号) ÷ 2，自动高度的文本框还要加上"框高 − 行数 × 行高"（框高取整留下的零头，不超过 0.5px）的一半，最后**四舍五入到整像素**（导出 2 倍图时也是按 1 倍的整像素对齐）。
-  - 两者的差（-1、0 或 1px）用 `position: relative; top` 补到文字上。只对 Inter、顶部对齐的文字做；Inter 3.19 的上沿 2728/2816、下沿 680/2816。补半像素的版本试过，会把对齐的 16px 文字弄偏，所以只补整像素。
+  - 两者的差用 `position: relative; top` 补到文字上。只对 Inter、顶部对齐的文字做；Inter 3.19 的上沿 2728/2816、下沿 680/2816。
 - `textAutoResize` 为 `WIDTH_AND_HEIGHT` 时不换行（`white-space: pre`），其他情况按节点宽度换行。
 - 垂直对齐用 flex 的 `justify-content`。
 - 混合样式：按 `characterStyleOverrides` 把文字切成几段，每段套 `styleOverrideTable` 里的样式。
@@ -208,7 +208,7 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 `apps/client/scripts/compare.ts`，命令 `pnpm --filter @figma-to-tldraw/client compare [用例…]`：
 
 1. 读 `cases/index.json`，可以只跑一部分（`compare fill/solid text/*`）。
-2. 每个用例打开 `/canvas?case=<dir>&shot=1`，`deviceScaleFactor: 2`。截图模式隐藏 tldraw 界面、左侧列表、选中框，把用例放在画布左上角、缩放 100%，避开右下角水印。
+2. 每个用例打开 `/canvas?case=<dir>&shot=1`，用真实的 2 倍屏（见下面的实现细节）。截图模式隐藏 tldraw 界面、左侧列表、选中框，把用例放在画布左上角、缩放 100%，避开右下角水印。
 3. 等页面把 `window.__figmaReady` 设成 `true`（图形、字体、图片都加载完）。
 4. 只截用例 frame 那一块（宽高 = 用例尺寸 × 2），和 `expected@2x.png` 用 pixelmatch 对比，存差异图。尺寸不一样时不比较，记为 100%。
 5. 输出到 `reports/fidelity/<时间>/`：`index.html`（按差异从大到小排，每行三张图）、`results.json`，每个用例的 `expected.png`、`actual.png`、`diff.png`。`reports/fidelity/latest` 指向最新一次。
@@ -218,7 +218,8 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 实现细节（2026-10-24）：
 
 - 截图模式（`&shot=1`）：不显示左侧列表和工具条，`<Tldraw hideUi>`，画布背景改成纯白（`figma.css` 里的 `.figma-shot`）。镜头固定在 `(40, 40)`、缩放 100%，所以 frame 在页面上的位置是 `(40, 40)`。
-- 浏览器窗口 = 用例尺寸 + 四周 40 + 右边多 200、下边多 100，右下角的 tldraw 水印落在截图区域外面。
+- **用真实的 2 倍屏，不用 Playwright 的 `deviceScaleFactor` 模拟**（2026-10-24）：模拟模式下 Chrome 按 CSS 整像素排版和对齐，165.5px 宽的方块会画成 166px；真实的 Retina 屏是按设备像素（0.5 CSS 像素）排版的，和 Figma 一致。所以脚本用 `chromium.launch({ channel: 'chromium', args: ['--force-device-scale-factor=2', '--window-size=1200,1400'] })` + `newPage({ viewport: null })`。只有"新无头模式"（`channel: 'chromium'`）认这个参数，默认的 headless shell 不认；设了 `viewport` 也会把它覆盖回 1 倍。这样截出来的才是用户在 Retina 屏上真正看到的样子（`page/gallery` 从 1.03% 降到 0.07%）。
+- 浏览器窗口固定 1200×1400，最大的用例（375×812）加上四周 40、右边 200、下边 100 也放得下，右下角的 tldraw 水印落在截图区域外面。用例更大时脚本会报错。
 - `expected@2x.png` 里 frame 外面（比如圆角外）是透明的，对比前先把它叠到白底上，和截图的白色画布一致。
 - "准备好了"的判断在 `load.ts` 的 `waitForAssets`：用 `document.fonts.load` 按每段文字的字体和内容加载字体（Noto Sans SC 是按字符分包的，要带上文字才会加载对的包），图片全部 `decode()` 完，再等 `document.fonts.ready` 和两帧。
 - 4 个页面并行截图，每个用例新开一个页面。
