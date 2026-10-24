@@ -7,7 +7,15 @@ import {
 } from 'tldraw';
 
 import { filteredImageKey } from './image-filters';
-import { decompose, IDENTITY, invert, multiply, translation } from './matrix';
+import {
+  decompose,
+  determinant,
+  IDENTITY,
+  invert,
+  mirrorX,
+  multiply,
+  translation,
+} from './matrix';
 import type { FigmaShape, FigmaShapeType } from './shape-types';
 import type { FigmaNode, FigmaPaint, Matrix2x3, Snapshot } from './types';
 
@@ -146,7 +154,12 @@ export function snapshotToShapes(
       return;
     }
 
-    const page = multiply(origin, place.m);
+    // See apps/docs/figma-to-tldraw/tech.md §12.3.
+    const flipX = determinant(place.m) < 0;
+    const page = multiply(
+      origin,
+      flipX ? multiply(place.m, mirrorX(place.w)) : place.m,
+    );
     const local = parentId ? multiply(invert(parentPage), page) : page;
     const { x, y, rotation } = decompose(local);
     const id = shapeIdFor(opts.idPrefix, node.id);
@@ -191,6 +204,7 @@ export function snapshotToShapes(
         imageSizes: snapshot.meta.imageSizes ?? {},
         mask,
         maskPath: snapshot.meta.masks?.[node.id] ?? '',
+        flipX,
       },
     });
 

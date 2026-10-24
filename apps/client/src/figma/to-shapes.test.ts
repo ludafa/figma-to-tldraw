@@ -115,6 +115,63 @@ describe('snapshotToShapes', () => {
     expect(rect.rotation).toBeCloseTo(0);
   });
 
+  it('turns mirrored transforms into an unrotated box with flipX', () => {
+    const doc: FigmaNode = {
+      id: '1:1',
+      name: 'root',
+      type: 'FRAME',
+      children: [
+        {
+          id: '1:2',
+          name: 'mirrored',
+          type: 'FRAME',
+          children: [{ id: '1:3', name: 'child', type: 'RECTANGLE' }],
+        },
+        { id: '1:4', name: 'upside down', type: 'RECTANGLE' },
+      ],
+    };
+    const { shapes } = snapshotToShapes(
+      snapshot(doc, {
+        transforms: {
+          '1:1': { m: fromRotation(0, 0, 0), w: 400, h: 300 },
+          '1:2': {
+            m: [
+              [-1, 0, 300],
+              [0, 1, 20],
+            ],
+            w: 200,
+            h: 100,
+          },
+          '1:3': {
+            m: [
+              [-1, 0, 290],
+              [0, 1, 30],
+            ],
+            w: 50,
+            h: 40,
+          },
+          '1:4': {
+            m: [
+              [1, 0, 10],
+              [0, -1, 250],
+            ],
+            w: 60,
+            h: 30,
+          },
+        },
+      }),
+      opts,
+    );
+    const [root, mirrored, child, upsideDown] = shapes;
+    expect(root.props).toMatchObject({ flipX: false });
+    expect(mirrored).toMatchObject({ x: 100, y: 20, props: { flipX: true } });
+    expect(mirrored.rotation).toBeCloseTo(0);
+    expect(child).toMatchObject({ x: 140, y: 10, props: { flipX: true } });
+    expect(child.rotation).toBeCloseTo(0);
+    expect(upsideDown).toMatchObject({ x: 70, y: 250, props: { flipX: true } });
+    expect(upsideDown.rotation).toBeCloseTo(Math.PI);
+  });
+
   it('skips hidden nodes and their children', () => {
     const doc: FigmaNode = {
       id: '1:1',

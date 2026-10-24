@@ -523,3 +523,18 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 做法：按 `STRIP_HEIGHT = 4000`（CSS 像素）一段一段截，每段 `page.screenshot({ clip })`，再用 pngjs 的 `PNG.bitblt` 按顺序拼成一张（`stitch()`）。只有一段时直接用，不重新编码。
 
 效果：家具首页 8.82% → 0.23%；Framer 手机页从报错变成能比较（5.12%，剩下的差异是 §12.3～§12.5 的问题）。
+
+### 12.3 镜像（水平翻转）
+
+在 Figma 里水平翻转一个图层，它的变换矩阵的**行列式是负数**（`[[-1, 0, x], [0, 1, y]]` 这类）。REST 数据和插件导出的 `transforms` 里没有"翻转"这个字段，只有这个矩阵；按 §4.2 的办法从矩阵算旋转角，会算出 180°，画出来是上下颠倒的。垂直翻转等于"水平翻转 + 旋转 180°"。
+
+做法（`to-shapes.ts` 的 `visit()`）：
+
+1. `determinant(m) < 0` 时这个节点是镜像的，记 `flipX = true`。
+2. 把矩阵右乘 `mirrorX(w)` = `[[-1, 0, w], [0, 1, 0]]`（`matrix.ts`，新），得到一个不带镜像的矩阵，按它算位置和旋转。几何上就是：先在自己的框里左右翻过来，再按这个矩阵摆放。
+3. 图形的 props 加 `flipX`（`shape-types.ts`、`base.tsx` 的校验器，默认 `false`）。`FigmaShapeContainer` 给最里面那层内容加 `transform: scaleX(-1)`；外面的裁剪包装层（§5）不翻，因为裁剪路径是按没翻的坐标算的。
+4. 子节点的位置照旧按父节点的页面矩阵算，用的是**没翻转的**那个矩阵；子节点自己的绝对变换里已经带着镜像，会各自算出自己的 `flipX`。
+
+测试：`to-shapes.test.ts` 的 "turns mirrored transforms into an unrotated box with flipX"：镜像 frame、它的子节点、一个垂直翻转的矩形，位置、旋转和 `flipX` 都对。
+
+效果：FreshGo 首页 3.36% → 0.39%，Framer 桌面页 3.21% → 0.88%，Framer 手机页 5.12% → 1.74%。

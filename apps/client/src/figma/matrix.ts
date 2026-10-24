@@ -32,6 +32,18 @@ export function invert(m: Matrix2x3): Matrix2x3 {
   ];
 }
 
+export function determinant(m: Matrix2x3): number {
+  return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §12.3.
+export function mirrorX(w: number): Matrix2x3 {
+  return [
+    [-1, 0, w],
+    [0, 1, 0],
+  ];
+}
+
 export function apply(m: Matrix2x3, x: number, y: number): [number, number] {
   const [[a, c, e], [b, d, f]] = m;
   return [a * x + c * y + e, b * x + d * y + f];

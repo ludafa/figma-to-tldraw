@@ -32,6 +32,7 @@ export const figmaShapeProps: RecordProps<FigmaShape> = {
   >,
   mask: T.string,
   maskPath: T.string,
+  flipX: T.boolean,
 };
 
 export abstract class FigmaShapeUtil<
@@ -49,6 +50,7 @@ export abstract class FigmaShapeUtil<
       imageSizes: {},
       mask: '',
       maskPath: '',
+      flipX: false,
     };
   }
 
@@ -96,7 +98,7 @@ export function FigmaShapeContainer({
     () => clipPathsFor(editor, shape.id as TLShapeId),
     [editor, shape.id],
   );
-  const { w, h, node } = shape.props;
+  const { w, h, node, flipX } = shape.props;
 
   let content: ReactNode = (
     <div
@@ -105,7 +107,15 @@ export function FigmaShapeContainer({
           ? node.blendMode.toLowerCase()
           : undefined
       }
-      style={{ position: 'absolute', left: 0, top: 0, width: w, height: h }}
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        // See apps/docs/figma-to-tldraw/tech.md §12.3.
+        transform: flipX ? 'scaleX(-1)' : undefined,
+      }}
     >
       {children}
     </div>

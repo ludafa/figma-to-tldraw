@@ -19,6 +19,7 @@ export interface FigmaShapeProps {
   imageSizes: Record<string, { width: number; height: number }>;
   mask: string;
   maskPath: string;
+  flipX: boolean;
 }
 
 export type FigmaShape<T extends FigmaShapeType = FigmaShapeType> = TLBaseShape<
