@@ -342,6 +342,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | 展示页的 Figma file key 写死在代码里（§10.1），换了文件或重新复制就失效；链接只对用户自己的草稿有效 | 换文件时改 `FIGMA_FILES`；以后可以试插件的 `figma.fileKey`（要开 `enablePrivatePluginApi`，未验证）                      |
 | 差异归因按轴对齐的框算（§10.2），旋转、异形节点和跑出框的文字会算到别的节点上                       | 只用来看"大概在哪"；要精确再按真实形状算                                                                                 |
 | 展示页的分组说明（§10.3）是手写的，渲染规则改了原因会变                                             | 改规则、重新考试后同步改 `groups.ts` 里的说明                                                                            |
+| 商业字体（Circular Std、Proxima Nova、SF Pro）没有合法的网页版，用后备字体画（§12.1）               | 先接受，展示页写明原因；要更像可以找开源近似字体代替（§6.9），或让插件把这些文字导成轮廓（插件和转换都要改，先问用户）   |
+| 字体版本靠实测比值挑出来（§12.1），`@fontsource` 升级可能换掉字体版本                               | DM Sans 锁死 4.5.9、Inter 锁死 4.5.15；升级字体包后重跑全量对比                                                          |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -469,3 +471,46 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 - 在画布上点图形 → 用 `useValue` 订阅选中的图形，左边对应的行高亮并滚到可见处。
 - 图形类型也用 `useValue` 从画布里读（`editor.getShape(shapeIdFor(…))?.type`），不在页面里另写一份映射；没有对应图形的节点（比如布尔运算的子节点）显示"—"、不能点。
 - 可以拖动图层（子图层跟着父图层走），"复位"重新画、重设镜头。画布背景用 tldraw 默认的浅灰，不像展示页那样设成白色，这样白底的 frame 能看出边界。
+
+## 12. 再加 8 套真实稿子（2026-10-25，用户追加）
+
+两套真实稿子不够（用户追加："把真实稿子堆到 10 套"，偏手机 App 和落地页）。又从 Figma 社区复制了 8 份免费文件，导出 33 页，合进 `cases/real/`，一共 151 个用例。文件名单、file key 和社区链接在 `apps/client/src/showcase/sources.ts` 的 `FIGMA_FILES`（§10.1）。
+
+第一次跑（规则不改）33 页平均 4.71%，11 页小于 1%。下面几处是按特性修的，每一处都不是只针对某一张图。
+
+### 12.1 字体：用和 Figma 一样的版本
+
+和 Inter 一样（§6.4），同一种字体不同版本的字宽能差 1%～2%，换行就跟着变。所以每种字体都要找到和 Figma 一样的版本。
+
+**怎么判断版本对不对**：拿稿子里"宽度自动、单行、没有样式覆盖、没有大小写变换、没有旋转"的文字，比 Figma 的 `absoluteRenderBounds.width`（字形实际画出来的宽度）和 Chrome `measureText` 的 `actualBoundingBoxLeft + actualBoundingBoxRight`，按字体和字重求平均比值。比值离 1 越近越对。脚本没有放进仓库（一次性的量具），做法就是上面这句。
+
+| 字体               | 用的包                                  | 字重                    | 实测比值（Chrome ÷ Figma） |
+| ------------------ | --------------------------------------- | ----------------------- | -------------------------- |
+| Poppins            | `@fontsource/poppins` 5.3.0             | 400、500、600、700      | 400：0.9999                |
+| Montserrat         | `@fontsource/montserrat` 5.3.0          | 400、500、600、700、800 | 0.989～1.000               |
+| Lato               | `lato-font` 3.0.0（Lato 2.0），见下面   | 400～800，含斜体        | 0.997～1.002               |
+| DM Sans            | `@fontsource/dm-sans` **4.5.9**（锁死） | 400、700                | 400：0.9999；700：0.9997   |
+| Urbanist           | `@fontsource/urbanist` 5.3.0            | 400、500、600           | 1.0000～1.0002             |
+| Lexend             | `@fontsource/lexend` 5.3.0              | 400、500、600、700      | 0.9999～1.0000             |
+| Nunito             | `@fontsource/nunito` 5.3.0              | 600                     | 没有能量的样本             |
+| Inter 300（Light） | 原来的 `@fontsource/inter` 4.5.15       | 300                     | 1.0000                     |
+
+（实测，2026-10-25，151 个用例里的全部合格样本；Inter 400 有 483 段，平均 1.0001。）
+
+- **DM Sans 要用 v1**：`@fontsource/dm-sans` 5.x 和可变字体版是 DM Sans 4.0（加了光学尺寸），比 Figma 宽 1.5% 左右；4.5.9 里是老的 v1，和 Figma 一样。4.5.10 不存在，所以写死 4.5.9。
+- **Lato 要用 2.0**：Figma 的 Lato 有 Medium、SemiBold、ExtraBold，这是 Lato 2.0 才有的字重；Google Fonts 和 `@fontsource/lato` 是只有 5 个字重（100、300、400、700、900）的 Lato 1。`lato-font` 包（MIT + OFL，没有安装脚本）里是 Lato 2.0，但它自带的 CSS 把字重标错了，所以不用它的 CSS，自己在 `apps/client/src/figma/lato.css`（新）里按 Figma 的字重写 `@font-face`：normal 400、medium 500、semibold 600、bold 700、heavy 800，400、500、700 带斜体。
+- 字体都在 `apps/client/src/figma/figma.css` 里 `@import`。
+
+**拿不到的字体**（照旧报"缺字体"警告，用后备字体 Inter 画，§9.6）：
+
+| 字体                                | 出现在                                 | 为什么没有                                                 |
+| ----------------------------------- | -------------------------------------- | ---------------------------------------------------------- |
+| Circular Std、Proxima Nova          | Social App                             | 商业字体，没有合法的免费网页版                             |
+| SF Pro、SF Pro Text、SF Pro Display | Social App、Bankpick、FreshGo 的状态栏 | 苹果的字体，授权只允许给苹果平台做设计和开发，不能放进网页 |
+| Switzer                             | Framer SaaS                            | Fontshare 的免费字体，没找到 npm 包，没有去下载            |
+
+这几种都没有找代替字体（§6.9 的做法）。Social App 超过 1% 的 3 页，差异像素 97% 以上落在文字上，差得最多的都是 Circular Std / Proxima Nova 的文字（§10.2 的归因）。
+
+`FONT_METRICS`（§6.4 的基线补偿）没有加新字体的数据，这几种字体的文字差异已经很小，没有继续做。
+
+效果：只补字体，33 页里小于 1% 的从 11 页变成 25 页，平均 4.71% → 3.85%（实测）。
