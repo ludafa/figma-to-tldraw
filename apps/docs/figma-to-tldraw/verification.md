@@ -63,3 +63,13 @@
 |                                                                  | text/truncation         | 0.54%  | 0.11%  |
 |                                                                  | text/line-height        | 0.44%  | 0.13%  |
 |                                                                  | page/mobile-login       | 0.32%  | 0.26%  |
+| 自动行高用无单位倍数，大字能撑高所在的行                         | text/mixed-styles       | 2.15%  | 0.75%  |
+| 下划线、删除线用字体自带的粗细和位置                             | text/decoration-case    | 1.36%  | 1.29%  |
+| 按 Chrome 和 Figma 的基线取整规则补 -1～1px（tech.md §6.4）      | text/decoration-case    | 1.29%  | 0.19%  |
+|                                                                  | text/align-horizontal   | 0.23%  | 0.00%  |
+|                                                                  | layout/wrap             | 0.61%  | 0.06%  |
+|                                                                  | layout/absolute-child   | 0.36%  | 0.01%  |
+|                                                                  | page/mobile-login       | 0.26%  | 0.02%  |
+|                                                                  | page/product-list       | 0.34%  | 0.13%  |
+|                                                                  | component/instances     | 0.06%  | 0.00%  |
+|                                                                  | container/clip-on       | 0.17%  | 0.01%  |

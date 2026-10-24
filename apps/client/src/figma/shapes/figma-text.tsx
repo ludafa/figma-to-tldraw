@@ -27,6 +27,13 @@ const TEXT_TRANSFORM: Partial<
   TITLE: 'capitalize',
 };
 
+// See apps/docs/figma-to-tldraw/tech.md §6.4.
+function lineHeightCss(style: FigmaTypeStyle): string | number {
+  const size = style.fontSize ?? 16;
+  const px = style.lineHeightPx ?? size * 1.2;
+  return style.lineHeightUnit === 'PIXELS' ? `${px}px` : px / size;
+}
+
 function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
   const css: CSSProperties = {
     fontFamily: fontFamilyCss(style),
@@ -43,12 +50,17 @@ function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
   } else if (style.textDecoration === 'STRIKETHROUGH') {
     css.textDecorationLine = 'line-through';
   }
+  if (css.textDecorationLine) {
+    css.textDecorationThickness = 'from-font';
+    css.textUnderlinePosition = 'from-font';
+  }
   return css;
 }
 
 interface Run {
   text: string;
   style: FigmaTypeStyle;
+  ownLineHeight?: boolean;
 }
 
 function textRuns(node: FigmaNode): Run[] {
@@ -62,9 +74,11 @@ function textRuns(node: FigmaNode): Run[] {
     const prev = overrides[i - 1] ?? 0;
     const cur = i < chars.length ? (overrides[i] ?? 0) : -1;
     if (cur !== prev) {
+      const override = prev ? table[String(prev)] : undefined;
       runs.push({
         text: chars.slice(start, i),
-        style: prev ? { ...base, ...table[String(prev)] } : base,
+        style: override ? { ...base, ...override } : base,
+        ownLineHeight: override?.lineHeightPx !== undefined,
       });
       start = i;
     }
@@ -81,11 +95,42 @@ function paragraphs(runs: Run[]): Run[][] {
         out.push([]);
       }
       if (part) {
-        out[out.length - 1].push({ text: part, style: run.style });
+        out[out.length - 1].push({ ...run, text: part });
       }
     });
   }
   return out;
+}
+
+const INTER_ASCENT = 2728 / 2816;
+const INTER_DESCENT = 680 / 2816;
+
+// See apps/docs/figma-to-tldraw/tech.md §6.4.
+function baselineShift(
+  style: FigmaTypeStyle,
+  boxH: number,
+  paragraphCount: number,
+): number {
+  if (
+    (style.fontFamily ?? 'Inter') !== 'Inter' ||
+    (style.textAlignVertical ?? 'TOP') !== 'TOP'
+  ) {
+    return 0;
+  }
+  const size = style.fontSize ?? 16;
+  const lh = style.lineHeightPx ?? size * 1.2;
+  const a = INTER_ASCENT * size;
+  const d = INTER_DESCENT * size;
+  const chrome =
+    Math.round(a) + Math.floor((lh - Math.round(a) - Math.round(d)) / 2);
+  const auto =
+    style.textAutoResize === 'HEIGHT' ||
+    style.textAutoResize === 'WIDTH_AND_HEIGHT';
+  const content = boxH - (paragraphCount - 1) * (style.paragraphSpacing ?? 0);
+  const rest = content - Math.max(1, Math.round(content / lh)) * lh;
+  const figma =
+    a + (lh - a - d) / 2 + (auto && Math.abs(rest) <= 0.5 ? rest / 2 : 0);
+  return Math.round(figma) - chrome;
 }
 
 export function TextContent({ shape }: { shape: FigmaShape }) {
@@ -114,7 +159,15 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     >
       {runs.length ? (
         runs.map((run, j) => (
-          <span key={j} style={runStyle(run.style, node)}>
+          <span
+            key={j}
+            style={{
+              ...runStyle(run.style, node),
+              lineHeight: run.ownLineHeight
+                ? lineHeightCss(run.style)
+                : undefined,
+            }}
+          >
             {run.text}
           </span>
         ))
@@ -133,7 +186,9 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
 
   const inner: CSSProperties = {
     ...runStyle(style, node),
-    lineHeight: `${lineHeight}px`,
+    lineHeight: lineHeightCss(style),
+    position: 'relative',
+    top: baselineShift(style, h, paras.length),
     textAlign:
       style.textAlignHorizontal === 'JUSTIFIED'
         ? 'justify'
