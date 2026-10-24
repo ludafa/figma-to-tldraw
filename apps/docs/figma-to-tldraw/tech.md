@@ -201,6 +201,14 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 
 差异百分比 = pixelmatch 判为不同的像素数 ÷ 总像素数，阈值 `threshold: 0.1`（pixelmatch 默认），开着抗锯齿检测。
 
+实现细节（2026-10-24）：
+
+- 截图模式（`&shot=1`）：不显示左侧列表和工具条，`<Tldraw hideUi>`，画布背景改成纯白（`figma.css` 里的 `.figma-shot`）。镜头固定在 `(40, 40)`、缩放 100%，所以 frame 在页面上的位置是 `(40, 40)`。
+- 浏览器窗口 = 用例尺寸 + 四周 40 + 右边多 200、下边多 100，右下角的 tldraw 水印落在截图区域外面。
+- `expected@2x.png` 里 frame 外面（比如圆角外）是透明的，对比前先把它叠到白底上，和截图的白色画布一致。
+- "准备好了"的判断在 `load.ts` 的 `waitForAssets`：用 `document.fonts.load` 按每段文字的字体和内容加载字体（Noto Sans SC 是按字符分包的，要带上文字才会加载对的包），图片全部 `decode()` 完，再等 `document.fonts.ready` 和两帧。
+- 4 个页面并行截图，每个用例新开一个页面。
+
 ## 8. 风险
 
 | 风险                                              | 应对                                                                       |

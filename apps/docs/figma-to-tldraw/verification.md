@@ -1,0 +1,50 @@
+# Figma 还原到 tldraw：验证方案
+
+> 相关：[模块说明](README.md) · [技术实现](tech.md) · 施工计划 [`docs/施工计划.md`](../../../docs/施工计划.md)
+
+## 1. 自动测试
+
+| 测试文件                                  | 测什么                                                                                                                                        | 日期       |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `apps/client/src/figma/to-shapes.test.ts` | 节点树拆成图形：根节点放原点、子节点相对父节点、旋转节点用 `transforms`、隐藏节点跳过、兄弟顺序、不认识的类型给警告、矢量按渲染范围摆放和蒙版 | 2026-10-24 |
+
+命令：`pnpm --filter @figma-to-tldraw/client test`。
+
+## 2. 端到端检查
+
+| 检查                                             | 预期                                                                  | 日期       |
+| ------------------------------------------------ | --------------------------------------------------------------------- | ---------- |
+| `pnpm dev` 后打开 `http://localhost:5173/canvas` | 左侧是用例列表，画布上是示例 frame                                    | 2026-10-24 |
+| `curl localhost:5173/cases/index.json`           | 200，返回用例列表                                                     | 2026-10-24 |
+| `pnpm --filter @figma-to-tldraw/client compare`  | 跑完全部用例，在 `reports/fidelity/<时间>/` 生成报告，`latest` 指向它 | 2026-10-24 |
+| `pnpm lint`、`pnpm typecheck`、`pnpm test`       | 都通过                                                                | 2026-10-24 |
+
+## 3. 手动验收清单
+
+1. 打开 `/canvas?case=fill/solid` → 画布上是一个白色 frame 和一个蓝色矩形；点工具条上的"差异" → frame 区域全黑。
+2. 在左侧列表点任意用例 → 网址里的 `case` 跟着变，刷新后还是这个用例。
+3. 打开 `/canvas?case=page/mobile-login` → 登录页完整显示，中文和英文字体正确。
+4. 在画布上点一个子图形 → 只选中这一个；拖动根 frame → 子图形跟着动。
+5. 打开 `/canvas?case=不存在` → 工具条显示 1 条警告（读取失败 404），页面不崩。
+6. 打开 `reports/fidelity/latest/index.html` → 顶部有用例数、平均差异、小于 1% 的个数；表格按差异从大到小排，每行三张图。
+
+## 4. 各次实际结果
+
+### 2026-10-24
+
+- 第 1 步：`hello.json` 示例在 Chrome 里按 Figma 样式显示；真实鼠标点击只选中矩形，拖动 frame 子图形跟着动；6 条单测通过。
+- 第 2 步：用 agent-browser 在 Chrome 里打开 10 个用例（fill/angular-gradient、image/crop、mask/ellipse-image、mask/star-gradient、text/mixed-styles、boolean/union、page/gallery、component/instances、layout/wrap、effect/drop-shadow），都能显示，没有报错和警告。
+- 第 3 步：第一份还原度报告 `reports/fidelity/20261024-202524/`，79 个用例跑完用时约 54 秒（4 个页面并行）。**平均差异 0.53%，73 / 79 个小于 1%**，34 个是 0.00%。差异最大的前 10 名：
+
+| 排名 | 用例                    | 差异   | 看到的问题                                         |
+| ---- | ----------------------- | ------ | -------------------------------------------------- |
+| 1    | container/group-opacity | 15.53% | 组透明度被分别乘到每个子图形上，重叠的地方颜色不对 |
+| 2    | effect/background-blur  | 5.62%  | 背景模糊完全没生效                                 |
+| 3    | page/gallery            | 2.40%  | 图片里的细网格线有偏差，图片缩放或摆放的细节不一样 |
+| 4    | text/mixed-styles       | 2.36%  | 文字                                               |
+| 5    | text/decoration-case    | 1.84%  | 文字（下划线、删除线、大小写）                     |
+| 6    | text/wrap               | 1.68%  | 文字换行                                           |
+| 7    | text/fixed-overflow     | 0.87%  | 文字                                               |
+| 8    | stroke/dashed           | 0.84%  | 虚线                                               |
+| 9    | layout/vertical-fill    | 0.68%  | 文字为主                                           |
+| 10   | layout/wrap             | 0.64%  | 文字为主                                           |

@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "compare": "tsx scripts/compare.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
