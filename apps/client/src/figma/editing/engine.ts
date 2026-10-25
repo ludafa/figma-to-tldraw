@@ -474,7 +474,10 @@ export function enableFigmaEditing(
       }
     }),
     sideEffects.registerBeforeCreateHandler('shape', (shape) =>
-      state.paused || state.replaying || !isFigmaShape(shape)
+      state.paused ||
+      state.replaying ||
+      state.quiet.has(shape.id) ||
+      !isFigmaShape(shape)
         ? shape
         : renameOnCreate(editor, shape, state.renames),
     ),
@@ -505,6 +508,8 @@ function componentHooks(editor: Editor, state: EditingState) {
         state.allowDelete--;
       }
     },
+    constrain: (frame: FigmaShape, from: { w: number; h: number }) =>
+      applyConstraints(editor, frame, from),
   };
 }
 
@@ -516,6 +521,8 @@ export function figmaComponentHooks(editor: Editor) {
     : {
         quiet: () => undefined,
         deleteShapes: (ids: TLShapeId[]) => editor.deleteShapes(ids),
+        constrain: (frame: FigmaShape, from: { w: number; h: number }) =>
+          applyConstraints(editor, frame, from),
       };
 }
 

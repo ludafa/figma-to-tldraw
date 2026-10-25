@@ -15,6 +15,7 @@ import {
   propertyFields,
   same,
   stripI,
+  templateIdOf,
 } from '../components';
 import type { FigmaShape } from '../shape-types';
 import type {
@@ -187,6 +188,22 @@ export function overriddenFields(
   return out;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.4.
+function withFields(
+  node: FigmaNode,
+  fields: Record<string, unknown>,
+): FigmaNode {
+  const out: Record<string, unknown> = { ...node };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) {
+      delete out[key];
+    } else {
+      out[key] = value;
+    }
+  }
+  return out as unknown as FigmaNode;
+}
+
 export function changedFields(a: FigmaNode, b: FigmaNode): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].filter(
@@ -213,6 +230,24 @@ const NOT_SYNCED = new Set([
   'isExposedInstance',
 ]);
 
+/** Node fields of an instance that stay when its main is swapped. */
+const SLOT_FIELDS = [
+  'absoluteBoundingBox',
+  'absoluteRenderBounds',
+  'relativeTransform',
+  'size',
+  'componentPropertyReferences',
+  'isExposedInstance',
+  'visible',
+  'locked',
+  'layoutAlign',
+  'layoutGrow',
+  'layoutPositioning',
+  'layoutSizingHorizontal',
+  'layoutSizingVertical',
+  'constraints',
+];
+
 /** Records the fields an edit changed on a layer inside an instance. */
 export function recordOverride(
   editor: Editor,
@@ -230,7 +265,7 @@ export function recordOverride(
   const fields = changedFields(prev.props.node, node).filter(
     (f) =>
       !NOT_OVERRIDES.has(f) &&
-      // A text layer's name follows its content; that is not an override.
+      // See apps/docs/figma-to-tldraw/tech.md §16.4.
       !(f === 'name' && node.name === node.characters),
   );
   if (!fields.length) {
@@ -285,6 +320,8 @@ interface SyncHooks {
   /** Marks a write so it is not recorded as an override. */
   quiet: (id: TLShapeId) => void;
   deleteShapes: (ids: TLShapeId[]) => void;
+  /** Moves a frame's children by their constraints, as if resized from `from`. */
+  constrain: (frame: FigmaShape, from: { w: number; h: number }) => void;
 }
 
 /** The copy of a main's layer inside an instance (the instance for the root). */
@@ -299,6 +336,28 @@ function copyOf(
     : byNode.get(copyId(instance.props.node.id, layer.id));
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.4.
+function followsOuterMain(
+  editor: Editor,
+  nested: FigmaShape,
+  byNode: Map<string, FigmaShape>,
+): boolean {
+  const chain = instanceChain(editor, nested);
+  const outer = chain[chain.length - 2];
+  if (!outer) {
+    return false;
+  }
+  const templateId = templateIdOf(outer.props.node.id, nested.props.node.id);
+  const template = templateId ? byNode.get(templateId) : undefined;
+  return (
+    isInstance(template) &&
+    template.props.node.componentId === nested.props.node.componentId &&
+    mainAround(editor, template)?.props.node.id === outer.props.node.componentId
+  );
+}
+
+const SWAP_FIELDS = ['componentId', 'componentProperties'] as const;
+
 /** Pushes this operation's edits of main components to their instances. */
 export function syncInstances(
   editor: Editor,
@@ -309,7 +368,7 @@ export function syncInstances(
   const instances = new Map<string, FigmaShape[]>();
   for (const s of byNode.values()) {
     const main = isInstance(s) ? s.props.node.componentId : undefined;
-    if (main) {
+    if (main && !followsOuterMain(editor, s, byNode)) {
       instances.set(main, [...(instances.get(main) ?? []), s]);
     }
   }
@@ -383,15 +442,25 @@ export function syncInstances(
           patch[f] = next.props.node[k];
         }
       }
+      if (!isRoot && isInstance(target)) {
+        for (const f of SWAP_FIELDS) {
+          if (
+            same(target.props.node[f], prev.props.node[f]) &&
+            !same(prev.props.node[f], next.props.node[f])
+          ) {
+            patch[f] = next.props.node[f];
+          }
+        }
+      }
       const update: TLShapePartial<FigmaShape> = {
         id: target.id,
         type: target.type,
       };
       const props: Partial<FigmaShape['props']> = {};
       if (Object.keys(patch).length) {
-        props.node = { ...target.props.node, ...patch };
+        props.node = withFields(target.props.node, patch);
       }
-      // A copy that still matches the main's old geometry follows the main.
+      // See apps/docs/figma-to-tldraw/tech.md §16.4.
       if (
         near(target.props.w, prev.props.w) &&
         near(target.props.h, prev.props.h) &&
@@ -621,7 +690,7 @@ export function swapMain(
     editor.updateShape<FigmaShape>({
       id: layer.id,
       type: layer.type,
-      props: { node: { ...layer.props.node, ...values } },
+      props: { node: withFields(layer.props.node, values) },
     });
     recorded.push({
       id: layer.props.node.id,
@@ -641,23 +710,49 @@ export function swapMain(
       properties[key] = { ...properties[key], value };
     }
   }
-  const node: FigmaNode = keepOverrides
-    ? {
-        ...current.props.node,
-        componentId: main.props.node.id,
-        componentProperties: properties,
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  const was = current.props.node as unknown as Record<string, unknown>;
+  const before = oldMain?.props.node as unknown as
+    | Record<string, unknown>
+    | undefined;
+  const own = keepOverrides
+    ? overriddenFields(editor, current)
+    : new Set<string>();
+  const kept: Record<string, unknown> = {};
+  for (const f of SLOT_FIELDS) {
+    kept[f] = was[f];
+  }
+  if (keepOverrides) {
+    for (const k of new Set([
+      ...Object.keys(was),
+      ...Object.keys(before ?? {}),
+    ])) {
+      if (
+        k !== 'children' &&
+        !NOT_SYNCED.has(k) &&
+        (own.has(k) || !before || !same(was[k], before[k]))
+      ) {
+        kept[k] = was[k];
       }
-    : {
-        ...instanceNode(
-          editor,
-          main,
-          current.props.node.id,
-          current.props.node.name,
-        ),
-        componentProperties: properties,
-      };
+    }
+  }
+  const node = withFields(
+    {
+      ...instanceNode(
+        editor,
+        main,
+        current.props.node.id,
+        current.props.node.name,
+      ),
+      componentProperties: properties,
+      overrides: keepOverrides ? (current.props.node.overrides ?? []) : [],
+    },
+    kept,
+  );
   const keep = (o: FigmaOverride) =>
-    o.id !== current.props.node.id && !o.id.startsWith(oldPrefix);
+    o.id === current.props.node.id
+      ? keepOverrides
+      : !o.id.startsWith(oldPrefix);
   if (owner.id === instance.id) {
     node.overrides = [
       ...(keepOverrides ? (node.overrides ?? []).filter(keep) : []),
@@ -673,6 +768,14 @@ export function swapMain(
       ...(followsSize ? { w: main.props.w, h: main.props.h } : {}),
     },
   });
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  const placed = editor.getShape<FigmaShape>(instance.id)!;
+  if (
+    !near(placed.props.w, main.props.w) ||
+    !near(placed.props.h, main.props.h)
+  ) {
+    hooks.constrain(placed, { w: main.props.w, h: main.props.h });
+  }
   if (owner.id !== instance.id) {
     const o = editor.getShape<FigmaShape>(owner.id)!;
     hooks.quiet(owner.id);
@@ -831,7 +934,7 @@ export function detachInstance(editor: Editor, instance: FigmaShape) {
   const {
     componentId: _id,
     componentProperties: _props,
-    overrides: _overrides,
+    overrides = [],
     ...node
   } = instance.props.node;
   editor.updateShape<FigmaShape>({
@@ -839,6 +942,37 @@ export function detachInstance(editor: Editor, instance: FigmaShape) {
     type: instance.type,
     props: { node: { ...node, type: 'FRAME' } },
   });
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  const byNode = shapesByNodeId(editor);
+  const moved = new Map<TLShapeId, FigmaOverride[]>();
+  for (const o of overrides) {
+    const layer = byNode.get(o.id);
+    const owner = layer && instanceChain(editor, layer)[0];
+    if (owner) {
+      moved.set(owner.id, [...(moved.get(owner.id) ?? []), o]);
+    }
+  }
+  for (const [id, list] of moved) {
+    const owner = editor.getShape<FigmaShape>(id)!;
+    const merged = [...(owner.props.node.overrides ?? [])];
+    for (const o of list) {
+      const i = merged.findIndex((m) => m.id === o.id);
+      merged[i < 0 ? merged.length : i] = {
+        id: o.id,
+        overriddenFields: [
+          ...new Set([
+            ...(i < 0 ? [] : merged[i].overriddenFields),
+            ...o.overriddenFields,
+          ]),
+        ],
+      };
+    }
+    editor.updateShape<FigmaShape>({
+      id,
+      type: owner.type,
+      props: { node: { ...owner.props.node, overrides: merged } },
+    });
+  }
 }
 
 /** Turns frames into main components. */
@@ -856,7 +990,8 @@ export function canBecomeComponent(editor: Editor, shape: FigmaShape): boolean {
   return (
     shape.type === 'figma-frame' &&
     shape.props.node.type === 'FRAME' &&
-    !isInsideInstance(editor, shape)
+    !isInsideInstance(editor, shape) &&
+    !mainAround(editor, shape)
   );
 }
 

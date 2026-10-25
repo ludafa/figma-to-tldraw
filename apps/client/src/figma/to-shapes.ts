@@ -87,6 +87,26 @@ function stripChildren(node: FigmaNode): FigmaNode {
   return rest;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.3.
+function spanVariants(node: FigmaNode): FigmaNode {
+  const boxes = node.absoluteBoundingBox
+    ? []
+    : (node.children ?? []).flatMap((c) =>
+        c.absoluteBoundingBox ? [c.absoluteBoundingBox] : [],
+      );
+  if (!boxes.length) {
+    return node;
+  }
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  return {
+    ...node,
+    absoluteBoundingBox: { x, y, width: right - x, height: bottom - y },
+  };
+}
+
 function imagePaints(node: FigmaNode): FigmaPaint[] {
   const paints = [...(node.fills ?? []), ...(node.strokes ?? [])];
   return paints.filter((p) => p.type === 'IMAGE' && p.imageRef);
@@ -149,9 +169,11 @@ export function snapshotToShapes(
     const hidden = parentHidden || node.visible === false;
     const type = shapeTypeFor(node);
     if (!type) {
-      warnings.push(
-        `不支持的节点类型 ${node.type}：${node.name}（${node.id}）`,
-      );
+      if (!hidden) {
+        warnings.push(
+          `不支持的节点类型 ${node.type}：${node.name}（${node.id}）`,
+        );
+      }
       return;
     }
     // See apps/docs/figma-to-tldraw/tech.md §9.
@@ -257,7 +279,9 @@ export function snapshotToShapes(
     let x = 0;
     let y = 0;
     let rowHeight = 0;
-    for (const main of Object.values(snapshot.mains ?? {})) {
+    const list = Object.values(snapshot.mains ?? {}).map(spanVariants);
+    const indices = getIndices(list.length);
+    for (const [i, main] of list.entries()) {
       const place = placement(main, 'figma-frame', false);
       if (!place) {
         continue;
@@ -268,7 +292,7 @@ export function snapshotToShapes(
         rowHeight = 0;
       }
       origin = translation(x - place.m[0][2], y - place.m[1][2]);
-      visit(rebuildTree(main, index), undefined, IDENTITY, 'a1', '');
+      visit(rebuildTree(main, index), undefined, IDENTITY, indices[i], '');
       x += place.w + MAIN_GAP;
       rowHeight = Math.max(rowHeight, place.h);
     }

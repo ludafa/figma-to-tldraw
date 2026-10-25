@@ -6,7 +6,7 @@ import {
 } from 'tldraw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { putSnapshot } from '../editor';
+import { COMPONENTS_PAGE, putSnapshot } from '../editor';
 import type { FigmaShape } from '../shape-types';
 import { figmaShapeUtils } from '../shapes';
 import type { FigmaNode, FigmaPaint, Snapshot } from '../types';
@@ -18,6 +18,7 @@ import {
   resetInstance,
   setProperty,
   shapesByNodeId,
+  swapMain,
 } from './instances';
 
 // tldraw's Editor only needs a few DOM pieces to run headless.
@@ -100,7 +101,9 @@ const card: FigmaNode = {
     [DOT]: { type: 'BOOLEAN', defaultValue: true },
   },
   children: [
-    rect('1:2', 'Bg', box(0, 0, 100, 40)),
+    rect('1:2', 'Bg', box(0, 0, 100, 40), {
+      rectangleCornerRadii: [1, 2, 3, 4],
+    }),
     rect('1:3', 'Dot', box(10, 10), {
       fills: BLUE,
       componentPropertyReferences: { visible: DOT },
@@ -116,7 +119,9 @@ const cardInstance: FigmaNode = {
   componentProperties: { [DOT]: { type: 'BOOLEAN', value: true } },
   absoluteBoundingBox: box(200, 0, 100, 40),
   children: [
-    rect('I2:1;1:2', 'Bg', box(200, 0, 100, 40)),
+    rect('I2:1;1:2', 'Bg', box(200, 0, 100, 40), {
+      rectangleCornerRadii: [1, 2, 3, 4],
+    }),
     rect('I2:1;1:3', 'Dot', box(210, 10), {
       fills: BLUE,
       componentPropertyReferences: { visible: DOT },
@@ -137,6 +142,7 @@ const sizes: FigmaNode = {
       id: '3:1',
       name: 'Size=S',
       type: 'COMPONENT',
+      fills: RED,
       absoluteBoundingBox: box(0, 100, 40, 20),
       children: [rect('3:2', 'Fill', box(0, 100, 40, 20))],
     },
@@ -144,10 +150,13 @@ const sizes: FigmaNode = {
       id: '3:3',
       name: 'Size=L',
       type: 'COMPONENT',
+      fills: BLUE,
       absoluteBoundingBox: box(100, 100, 80, 40),
       children: [
         rect('3:4', 'Fill', box(100, 100, 80, 40)),
-        rect('3:5', 'Badge', box(160, 100)),
+        rect('3:5', 'Badge', box(160, 100), {
+          constraints: { horizontal: 'RIGHT', vertical: 'TOP' },
+        }),
       ],
     },
   ],
@@ -158,6 +167,7 @@ const chip: FigmaNode = {
   name: 'Chip',
   type: 'INSTANCE',
   componentId: '3:1',
+  fills: RED,
   componentProperties: { Size: { type: 'VARIANT', value: 'S' } },
   absoluteBoundingBox: box(200, 100, 40, 20),
   children: [rect('I4:1;3:2', 'Fill', box(200, 100, 40, 20))],
@@ -169,6 +179,60 @@ const plain: FigmaNode = {
   type: 'FRAME',
   absoluteBoundingBox: box(0, 200, 50, 50),
   children: [rect('5:2', 'Inner', box(0, 200, 20, 20))],
+};
+
+const icon: FigmaNode = {
+  id: '6:1',
+  name: 'Icon',
+  type: 'COMPONENT',
+  absoluteBoundingBox: box(0, 300, 10, 10),
+  children: [rect('6:2', 'Glyph', box(0, 300))],
+};
+
+const star: FigmaNode = {
+  id: '9:1',
+  name: 'Star',
+  type: 'COMPONENT',
+  absoluteBoundingBox: box(20, 300, 10, 10),
+  children: [rect('9:2', 'Glyph', box(20, 300))],
+};
+
+const button: FigmaNode = {
+  id: '7:1',
+  name: 'Button',
+  type: 'COMPONENT',
+  absoluteBoundingBox: box(40, 300, 50, 20),
+  children: [
+    {
+      id: '7:2',
+      name: 'Icon',
+      type: 'INSTANCE',
+      componentId: '6:1',
+      absoluteBoundingBox: box(40, 300, 10, 10),
+      overrides: [{ id: 'I7:2;6:2', overriddenFields: ['fills'] }],
+      children: [rect('I7:2;6:2', 'Glyph', box(40, 300), { fills: GREEN })],
+    },
+  ],
+};
+
+const buttonInstance: FigmaNode = {
+  id: '8:1',
+  name: 'Button',
+  type: 'INSTANCE',
+  componentId: '7:1',
+  absoluteBoundingBox: box(100, 300, 50, 20),
+  children: [
+    {
+      id: 'I8:1;7:2',
+      name: 'Icon',
+      type: 'INSTANCE',
+      componentId: '6:1',
+      absoluteBoundingBox: box(100, 300, 10, 10),
+      children: [
+        rect('I8:1;7:2;6:2', 'Glyph', box(100, 300), { fills: GREEN }),
+      ],
+    },
+  ],
 };
 
 function snapshot(): Snapshot {
@@ -190,7 +254,17 @@ function snapshot(): Snapshot {
         name: 'Page',
         type: 'FRAME',
         absoluteBoundingBox: box(0, 0, 400, 300),
-        children: [card, cardInstance, sizes, chip, plain],
+        children: [
+          card,
+          cardInstance,
+          sizes,
+          chip,
+          plain,
+          icon,
+          star,
+          button,
+          buttonInstance,
+        ],
       },
     },
     svgs: {},
@@ -276,6 +350,34 @@ describe('main edits', () => {
     });
     expect(childIds('2:1')).toContain('I2:1;1:9');
   });
+
+  it('remove fields the main drops', () => {
+    const s = layer('1:2');
+    const { rectangleCornerRadii: _radii, ...node } = s.props.node;
+    editor.updateShape<FigmaShape>({
+      id: s.id,
+      type: s.type,
+      props: { node: { ...node, cornerRadius: 5 } },
+    });
+    expect(layer('I2:1;1:2').props.node).toMatchObject({ cornerRadius: 5 });
+    expect(layer('I2:1;1:2').props.node.rectangleCornerRadii).toBeUndefined();
+  });
+
+  it('reach nested instances through the main around them', () => {
+    edit('6:2', { fills: BLUE });
+    expect(layer('I7:2;6:2').props.node.fills).toEqual(GREEN);
+    expect(layer('I8:1;7:2;6:2').props.node.fills).toEqual(GREEN);
+    edit('I7:2;6:2', { fills: RED });
+    expect(layer('I8:1;7:2;6:2').props.node.fills).toEqual(RED);
+  });
+
+  it('swap nested instances in the instances too', () => {
+    editor.run(() =>
+      swapMain(editor, layer('7:2'), layer('9:1'), figmaComponentHooks(editor)),
+    );
+    expect(layer('I8:1;7:2').props.node.componentId).toBe('9:1');
+    expect(childIds('I8:1;7:2')).toEqual(['I8:1;7:2;9:2']);
+  });
 });
 
 describe('editing an instance', () => {
@@ -318,6 +420,31 @@ describe('component properties', () => {
     expect(node.props.node.componentProperties?.Size.value).toBe('L');
     expect(childIds('4:1')).toEqual(['I4:1;3:4', 'I4:1;3:5']);
     expect([node.props.w, node.props.h]).toEqual([80, 40]);
+    expect(node.props.node.fills).toEqual(BLUE);
+  });
+
+  it('switch variants keeping overrides', () => {
+    edit('I4:1;3:2', { fills: GREEN });
+    edit('4:1', { opacity: 0.5 });
+    setProperty(editor, layer('4:1'), 'Size', 'L', figmaComponentHooks(editor));
+    expect(layer('I4:1;3:4').props.node.fills).toEqual(GREEN);
+    expect(layer('4:1').props.node.opacity).toBe(0.5);
+    expect(layer('4:1').props.node.overrides).toEqual([
+      { id: '4:1', overriddenFields: ['opacity'] },
+      { id: 'I4:1;3:4', overriddenFields: ['fills', 'styles'] },
+    ]);
+  });
+
+  it('switch variants by constraints when the instance was stretched', () => {
+    const s = layer('4:1');
+    editor.updateShape<FigmaShape>({
+      id: s.id,
+      type: s.type,
+      props: { w: 60 },
+    });
+    setProperty(editor, layer('4:1'), 'Size', 'L', figmaComponentHooks(editor));
+    expect(layer('4:1').props.w).toBe(60);
+    expect(layer('I4:1;3:5').x).toBe(40);
   });
 
   it('show and hide layers with a boolean', () => {
@@ -343,6 +470,16 @@ describe('instance actions', () => {
     expect(layer('I2:1;1:2').props.node.fills).toEqual(RED);
   });
 
+  it('detach hands nested overrides to the nested instance', () => {
+    edit('I8:1;7:2;6:2', { fills: BLUE });
+    detachInstance(editor, layer('8:1'));
+    expect(layer('I8:1;7:2').props.node.overrides).toEqual([
+      { id: 'I8:1;7:2;6:2', overriddenFields: ['fills'] },
+    ]);
+    edit('6:2', { fills: RED });
+    expect(layer('I8:1;7:2;6:2').props.node.fills).toEqual(BLUE);
+  });
+
   it('a new component gets instances that follow it', () => {
     createComponents(editor, [layer('5:1')]);
     expect(layer('5:1').props.node.type).toBe('COMPONENT');
@@ -352,5 +489,67 @@ describe('instance actions', () => {
     expect(childIds(id)).toEqual([`I${id};5:2`]);
     edit('5:2', { fills: GREEN });
     expect(layer(`I${id};5:2`).props.node.fills).toEqual(GREEN);
+  });
+});
+
+describe('components page', () => {
+  function withMains(): Snapshot {
+    const s = snapshot();
+    return {
+      ...s,
+      mains: {
+        '10:0': {
+          id: '10:0',
+          name: 'Big set',
+          type: 'COMPONENT_SET',
+          partial: true,
+          variantCount: 80,
+          children: [
+            {
+              id: '10:1',
+              name: 'V=1',
+              type: 'COMPONENT',
+              absoluteBoundingBox: box(500, 0, 10, 10),
+              children: [rect('10:2', 'Fill', box(500, 0))],
+            },
+            {
+              id: '10:3',
+              name: 'V=2',
+              type: 'COMPONENT',
+              absoluteBoundingBox: box(520, 0, 10, 10),
+              children: [rect('10:4', 'Fill', box(520, 0))],
+            },
+          ],
+        },
+        '11:1': {
+          id: '11:1',
+          name: 'Other',
+          type: 'COMPONENT',
+          absoluteBoundingBox: box(600, 0, 10, 10),
+          children: [rect('11:2', 'Fill', box(600, 0))],
+        },
+      },
+    };
+  }
+
+  it('lays out partial component sets', () => {
+    putSnapshot(editor, withMains(), 'm', '/cases/m/', { mains: true });
+    const set = shapesByNodeId(editor).get('10:0')!;
+    expect(set.parentId).toBe(COMPONENTS_PAGE);
+    expect([set.props.w, set.props.h]).toEqual([30, 10]);
+    const indices = editor
+      .getSortedChildIdsForParent(COMPONENTS_PAGE)
+      .map((id) => editor.getShape(id)!.index);
+    expect(new Set(indices).size).toBe(indices.length);
+  });
+
+  it('starts empty on the next import', () => {
+    putSnapshot(editor, withMains(), 'm', '/cases/m/', { mains: true });
+    putSnapshot(editor, withMains(), 'n', '/cases/n/', { mains: true });
+    const stale = editor.store.query
+      .records('shape')
+      .get()
+      .filter((s) => s.id.startsWith('shape:figma:m:'));
+    expect(stale).toEqual([]);
   });
 });

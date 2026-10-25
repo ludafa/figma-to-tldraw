@@ -245,7 +245,7 @@ export function rebuildInstance(
   const found = instance.componentId
     ? mains.get(instance.componentId)
     : undefined;
-  // A deleted main exports as an empty shell; keep the instance as it is.
+  // See apps/docs/figma-to-tldraw/tech.md §16.2.
   const main =
     found && !found.children?.length && instance.children?.length
       ? undefined
@@ -317,7 +317,7 @@ export function rebuildInstance(
     const id = copyId(instance.id, template.id);
     const copy = copies.get(id);
     if (!copy) {
-      // Figma leaves out the layers of a hidden nested instance.
+      // See apps/docs/figma-to-tldraw/tech.md §16.2.
       if (parent && parent.copy.visible === false) {
         stats.filled++;
         return fillFromMain(instance.id, template, parent);
@@ -326,9 +326,8 @@ export function rebuildInstance(
       return undefined;
     }
     if (copy.type === 'INSTANCE' && copy.componentId !== template.componentId) {
-      // Swapped: the copy's fields and layers come from its own main.
+      // See apps/docs/figma-to-tldraw/tech.md §16.2.
       stats.swapped++;
-      // Its own fields match the new main, or the slot it sits in.
       const own = copy.componentId ? mains.get(copy.componentId) : undefined;
       layer(own ? { ...own, type: 'INSTANCE' } : template, copy, template);
       return rebuildInstance(copy, mains, stats, overrides);

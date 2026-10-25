@@ -34,6 +34,7 @@ export function putSnapshot(
         const [design, ...others] = editor.getPages();
         editor.setCurrentPage(design.id);
         for (const page of others) {
+          editor.deleteShapes([...editor.getPageShapeIds(page.id)]);
           editor.deletePage(page.id);
         }
         editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
