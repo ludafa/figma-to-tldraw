@@ -15,6 +15,7 @@ import {
   propertyFields,
   same,
   stripI,
+  SWAP_FIELDS,
   templateIdOf,
 } from '../components';
 import type { FigmaShape } from '../shape-types';
@@ -248,6 +249,22 @@ const SLOT_FIELDS = [
   'constraints',
 ];
 
+/** `list` with `fields` added to the entry for `id` (`list` itself if none are new). */
+function withOverride(
+  list: FigmaOverride[],
+  id: string,
+  fields: string[],
+): FigmaOverride[] {
+  const entry = list.find((o) => o.id === id);
+  if (!entry) {
+    return [...list, { id, overriddenFields: fields }];
+  }
+  const merged = [...new Set([...entry.overriddenFields, ...fields])];
+  return merged.length === entry.overriddenFields.length
+    ? list
+    : list.map((o) => (o.id === id ? { ...o, overriddenFields: merged } : o));
+}
+
 /** Records the fields an edit changed on a layer inside an instance. */
 export function recordOverride(
   editor: Editor,
@@ -273,16 +290,10 @@ export function recordOverride(
   }
   const current = editor.getShape<FigmaShape>(owner.id)!;
   const list = current.props.node.overrides ?? [];
-  const entry = list.find((o) => o.id === node.id);
-  const merged = [...new Set([...(entry?.overriddenFields ?? []), ...fields])];
-  if (entry && merged.length === entry.overriddenFields.length) {
+  const overrides = withOverride(list, node.id, fields);
+  if (overrides === list) {
     return;
   }
-  const overrides = entry
-    ? list.map((o) =>
-        o.id === node.id ? { ...o, overriddenFields: merged } : o,
-      )
-    : [...list, { id: node.id, overriddenFields: fields }];
   editor.updateShape<FigmaShape>({
     id: owner.id,
     type: owner.type,
@@ -356,7 +367,8 @@ function followsOuterMain(
   );
 }
 
-const SWAP_FIELDS = ['componentId', 'componentProperties'] as const;
+/** Fields a nested instance's copies take from it when it is swapped or detached. */
+const NESTED_FIELDS = ['type', ...SWAP_FIELDS] as const;
 
 /** Pushes this operation's edits of main components to their instances. */
 export function syncInstances(
@@ -365,10 +377,15 @@ export function syncInstances(
   hooks: SyncHooks,
 ) {
   const byNode = shapesByNodeId(editor);
+  const edited = new Set([
+    ...[...edits.changed.values()].map((e) => e.main),
+    ...edits.created.values(),
+    ...edits.deleted.map((e) => e.main),
+  ]);
   const instances = new Map<string, FigmaShape[]>();
   for (const s of byNode.values()) {
     const main = isInstance(s) ? s.props.node.componentId : undefined;
-    if (main && !followsOuterMain(editor, s, byNode)) {
+    if (main && edited.has(main) && !followsOuterMain(editor, s, byNode)) {
       instances.set(main, [...(instances.get(main) ?? []), s]);
     }
   }
@@ -443,8 +460,9 @@ export function syncInstances(
         }
       }
       if (!isRoot && isInstance(target)) {
-        for (const f of SWAP_FIELDS) {
+        for (const f of NESTED_FIELDS) {
           if (
+            !driven.has(f) &&
             same(target.props.node[f], prev.props.node[f]) &&
             !same(prev.props.node[f], next.props.node[f])
           ) {
@@ -508,6 +526,17 @@ export function syncInstances(
       if (Object.keys(update).length > 2) {
         hooks.quiet(target.id);
         editor.updateShape(update);
+      }
+      // See apps/docs/figma-to-tldraw/tech.md §16.4.
+      if (patch.componentProperties && !('componentId' in patch)) {
+        const had = target.props.node.componentProperties ?? {};
+        for (const [key, prop] of Object.entries(
+          next.props.node.componentProperties ?? {},
+        )) {
+          if (prop.type !== 'VARIANT' && !same(had[key], prop)) {
+            applyProperty(editor, fresh(target), key, prop.value, hooks);
+          }
+        }
       }
     }
   }
@@ -715,12 +744,19 @@ export function swapMain(
   const before = oldMain?.props.node as unknown as
     | Record<string, unknown>
     | undefined;
-  const own = keepOverrides
-    ? overriddenFields(editor, current)
-    : new Set<string>();
+  const own = overriddenFields(editor, current);
+  const templateId =
+    owner.id === instance.id
+      ? undefined
+      : templateIdOf(owner.props.node.id, current.props.node.id);
+  const template = templateId
+    ? (shapesByNodeId(editor).get(templateId)?.props.node as unknown as
+        | Record<string, unknown>
+        | undefined)
+    : undefined;
   const kept: Record<string, unknown> = {};
   for (const f of SLOT_FIELDS) {
-    kept[f] = was[f];
+    kept[f] = !keepOverrides && own.has(f) && template ? template[f] : was[f];
   }
   if (keepOverrides) {
     for (const k of new Set([
@@ -937,36 +973,51 @@ export function detachInstance(editor: Editor, instance: FigmaShape) {
     overrides = [],
     ...node
   } = instance.props.node;
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  const byNode = shapesByNodeId(editor);
+  const moved = new Map<TLShapeId, FigmaOverride[]>();
+  const give = (id: TLShapeId, list: FigmaOverride[]) =>
+    moved.set(id, [...(moved.get(id) ?? []), ...list]);
+  if (instanceChain(editor, instance).length === 1) {
+    for (const id of editor.getShapeAndDescendantIds([instance.id])) {
+      const nested = editor.getShape(id);
+      if (!isInstance(nested) || instanceChain(editor, nested).length !== 2) {
+        continue;
+      }
+      const templateId = templateIdOf(node.id, nested.props.node.id);
+      const template = templateId ? byNode.get(templateId) : undefined;
+      if (
+        isInstance(template) &&
+        template.props.node.componentId === nested.props.node.componentId
+      ) {
+        give(
+          nested.id,
+          (template.props.node.overrides ?? []).map((o) => ({
+            ...o,
+            id: copyId(node.id, o.id),
+          })),
+        );
+      }
+    }
+  }
   editor.updateShape<FigmaShape>({
     id: instance.id,
     type: instance.type,
     props: { node: { ...node, type: 'FRAME' } },
   });
-  // See apps/docs/figma-to-tldraw/tech.md §16.4.
-  const byNode = shapesByNodeId(editor);
-  const moved = new Map<TLShapeId, FigmaOverride[]>();
   for (const o of overrides) {
     const layer = byNode.get(o.id);
     const owner = layer && instanceChain(editor, layer)[0];
     if (owner) {
-      moved.set(owner.id, [...(moved.get(owner.id) ?? []), o]);
+      give(owner.id, [o]);
     }
   }
   for (const [id, list] of moved) {
     const owner = editor.getShape<FigmaShape>(id)!;
-    const merged = [...(owner.props.node.overrides ?? [])];
-    for (const o of list) {
-      const i = merged.findIndex((m) => m.id === o.id);
-      merged[i < 0 ? merged.length : i] = {
-        id: o.id,
-        overriddenFields: [
-          ...new Set([
-            ...(i < 0 ? [] : merged[i].overriddenFields),
-            ...o.overriddenFields,
-          ]),
-        ],
-      };
-    }
+    const merged = list.reduce(
+      (acc, o) => withOverride(acc, o.id, o.overriddenFields),
+      owner.props.node.overrides ?? [],
+    );
     editor.updateShape<FigmaShape>({
       id,
       type: owner.type,

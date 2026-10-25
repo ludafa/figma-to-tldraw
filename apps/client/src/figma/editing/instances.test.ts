@@ -235,6 +235,53 @@ const buttonInstance: FigmaNode = {
   ],
 };
 
+const row: FigmaNode = {
+  id: '30:1',
+  name: 'Row',
+  type: 'COMPONENT',
+  absoluteBoundingBox: box(0, 400, 100, 40),
+  children: [
+    {
+      ...cardInstance,
+      id: '30:2',
+      absoluteBoundingBox: box(0, 400, 100, 40),
+      children: [
+        rect('I30:2;1:2', 'Bg', box(0, 400, 100, 40), {
+          rectangleCornerRadii: [1, 2, 3, 4],
+        }),
+        rect('I30:2;1:3', 'Dot', box(10, 410), {
+          fills: BLUE,
+          componentPropertyReferences: { visible: DOT },
+        }),
+      ],
+    },
+  ],
+};
+
+const rowInstance: FigmaNode = {
+  id: '31:1',
+  name: 'Row',
+  type: 'INSTANCE',
+  componentId: '30:1',
+  absoluteBoundingBox: box(200, 400, 100, 40),
+  children: [
+    {
+      ...cardInstance,
+      id: 'I31:1;30:2',
+      absoluteBoundingBox: box(200, 400, 100, 40),
+      children: [
+        rect('I31:1;30:2;1:2', 'Bg', box(200, 400, 100, 40), {
+          rectangleCornerRadii: [1, 2, 3, 4],
+        }),
+        rect('I31:1;30:2;1:3', 'Dot', box(210, 410), {
+          fills: BLUE,
+          componentPropertyReferences: { visible: DOT },
+        }),
+      ],
+    },
+  ],
+};
+
 function snapshot(): Snapshot {
   return {
     meta: {
@@ -264,6 +311,8 @@ function snapshot(): Snapshot {
           star,
           button,
           buttonInstance,
+          row,
+          rowInstance,
         ],
       },
     },
@@ -378,6 +427,36 @@ describe('main edits', () => {
     expect(layer('I8:1;7:2').props.node.componentId).toBe('9:1');
     expect(childIds('I8:1;7:2')).toEqual(['I8:1;7:2;9:2']);
   });
+
+  it('leave nested instances an instance-swap property picks', () => {
+    edit('7:2', { componentPropertyReferences: { mainComponent: 'Icon#0:1' } });
+    editor.run(() =>
+      swapMain(editor, layer('7:2'), layer('9:1'), figmaComponentHooks(editor)),
+    );
+    expect(layer('I8:1;7:2').props.node.componentId).toBe('6:1');
+  });
+
+  it('turn nested copies into frames when the main detaches its instance', () => {
+    detachInstance(editor, layer('7:2'));
+    const copy = layer('I8:1;7:2').props.node;
+    expect(copy.type).toBe('FRAME');
+    expect(copy.componentId).toBeUndefined();
+  });
+
+  it('apply nested property changes to the copies', () => {
+    setProperty(editor, layer('30:2'), DOT, false, figmaComponentHooks(editor));
+    expect(
+      layer('I31:1;30:2').props.node.componentProperties?.[DOT].value,
+    ).toBe(false);
+    expect(layer('I31:1;30:2;1:3').props.node.visible).toBe(false);
+  });
+
+  it('keep the copies when a nested instance in the main is reset', () => {
+    editor.run(() =>
+      resetInstance(editor, layer('7:2'), figmaComponentHooks(editor)),
+    );
+    expect(childIds('I8:1;7:2')).toEqual(['I8:1;7:2;6:2']);
+  });
 });
 
 describe('editing an instance', () => {
@@ -478,6 +557,24 @@ describe('instance actions', () => {
     ]);
     edit('6:2', { fills: RED });
     expect(layer('I8:1;7:2;6:2').props.node.fills).toEqual(BLUE);
+  });
+
+  it('reset of a nested instance shows it again', () => {
+    edit('I8:1;7:2', { visible: false });
+    expect(layer('8:1').props.node.overrides).toEqual([
+      { id: 'I8:1;7:2', overriddenFields: ['visible'] },
+    ]);
+    resetInstance(editor, layer('I8:1;7:2'), figmaComponentHooks(editor));
+    expect(layer('8:1').props.node.overrides).toEqual([]);
+    expect(layer('I8:1;7:2').props.node.visible).not.toBe(false);
+  });
+
+  it('detach keeps what the main overrides on nested instances', () => {
+    createInstance(editor, layer('7:1'));
+    const id = (editor.getSelectedShapes()[0] as FigmaShape).props.node.id;
+    detachInstance(editor, layer(id));
+    edit('6:2', { fills: BLUE });
+    expect(layer(`I${id};7:2;6:2`).props.node.fills).toEqual(GREEN);
   });
 
   it('a new component gets instances that follow it', () => {

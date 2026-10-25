@@ -167,7 +167,7 @@ export function propertyFields(node: FigmaNode): string[] {
 }
 
 /** Fields that differ because a nested instance was swapped to another main. */
-const SWAP_FIELDS = ['componentId', 'componentProperties'];
+export const SWAP_FIELDS = ['componentId', 'componentProperties'] as const;
 
 export function same(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
