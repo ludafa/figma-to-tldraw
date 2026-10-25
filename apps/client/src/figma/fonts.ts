@@ -4,6 +4,20 @@ import type { FigmaTypeStyle } from './types';
 
 const FALLBACK = '"Inter", "Noto Sans SC", sans-serif';
 
+// See apps/docs/figma-to-tldraw/tech.md §15.
+export const OPEN_FONTS = new Set([
+  'Inter',
+  'Noto Sans SC',
+  'Red Hat Display',
+  'Poppins',
+  'Montserrat',
+  'Lato',
+  'DM Sans',
+  'Urbanist',
+  'Lexend',
+  'Nunito',
+]);
+
 // See apps/docs/figma-to-tldraw/tech.md §6.9.
 export const FONT_SUBSTITUTES: Record<
   string,

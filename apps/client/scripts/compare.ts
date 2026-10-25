@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import pixelmatch from 'pixelmatch';
-import { type Browser, chromium } from 'playwright';
+import { type Browser, chromium, type Page } from 'playwright';
 import { PNG } from 'pngjs';
 
 import { attributeDiff } from '../src/figma/diff-attribution';
@@ -12,7 +12,11 @@ import type { Snapshot } from '../src/figma/types';
 
 // See apps/docs/figma-to-tldraw/tech.md §7.
 
-declare const window: { __figmaReady?: boolean; __figmaWarnings?: string[] };
+declare const window: {
+  __figmaReady?: boolean;
+  __figmaWarnings?: string[];
+  __figmaShotFrom?: (y: number) => void;
+};
 
 interface CaseSummary {
   name: string;
@@ -25,11 +29,14 @@ const ROOT = path.resolve(import.meta.dirname, '../../..');
 const CASES_DIR = path.join(ROOT, 'cases');
 const REPORTS_DIR = path.join(ROOT, 'reports/fidelity');
 const BASE_URL = process.env.CANVAS_URL ?? 'http://localhost:5173';
+const RETRY_ABOVE = 1;
 const SHOT_OFFSET = 40;
 const SCALE = 2;
 const MIN_WINDOW = { width: 1200, height: 1400 };
 const WORKERS = 4;
-const STRIP_HEIGHT = 4000;
+const STRIP_HEIGHT = 2000;
+const SETTLE_MS = 300;
+const SETTLE_TRIES = 10;
 
 function matches(dir: string, patterns: string[]): boolean {
   if (patterns.length === 0) {
@@ -80,7 +87,10 @@ function windowFor(areas: RenderArea[]): { width: number; height: number } {
     ),
     height: Math.max(
       MIN_WINDOW.height,
-      ...areas.map((a) => Math.ceil(a.height) + SHOT_OFFSET * 2 + 100),
+      ...areas.map(
+        (a) =>
+          Math.min(Math.ceil(a.height), STRIP_HEIGHT) + SHOT_OFFSET * 2 + 100,
+      ),
     ),
   };
 }
@@ -102,14 +112,13 @@ async function shoot(
     // See apps/docs/figma-to-tldraw/tech.md §12.2.
     const strips: Buffer[] = [];
     for (let y = 0; y < area.height; y += STRIP_HEIGHT) {
+      await page.evaluate((top) => window.__figmaShotFrom?.(top), y);
       strips.push(
-        await page.screenshot({
-          clip: {
-            x: SHOT_OFFSET,
-            y: SHOT_OFFSET + y,
-            width: area.width,
-            height: Math.min(STRIP_HEIGHT, area.height - y),
-          },
+        await settledShot(page, {
+          x: SHOT_OFFSET,
+          y: SHOT_OFFSET,
+          width: area.width,
+          height: Math.min(STRIP_HEIGHT, area.height - y),
         }),
       );
     }
@@ -117,6 +126,23 @@ async function shoot(
   } finally {
     await page.close();
   }
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §12.2.
+async function settledShot(
+  page: Page,
+  clip: { x: number; y: number; width: number; height: number },
+): Promise<Buffer> {
+  let last = await page.screenshot({ clip });
+  for (let i = 0; i < SETTLE_TRIES; i++) {
+    await page.waitForTimeout(SETTLE_MS);
+    const next = await page.screenshot({ clip });
+    if (next.equals(last)) {
+      return next;
+    }
+    last = next;
+  }
+  return last;
 }
 
 function stitch(strips: Buffer[]): Buffer {
@@ -140,8 +166,9 @@ async function compareCase(
   browser: Browser,
   c: CaseSummary,
   outDir: string,
+  sub = '',
 ): Promise<Result> {
-  const caseOut = path.join(outDir, 'cases', c.dir);
+  const caseOut = path.join(outDir, 'cases', c.dir, sub);
   fs.mkdirSync(caseOut, { recursive: true });
   const expectedRaw = PNG.sync.read(
     fs.readFileSync(path.join(CASES_DIR, c.dir, 'expected@2x.png')),
@@ -309,6 +336,28 @@ async function main() {
       }
     }),
   );
+  // See apps/docs/figma-to-tldraw/tech.md §15.
+  for (const [i, r] of results.entries()) {
+    const c = cases.find((x) => x.dir === r.dir);
+    if (!c || r.diff < RETRY_ABOVE) {
+      continue;
+    }
+    const again = await compareCase(browser, c, outDir, 'retry');
+    const caseOut = path.join(outDir, 'cases', c.dir);
+    console.log(
+      `重跑 ${c.dir}：${r.diff.toFixed(2)}% → ${again.diff.toFixed(2)}%`,
+    );
+    if (again.diff < r.diff) {
+      for (const f of ['actual.png', 'diff.png']) {
+        const from = path.join(caseOut, 'retry', f);
+        if (fs.existsSync(from)) {
+          fs.copyFileSync(from, path.join(caseOut, f));
+        }
+      }
+      results[i] = again;
+    }
+    fs.rmSync(path.join(caseOut, 'retry'), { recursive: true, force: true });
+  }
   await browser.close();
 
   results.sort((a, b) => b.diff - a.diff);

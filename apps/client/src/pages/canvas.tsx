@@ -34,6 +34,7 @@ declare global {
     __figmaRelayoutAll?: () => void;
     __figmaReady?: boolean;
     __figmaWarnings?: string[];
+    __figmaShotFrom?: (y: number) => void;
   }
 }
 
@@ -105,11 +106,16 @@ function showSnapshot(
   const warnings = putSnapshot(editor, snapshot, id, assetBase);
   // See apps/docs/figma-to-tldraw/tech.md §7 and §9.
   const area = renderArea(snapshot);
-  editor.setCamera({
-    x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
-    y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y,
-    z: 1,
-  });
+  const showFrom = (y: number) => {
+    editor.setCamera({
+      x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
+      y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y - y,
+      z: 1,
+    });
+  };
+  showFrom(0);
+  // See apps/docs/figma-to-tldraw/tech.md §12.2.
+  window.__figmaShotFrom = showFrom;
   return warnings;
 }
 
