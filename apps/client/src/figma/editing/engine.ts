@@ -90,6 +90,11 @@ function textKey(node: FigmaNode): string {
   ]);
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §14.1.
+function followsText(node: FigmaNode): boolean {
+  return node.autoRename ?? node.name === node.characters;
+}
+
 export function withAutoResize(
   node: FigmaNode,
   mode: NonNullable<NonNullable<FigmaNode['style']>['textAutoResize']>,
@@ -189,7 +194,9 @@ interface Slack {
 
 /** The union of a group's children; masked layers count as their mask. */
 function contentBounds(editor: Editor, group: FigmaShape) {
-  const kids = figmaChildren(editor, group.id);
+  const kids = figmaChildren(editor, group.id).filter(
+    (k) => k.props.node.visible !== false,
+  );
   if (!kids.length) {
     return undefined;
   }
@@ -281,6 +288,18 @@ function onChange(
     prev.x !== next.x || prev.y !== next.y || prev.rotation !== next.rotation;
   const node = next.props.node;
 
+  if (
+    next.type === 'figma-text' &&
+    nodeChanged &&
+    prev.props.node.characters !== node.characters &&
+    followsText(prev.props.node)
+  ) {
+    editor.updateShape<FigmaShape>({
+      id: next.id,
+      type: next.type,
+      props: { node: { ...node, name: node.characters ?? '' } },
+    });
+  }
   if (
     next.type === 'figma-text' &&
     ((nodeChanged && textKey(prev.props.node) !== textKey(node)) ||
@@ -564,19 +583,47 @@ function swap(editor: Editor, parent: FigmaShape, shape: FigmaShape) {
       slot++;
     }
   }
-  if (slot === from) {
-    return;
+  if (slot !== from) {
+    editor.updateShape<FigmaShape>({
+      id: shape.id,
+      type: shape.type,
+      index: slotIndex(parent, shape, others, slot),
+    });
   }
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §14.1.
+/** The index that puts a layer into auto layout's flow where it sits now. */
+export function flowIndex(
+  editor: Editor,
+  parent: FigmaShape,
+  shape: FigmaShape,
+): IndexKey {
+  const horiz = parent.props.node.layoutMode === 'HORIZONTAL';
+  const center = (c: FigmaShape) => {
+    const b = layoutBox(c);
+    return horiz ? b.x + b.w / 2 : b.y + b.h / 2;
+  };
+  const others = figmaChildren(editor, parent.id).filter(
+    (c) => c.id !== shape.id && inFlow(c.props.node),
+  );
+  const mine = center(shape);
+  const slot = others.filter((c) => center(c) < mine).length;
+  return slotIndex(parent, shape, others, slot);
+}
+
+function slotIndex(
+  parent: FigmaShape,
+  shape: FigmaShape,
+  others: FigmaShape[],
+  slot: number,
+): IndexKey {
   const order = [...others.slice(0, slot), shape, ...others.slice(slot)];
   const zOrder = parent.props.node.itemReverseZIndex ? order.reverse() : order;
   const at = zOrder.findIndex((c) => c.id === shape.id);
   const below = zOrder[at - 1]?.index as IndexKey | undefined;
   const above = zOrder[at + 1]?.index as IndexKey | undefined;
-  editor.updateShape<FigmaShape>({
-    id: shape.id,
-    type: shape.type,
-    index: getIndexBetween(below, above),
-  });
+  return getIndexBetween(below, above);
 }
 
 export function figmaTranslateEnd(editor: Editor, shape: FigmaShape) {

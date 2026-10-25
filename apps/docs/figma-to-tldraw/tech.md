@@ -351,6 +351,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | TipTap 用 `requestAnimationFrame` 聚焦，测试用的浏览器标签页在后台时进入编辑后拿不到焦点（§13.3 实测）                                                                                                                | 只影响自动化测试；测之前把标签页切到前台（verification.md §4）                                                           |
 | 自动布局只复现了 151 个用例里出现过的情况，换行、网格不支持，"Rotated Auto Layout" 这类技巧算不对（§13.2）                                                                                                            | 遇到对不上的再按数据补规则；不支持的布局在面板里写明"暂不支持编辑"                                                       |
 | 对齐线改写了 tldraw 的 `editor.snaps.getSnappableShapes`，还读了缩放状态的内部字段 `info.handle`（§13.5）；拖动排顺序的动画靠 tldraw 图形外层的 `.tl-shape` 类名和 `data-shape-id` 属性（§13.6）。tldraw 升级可能改掉 | tldraw 版本锁在 3.15.6；升级后按 verification.md §3 第 20、26 条再试一遍                                                 |
+| 新建图层借用 tldraw 缩放状态的 `isCreating` / `onCreate`（§14.1），这是 tldraw 自己的文字、方框工具用的约定，文档里没写                                                                                               | tldraw 锁在 3.15.6；升级后重跑手动验收第 28、29 条                                                                       |
+| 图层树每次图形变化都重新读整棵树、转 JSON 比较（§14.2）；最大的用例 621 个图层没感觉到卡，几千个图层没测过                                                                                                            | 卡的话改成只在结构、名字、隐藏、锁定变化时重读                                                                           |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -581,6 +583,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 方向按 [probe-editing.md](probe-editing.md) 的结论定（用户拍板）：图形和画法不动，Figma 节点数据 `props.node` 仍然是唯一的数据来源，编辑就是改它。这次做了调研里建议的前 4 步（用户确认范围，自动布局算在内，组件实例当普通 frame）：缩放和选择、自动布局、文字编辑、属性面板。矢量改颜色（第 5 步）和图层面板等（第 6 步）没做。
 
+> 2026-10-25 补：第 6 步里的新建图层工具和图层树做了，见 §14。
+
 只有 `/canvas` 打开编辑：`pages/canvas.tsx` 的 `handleMount` 调 `startFigmaEditing(editor)`，展示页和介绍页还是只能看。导入用例时 `putSnapshot` 包在 `withoutFigmaEffects` 里，加载过程不触发重新量文字和重排，所以导入画出来的东西和以前一样（还原度对比不变，见 [verification.md §4](verification.md#4-各次实际结果)）。
 
 加载用例不进撤销记录（2026-10-25 补）：`putSnapshot` 用 `editor.run(…, { history: 'ignore' })` 建图形，建完调 `editor.clearHistory()`。原来加载本身是一步撤销，刚打开用例按 Cmd+Z 整张图就没了，编辑后多撤销几步也会这样；切换用例后还能撤销到上一个用例的改动上。
@@ -810,3 +814,102 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 | 普通 frame（不是自动布局）里拖矩形     | 不加 `<style>`，和原来一样                                                                                                    |
 
 **没做的。** 不能拖出父 frame 放进别的 frame：tldraw 拖动时换父图层要父图形实现 `onDragShapesOver` / `onDragShapesOut`，我们的 frame 没实现，拖到 frame 外面也只是排到第一个或最后一个；同时拖好几个自动布局里的图层时，每个图层各自按规则交换，没有像 Figma 那样当成一组；方向键在 Figma 里能调整自动布局里的顺序，这里没做。
+
+## 14. 新建图层和图层树（2026-10-25，用户追加）
+
+用户要求能在画布上新建 Figma 的图形和文字，左边有和 Figma 一样的图层树（用户追加），也就是 [probe-editing.md](probe-editing.md) 第 6 步里的两项。范围按用户定的来：
+
+- 先做新建工具和图层树，图层树里拖动行来调整顺序、移进别的 frame 放到下一步，和"画布上把图层拖进别的 frame"一起做（用户确认）。
+- tldraw 自带的工具只留画笔和箭头，便签、橡皮去掉（用户拍板）。自带的几何图形、文字、frame 被 Figma 的同名工具代替；直线、荧光笔、激光笔、插入图片用户没提，我先一起拿掉了，要的话加进 `tools.tsx` 的 `KEPT_TOOLS`。
+- 直线、箭头、多边形、星形、钢笔这几种 Figma 图形没做。矢量现在画的是插件导出的 SVG（§3），自己新建的矢量没有 SVG，要等第 5 步改成按几何数据画。
+
+| 文件（新）           | 内容                                                       |
+| -------------------- | ---------------------------------------------------------- |
+| `editing/create.ts`  | 新图层的节点数据、放进哪个 frame、在自动布局里排到哪个位置 |
+| `editing/tools.tsx`  | 四个新建工具（tldraw 的 `StateNode`）、工具栏、快捷键      |
+| `editing/layers.tsx` | 图层树                                                     |
+
+`pages/canvas.tsx` 给 `<Tldraw>` 加了 `tools={figmaTools}`、`overrides={figmaUiOverrides}`、`components.Toolbar`、`getShapeVisibility` 和 `options.createTextOnCanvasDoubleClick: false`。左栏上面是可以折叠的用例列表（相当于 Figma 的 Pages），下面是图层树。
+
+### 14.1 新建图层
+
+**工具栏。** 移动 V、抓手 H、Frame F、矩形 R、椭圆 O、文字 T、画笔 D、箭头 A。`figmaUiOverrides.tools` 把四个新工具加进 tldraw 的工具表，再去掉其他自带工具的快捷键（F、R、O、T 原来是 tldraw 自己的 frame、矩形、椭圆、文字）；`FigmaToolbar` 只放这 8 个按钮。tldraw 在空白处双击会新建它自己的文字，用 `createTextOnCanvasDoubleClick: false` 关掉。
+
+**怎么画。** 四个工具共用 `tools.tsx` 里的两个状态 `Idle` / `Pointing`：
+
+- 按下后拖动：在按下的位置建一个 1×1 的图层，交给 tldraw 的缩放状态 `select.resizing`（`isCreating`，从右下角手柄拉），拉的时候图层跟着变大，对齐线照常起作用。松手后（`onCreate`）选中它，切回移动工具。文字只拉右边（手柄 `right`）：宽度由拖动定，高度跟着内容，和 Figma 拖出文本框一样（§13.1 的缩放规则把它变成自动高度）。
+- 不拖直接点：Frame、矩形、椭圆建一个 100×100 的，左上角在点的位置；文字建一个空的自动宽度文字。
+- 文字建好直接进入编辑。什么都没打就离开，§13.3 的规则会把它删掉。用文字工具点在已有的文字上，是编辑那段文字，不新建。
+- 新建是一个撤销步骤。
+
+**默认样子**（`create.ts` 的 `newNode`，和 Figma 一样）：
+
+| 图层       | 节点数据                                                                               |
+| ---------- | -------------------------------------------------------------------------------------- |
+| Frame      | 白色填充，裁剪内容（`clipsContent`）                                                   |
+| 矩形、椭圆 | 填充 #D9D9D9                                                                           |
+| 文字       | Inter Regular 12，黑色，自动宽度，自动行高（`INTRINSIC_%`，行高像素按 §13.4 的比例算） |
+
+都没有描边和效果，约束是左 / 上，尺寸方式是固定（文字是包裹）。名字按 "Rectangle 1"、"Frame 2" 编号：找画布上同类名字里最大的编号再加 1。节点 id 用 tldraw 图形 id 换个前缀（`new:…`），不会和 Figma 的 `12:34` 撞上。
+
+**文字图层的名字跟着内容走。** Figma 的文字图层有个 `autoRename`：没改过名字时，名字就是内容。新建的文字带 `autoRename: true`；导入的文字没有这个字段，名字和内容一样就当作 true（`engine.ts` 的 `followsText`）。`onChange` 看到内容变了就同步改名字；在图层树里改过名字以后 `autoRename` 变成 false，不再跟着变。
+
+**放进哪个 frame**（`dropTarget`）：从最上层往下找，第一个包含按下位置的 frame，而且这个位置没被外层 frame 的裁剪挡住。组不收新图层，和 Figma 一样；组件和实例当普通 frame（§13 定的），可以放进去。都不符合就放在画布上。
+
+没用 tldraw 自己挑父图形的办法。`createShapes` 不给 `parentId` 时，tldraw 会找"能收子图形"（`canReceiveNewChildrenOfType`）的图形当父图形；可一旦打开这个开关，tldraw 每次拖动、缩放结束时，还会把跑出父图形范围的图形挪进别的图形（`kickoutOccludedShapes`）。这是下一步拖动换父图层要处理的事，现在打开会打乱自动布局。所以 `createLayer` 自己算好父图层和局部坐标传进去，`canReceiveNewChildrenOfType` 保持默认的 false，画笔和箭头还是画在画布上。
+
+**画进自动布局。** 拖的过程中，新图层先设成绝对定位（`layoutPositioning: 'ABSOLUTE'`），不参与排列，留在画的地方。松手时 `finishLayer` 去掉绝对定位，拿它的中心和兄弟的中心比，排进对应的位置（`engine.ts` 的 `flowIndex`），然后自动布局重排。点一下建的图层马上排进去。
+
+踩过的坑：tldraw 的"一次操作结束"回调（§13 的引擎在这里重排）在 `editor.run` 里面也是每改一次就触发一次。一开始的写法是先去掉绝对定位、再算位置，结果第一次修改就触发了重排，图层先被排到最后，再按这个位置算，就总是排在最后。现在先算好位置，节点和顺序在同一次 `updateShape` 里改。
+
+**实测**（2026-10-25，Playwright 在无头 Chrome 里用鼠标，`/canvas?case=page/mobile-login`）：
+
+| 操作                                       | 结果                                                                                                      |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 按 R，在 SSO 按钮下面的空白处拖出 80×60    | "Rectangle 1" 放进整页（纵向自动布局），排在 SSO 按钮和 Spacer 之间；Spacer 是"填充"的，从 176 高缩到 100 |
+| 按 O，在分隔线左边那段上点一下             | "Ellipse 1" 放进 Divider，排在左边线条和 "or" 之间；Divider 是包裹的，变成 100 高，两条"填充"的线变短     |
+| 按 T，在空白处点，打 "Hello figma"，按 Esc | 进入编辑；图层名字变成 "Hello figma"，自动宽度                                                            |
+| 按 T 点一下直接按 Esc                      | 空文字被删掉                                                                                              |
+| 按 F 在空白处拖出 200×150，再按 R 在里面拖 | "Frame 1" 白色，在画布上；"Rectangle 2" 是它的子图层；撤销一次只撤掉矩形                                  |
+| 按 T 拖出 150 宽，打一长句                 | 自动高度，宽 150，折成 3 行                                                                               |
+| 按 T 在副标题和输入框之间点，打 "Hi there" | 文字排进整页，第一个输入框下移 31（文字高 15 + 间距 16）                                                  |
+| 按 T 点在 "Welcome back" 上                | 编辑这段文字，不新建                                                                                      |
+| 按 D 画一笔                                | tldraw 的画笔照常，画在画布上                                                                             |
+
+### 14.2 图层树
+
+**数据。** `layers.tsx` 用 tldraw 的 `computed` 从当前页面读出整棵树：每个图层的 id、名字、图标、是否隐藏、是否锁定、子图层。新旧结果转成 JSON 字符串比较，只有结构、名字、隐藏、锁定变了才重画，拖动、缩放时树不重画。
+
+**顺序。** 和 Figma 的图层面板一样，叠在上面的排在前面，也就是 tldraw 的 `index` 倒过来。导入时 First on top 的 frame 已经把子图层倒过来存了（§4.3），不用另外处理。自动布局默认后面的图层叠在上面，所以纵向排列时最下面的图层在列表最上面，这一点 Figma 也是这样。
+
+**图标**（lucide）：frame（#）、横向 / 纵向自动布局、组（虚线框）、Section、组件、实例、矩形、椭圆、文字、矢量、直线、星形、多边形、布尔运算。tldraw 的画笔和箭头叫 "Drawing" / "Arrow"，改的名字存在图形的 `meta.name`。
+
+**展开。** 打开用例时展开最外层，能看到整页的直接子图层。在画布上选中图层时，它的所有上级自动展开，并滚到那一行。点箭头展开或收起。这两件事用 tldraw 的 `react` 盯着页面最外层和选中的图层来做（`pnpm lint` 不允许在 effect 里直接改 state）。
+
+**和画布联动。**
+
+- 点一行选中，Shift 选中连续的几行，Cmd / Ctrl 加选或取消，点空白处取消选择。点完把焦点还给画布（`editor.focus()`），Delete、Cmd+D、Esc / Enter 这些快捷键照常能用。
+- 选中的行是深一点的蓝色，它下面的子图层是浅蓝色。
+- 鼠标停在一行上，`editor.setHoveredShape` 让画布上描出这个图层的边框；反过来，鼠标在画布上停在哪个图层上，那一行也描边。
+- 双击名字改名，按 Enter 或点别处确定，按 Esc 取消。改名是一个撤销步骤。
+
+**隐藏和锁定。** 行尾有眼睛和锁，鼠标停在行上才显示；已经隐藏或锁定的一直显示。
+
+- 隐藏写进节点数据 `node.visible = false`，`getShapeVisibility` 返回 `hidden`，子图层跟着不画、点不中。和 Figma 一样，隐藏的图层不参与自动布局（`auto-layout.ts` 的 `inFlow`），也不算进组的边界（`engine.ts` 的 `contentBounds`）。树里隐藏的图层和它的子图层变灰。
+- 锁定用 tldraw 自带的 `isLocked`：画布上点不中它和它的子图层，树里还能选中。改隐藏、锁定、名字时带 `ignoreShapeLock`，锁定的图层也能改。
+- 在 Figma 里本来就隐藏的图层，导入时被跳过了（§4，插件没导出它们的位置和 SVG），所以不在树里，也没法显示出来。
+
+**实测**（同上）：
+
+| 操作                                             | 结果                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| 打开 mobile-login                                | 树里 12 行：整页和它的 11 个子图层，顺序和 Figma 一样               |
+| 画布上点 Sign in 按钮，再按 Enter                | 树里 "Primary button" 选中；按 Enter 后它展开，"Sign in" 选中       |
+| 点 "Logo" 那一行；鼠标停在 "Welcome back" 那一行 | 画布上选中 Logo；悬停的图层是 Welcome back                          |
+| 点 Logo 的眼睛                                   | Logo 不画了，标题从 y 160 移到 88；撤销恢复                         |
+| 锁定 "Welcome back"，在画布上点它                | 选中的是整页，不是标题                                              |
+| 双击 "Logo" 改成 "Avatar"                        | 名字改了，`autoRename` 是 false；撤销恢复                           |
+| 点 "Primary button"，Shift 点第一个 "Input"      | 选中 Primary button、Options、Input 三个；再 Cmd 点 Options，去掉它 |
+| 点整页那一行的箭头                               | 收起，只剩 1 行                                                     |
+
+**没做的。** 拖动行来调整顺序、把图层拖进别的 frame，是下一步（用户已定），画布上的拖动也一起做。Figma 图层面板里的键盘操作（上下键换行、左右键展开收起）、右键菜单、按名字搜索都没做。

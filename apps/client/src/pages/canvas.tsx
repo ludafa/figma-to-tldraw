@@ -2,14 +2,20 @@ import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
 import { getRouteApi, Link } from '@tanstack/react-router';
+import { ChevronRight } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
 import {
+  figmaShapeVisibility,
   FigmaStylePanel,
   figmaTextOptions,
+  FigmaToolbar,
+  figmaTools,
+  figmaUiOverrides,
+  LayerTree,
   relayoutAll,
   startFigmaEditing,
 } from '../figma/editing';
@@ -84,7 +90,11 @@ function ExpectedOverlay() {
 const components: TLComponents = {
   OnTheCanvas: ExpectedOverlay,
   StylePanel: FigmaStylePanel,
+  Toolbar: FigmaToolbar,
 };
+
+// See apps/docs/figma-to-tldraw/tech.md §14.1.
+const options = { createTextOnCanvasDoubleClick: false };
 
 function showSnapshot(
   editor: Editor,
@@ -113,28 +123,45 @@ function groupCases(index: CaseIndex) {
 }
 
 function CaseList({ index, current }: { index: CaseIndex; current?: string }) {
+  const [open, setOpen] = useState(true);
   return (
-    <nav className="flex w-60 shrink-0 flex-col overflow-y-auto border-r bg-background py-2 text-sm">
-      {groupCases(index).map(([group, cases]) => (
-        <section key={group} className="px-2 py-1">
-          <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground">
-            {group}
-          </h2>
-          {cases.map((c) => (
-            <Link
-              key={c.dir}
-              to="/canvas"
-              search={{ case: c.dir }}
-              className={cn(
-                'block truncate rounded-md px-2 py-1 hover:bg-muted',
-                c.dir === current && 'bg-muted font-medium',
-              )}
-            >
-              {c.dir.slice(group.length + 1)}
-            </Link>
+    <nav
+      className={cn('flex shrink-0 flex-col border-b', open && 'max-h-[40%]')}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 px-2 pt-3 pb-1 text-xs font-medium text-muted-foreground"
+      >
+        <ChevronRight
+          className={cn('size-3 transition-transform', open && 'rotate-90')}
+        />
+        用例
+      </button>
+      {open && (
+        <div className="min-h-0 overflow-y-auto pb-2">
+          {groupCases(index).map(([group, cases]) => (
+            <section key={group} className="px-2 py-1">
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                {group}
+              </h2>
+              {cases.map((c) => (
+                <Link
+                  key={c.dir}
+                  to="/canvas"
+                  search={{ case: c.dir }}
+                  className={cn(
+                    'block truncate rounded-md px-2 py-1 hover:bg-muted',
+                    c.dir === current && 'bg-muted font-medium',
+                  )}
+                >
+                  {c.dir.slice(group.length + 1)}
+                </Link>
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
+        </div>
+      )}
     </nav>
   );
 }
@@ -262,12 +289,21 @@ export function CanvasPage() {
 
   return (
     <div className="fixed inset-0 flex">
-      {!shot && index && <CaseList index={index} current={search.case} />}
+      {!shot && (
+        <aside className="flex w-60 shrink-0 flex-col border-r bg-background text-sm">
+          {index && <CaseList index={index} current={search.case} />}
+          {editor && <LayerTree editor={editor} />}
+        </aside>
+      )}
       <div className={cn('relative flex-1', shot && 'figma-shot')}>
         <OverlayContext.Provider value={overlay}>
           <Tldraw
             shapeUtils={figmaShapeUtils}
             components={components}
+            tools={figmaTools}
+            overrides={figmaUiOverrides}
+            options={options}
+            getShapeVisibility={figmaShapeVisibility}
             textOptions={figmaTextOptions}
             hideUi={shot}
             onMount={handleMount}

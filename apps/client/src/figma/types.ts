@@ -191,6 +191,8 @@ export interface FigmaNode extends FigmaLayoutProps {
   clipsContent?: boolean;
   itemReverseZIndex?: boolean;
   characters?: string;
+  /** Text layers whose name follows their content (Figma's `autoRename`). */
+  autoRename?: boolean;
   style?: FigmaTypeStyle;
   characterStyleOverrides?: number[];
   styleOverrideTable?: Record<string, FigmaTypeStyle>;

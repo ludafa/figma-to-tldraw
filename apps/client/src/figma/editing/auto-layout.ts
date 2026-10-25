@@ -33,7 +33,7 @@ export function isAutoLayout(node: FigmaNode): boolean {
 }
 
 export function inFlow(node: FigmaNode): boolean {
-  return node.layoutPositioning !== 'ABSOLUTE';
+  return node.layoutPositioning !== 'ABSOLUTE' && node.visible !== false;
 }
 
 // See apps/docs/figma-to-tldraw/tech.md §13.2.
