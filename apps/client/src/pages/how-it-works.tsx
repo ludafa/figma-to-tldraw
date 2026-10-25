@@ -11,8 +11,7 @@ import { formatDiff } from '../showcase/score';
 
 // See apps/docs/figma-to-tldraw/tech.md §11.
 
-const EXAMPLE_CASE =
-  'real/google-gemini---built-with-material-3-de/gemini-macbook-pro-14---extension-screen';
+const EXAMPLE_CASE = 'real/50-landing-page-designs-community/designs-30';
 
 const PIPELINE: { title: string; code: string; text: string }[] = [
   {
@@ -115,6 +114,16 @@ const STEPS: { title: string; text: string; result: string }[] = [
     result:
       '33 页平均 4.71% → 0.38%，30 / 33 个小于 1%；原来的 118 个用例分数不变',
   },
+  {
+    title: '只留开源字体的用例',
+    text: '商业字体没有合法的网页版，只能用后备字体画，这部分差异和渲染无关。用到它们的 21 个用例（Gemini、Social App、Bankpick、FreshGo 四套和 Framer 的手机页）去掉，以后补用例也只用开源字体。',
+    result: '151 → 130 个用例，平均 0.13% → 0.066%，全部小于 1%',
+  },
+  {
+    title: '接上 Figma 组件',
+    text: '插件把实例用到的主组件一起导出，转换时按"主组件 + 覆盖"重建每个实例；主组件放在"组件"页，改主组件时实例跟着变，实例里的改动记成覆盖。',
+    result: '2025 个实例连上 1671 个；130 个用例的分数一个都没变',
+  },
 ];
 
 const FINDINGS: {
@@ -163,7 +172,7 @@ const FINDINGS: {
     title: '水平翻转',
     seen: '翻转过的图片，Figma 数据里写的是"旋转 180°"，照着画出来是上下颠倒的。',
     rule: '变换矩阵的行列式是负数就是镜像：拆成"先左右翻转、再旋转"，图形内容用 scaleX(-1) 翻过来。',
-    effect: 'FreshGo 首页 3.36% → 0.39%',
+    effect: 'FreshGo 首页 3.36% → 0.39%（这套稿子后来因字体去掉）',
   },
   {
     title: '只有描边的投影',
@@ -181,9 +190,9 @@ const FINDINGS: {
 
 const LIMITS = [
   '组透明度：Figma 是"先画在一起再整体变淡"，tldraw 是每个子图形各自变淡，重叠处会透出下层。上层是不透明的简单形状时已经补上；其他情况要把整个子树画成一个图形，属于架构改动，没做。',
-  '没有网页版的字体只能近似：Product Sans 用 Google Sans Flex 代替，剩下的差异都在字形上；Circular Std、Proxima Nova、SF Pro 这类商业字体拿不到合法的网页版，现在用 Inter 画，Social App 超过 1% 的 3 页差异几乎都在这些文字上。',
+  '只支持开源字体：Product Sans、Circular Std、SF Pro 这类商业字体拿不到合法的网页版，用到它们的用例已经去掉；稿子非用不可，只能由用户提供字体文件。',
   '图片滤镜用的是 Figma 渲染好的图，在 tldraw 里改不了滤镜参数。',
-  '图层现在只能选中和移动，缩放、旋转手柄关掉了。',
+  '编辑：能缩放、旋转、改文字和样式、自动布局、新建图层，矢量还不能改形状和颜色。组件：换实例属性只能看不能改，Slots 没做。',
   'Demo 阶段不做：和 Figma 实时同步、写回 Figma、性能优化。',
 ];
 
@@ -355,7 +364,7 @@ export function HowItWorksPage() {
 
       <Section
         title="4. 怎么量“像不像”"
-        lead="同一个用例，Figma 导出的图和 tldraw 的截图逐像素比。下面是 Gemini 的一页：左边 Figma，中间 tldraw，右边红色的点就是不一样的像素，几乎都在文字上（这页缺 Product Sans 字体，用近似字体代替）。"
+        lead="同一个用例，Figma 导出的图和 tldraw 的截图逐像素比。下面是差异最大的一页（50+ Landing 的 designs-30，0.86%）：左边 Figma，中间 tldraw，右边红色的点就是不一样的像素，主要在一个星形图案和一行粗体标题的边缘上。"
       >
         <div className="grid gap-3 sm:grid-cols-3">
           {(

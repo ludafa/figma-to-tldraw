@@ -41,17 +41,17 @@
 4. 在画布上点一个子图形 → 选中根 frame 下面包含它的那一层（2026-10-25 起和 Figma 一样，见第 18 条）；拖动根 frame → 子图形跟着动。
 5. 打开 `/canvas?case=不存在` → 工具条显示 1 条警告（读取失败 404），页面不崩。
 6. 打开 `reports/fidelity/latest/index.html` → 顶部有用例数、平均差异、小于 1% 的个数；表格按差异从大到小排，每行三张图。
-7. 打开 `/canvas?case=real/google-gemini---built-with-material-3-de/gemini-plugin-file-cover` → 工具条只有 1 条警告："缺字体：Product Sans 400（用 Google Sans Flex 近似代替）"；"Hello, Team" 里的 a 是双层的。
+7. （2026-10-26 起不再适用：Gemini 用例按只用开源字体的规则去掉了，tech.md §15。字体代替由 `fonts.test.ts` 兜底。）
 8. 打开 `/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop` → 截图模式（加 `&shot=1`）下整页都在画面里，包括超出 960 高的部分。
 9. 打开 `/canvas?case=image-filter/combined` → 下面那块色卡变暗、变暖、对比更强，和 `cases/image-filter/combined/expected@2x.png` 一样，工具条没有警告。
-10. 打开 `/showcase` → 顶部四个数字和最新报告一致（2026-10-25：151、0.13%、148、47）；卡片按分组排，有 10 个"真实稿子"分组，每组都有"社区原稿"链接；切到"按差异从大到小"后第一张是 Social App 的 `design-message`（1.94%）。
+10. 打开 `/showcase` → 顶部四个数字和最新报告一致（2026-10-26：130、0.07%、130、47）；卡片按分组排，有 6 个"真实稿子"分组，每组都有"社区原稿"链接；切到"按差异从大到小"后第一张是 50+ Landing 的 `designs-30`（0.86%）。
 11. 点开任意卡片 → 四格依次是 Figma 截图、tldraw 画布、差异图、差异分析，三张图大小一样、内容位置对得上；在画布上拖动会平移，点"复位"回到原位；按 → / ← 切换用例，Esc 回列表。
-12. 打开 `/showcase?case=real/google-gemini---built-with-material-3-de/gemini-macbook-pro-14---extension-screen` → "在 Figma 里打开"跳到用户草稿里的这一页，"社区原稿"跳到社区页面；差异分析写"最多的是文字，占 73%"；鼠标移到第一行「Turn Gemini Extension on or off anytime」上，差异图里这行标题被蓝框框住。
+12. 打开 `/showcase?case=real/50-landing-page-designs-community/designs-30` → "在 Figma 里打开"跳到用户草稿里的这一页，"社区原稿"跳到社区页面；差异分析写"最多的是图标和矢量，占 63%"；鼠标移到 "We take good care of your pet" 那一行上，差异图里这行标题被蓝框框住。（2026-10-26 前用的是 Gemini 的一页，已去掉。）
 13. 打开 `/how-it-works`（或在 `/showcase` 点"核心思路"）→ 开头四个数字和 `/showcase` 一样；第 2 节点左边的 "Primary button"，右边画布上的 Sign in 按钮被选中；在画布上点 "Forgot password?"，左边这一行高亮；第 4 节三张图都显示出来。
-14. 打开 `/canvas?case=real/freshgo---food-apps-food-delivery-app-ui/02-design-home` → 和 `expected@2x.png` 比，水平翻转过的那张图片方向一样，没有上下颠倒。
-15. 打开 `/canvas?case=real/saas-website-ui-kit-framer-website-kit-c/light-page-desktop` → 只有描边的卡片外面是淡淡的一圈影子，不是整块的深影子。换成 `light-page-mobile` → 页脚卡片 "Enhance your productivity by connecting" 后面换行。
+14. （2026-10-26 起不再适用：FreshGo 用例按只用开源字体的规则去掉了，tech.md §15。水平翻转由 `to-shapes.test.ts` 的镜像测试兜底。）
+15. 打开 `/canvas?case=real/saas-website-ui-kit-framer-website-kit-c/light-page-desktop` → 只有描边的卡片外面是淡淡的一圈影子，不是整块的深影子。（2026-10-26 起去掉了原来的后半句：`light-page-mobile` 用了 Switzer 字体，已按 tech.md §15 去掉。）
 16. 打开 `/canvas?case=real/50-landing-page-designs-community/designs-29` → 左边文字区块右下角后面的那艘船是清楚的，没有被糊掉。
-17. `pnpm --filter @figma-to-tldraw/client compare real/saas-website-ui-kit-framer-website-kit-c/light-page-mobile` → 9497 高的页面能截图，不报错，差异 1% 以下。
+17. `pnpm --filter @figma-to-tldraw/client compare real/furniture-e-commerce-community/design-homepage-1` → 6782 高的页面分 4 段截图拼起来，不报错；连跑几次都是 0.23%。（2026-10-26 前用的是 9497 高的 Framer 手机页，已去掉。）
 18. 打开 `/canvas?case=page/mobile-login`，单击 Sign in 按钮 → 选中 "Primary button"，不是整页；再双击按钮上的字 → 直接进入编辑，文字全选；按 Esc 退出编辑，再按 Esc 选中按钮，再按 Esc 选中整页，按 Enter 选中整页的全部子图层。
 19. 同一页，拖整页根 frame 的右边往右拉 100 → 输入框、按钮这些"填充"的子图层一起变宽，里面的内容跟着重新居中；按一次撤销，全部回到原样。
 20. 同一页，选中 Sign in 按钮慢慢往上拖 → 按钮上边越过上面图层的中线时两者交换，被越过的图层滑下去，按钮一直在鼠标下面、画在最上面；松手 → 按钮落进空位；撤销一次全部恢复。再拖一次，拖到一半按 Esc → 顺序和位置恢复原样。

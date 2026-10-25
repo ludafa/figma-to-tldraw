@@ -3,14 +3,10 @@ import type { CaseIndex, CaseSummary } from '../figma/types';
 // See apps/docs/figma-to-tldraw/tech.md §10.3.
 
 const UNTITLED_UI = 'real/untitled-ui-free-figma-ui-kit-and-design';
-const GEMINI = 'real/google-gemini---built-with-material-3-de';
 const LANDING_50 = 'real/50-landing-page-designs-community';
-const SOCIAL = 'real/social-app---free-ui-kit-community';
-const BANKING = 'real/free-banking-mobile-app-ui-kit-with-ligh';
 const FRAMER = 'real/saas-website-ui-kit-framer-website-kit-c';
 const E_LEARNING = 'real/mobile-e-learning-app-design-community';
 const GOLIO = 'real/golio---free-landing-page-ui-kit-design';
-const FRESHGO = 'real/freshgo---food-apps-food-delivery-app-ui';
 const FURNITURE = 'real/furniture-e-commerce-community';
 
 const GROUPS: Record<string, { label: string; note?: string }> = {
@@ -29,34 +25,25 @@ const GROUPS: Record<string, { label: string; note?: string }> = {
   mask: { label: '蒙版：椭圆蒙图片、星形蒙渐变' },
   misc: { label: '其他：隐藏图层、亚像素位置' },
   blend: { label: '混合模式' },
-  component: { label: '组件实例' },
+  component: {
+    label: '组件：主组件和实例',
+    note: '主组件就在用例里面。在调试页选中实例，右边面板有"实例"一节，改主组件时实例跟着变。',
+  },
   'image-filter': {
     label: '图片滤镜：曝光、对比度、饱和度、色温、色调、高光、阴影',
     note: '滤镜不是浏览器算的：插件导出时让 Figma 渲染了一份带滤镜的图。剩下的差异只在色卡相邻两行的分界线上，一个像素宽，没加滤镜的那块色卡也一样，是图片放大时的取样方式不同，和滤镜无关。',
   },
   [UNTITLED_UI]: {
     label: '真实稿子：Untitled UI',
-    note: '来自 Figma 社区的免费 UI 套件，只用 Inter 字体。第一次考试时没改任何渲染规则，24 页就都在 0.17% 以下。',
-  },
-  [GEMINI]: {
-    label: '真实稿子：Google Gemini',
-    note: '用到 Product Sans，这是 Google 的专有字体，没有网页版，所以用开源的 Google Sans Flex（字宽 93.5）近似代替，剩下的差异大多是字形不一样。考试时还发现并修好了 First on top 叠放、Red Hat Display 字体、文字渐变填充和图片滤镜。',
+    note: '来自 Figma 社区的免费 UI 套件，只用 Inter 字体。第一次考试时没改任何渲染规则，24 页就都在 0.17% 以下。按钮、头像、下拉框都是组件集里的实例，每页的快照带着整套组件（81 个组件集），在调试页的"组件"页能看到，选中实例可以切变体。',
   },
   [LANDING_50]: {
     label: '真实稿子：50+ Landing page designs',
     note: '6 张落地页，用 Poppins、Montserrat、Lato。Figma 的 Lato 是 2.0 版（有 Medium、SemiBold、ExtraBold），Google Fonts 上的是只有 5 个字重的老版本，所以换成 lato-font 包里的 Lato 2.0。designs-29 有一个藏起填充、只留背景模糊的容器，Figma 不画这种模糊，我们原来画了，修掉后 1.17% → 0.36%。',
   },
-  [SOCIAL]: {
-    label: '真实稿子：Social App',
-    note: '用了 Circular Std 和 Proxima Nova 两种商业字体，拿不到合法的网页版，现在退回 Inter 画。超过 1% 的 3 页差异几乎都在这些文字上（design-message 的差异像素 99% 是文字）。状态栏的 SF Pro 是苹果的字体，也没有加载。',
-  },
-  [BANKING]: {
-    label: '真实稿子：Bankpick 银行 App',
-    note: '手机页，Poppins 和 Inter。导出时有 3 个路径的 SVG 导出失败（onboarding-2 的 Path 266 / 292 / 318），那一块画不出来，但整页差异仍只有 0.17%。',
-  },
   [FRAMER]: {
     label: '真实稿子：SaaS Website UI Kit（Framer）',
-    note: '最长的一页 9497 高，2 倍截图超过 Chrome 一次能截的高度，所以改成分段截图再拼起来。这套稿子还暴露了三个问题：水平翻转的图层（Figma 数据里写成旋转 180°）、只有描边没有填充的图层的投影、文字里的 U+2028 换行符。DM Sans 要用老的 v1 版本，新版宽 1.5% 左右。',
+    note: '亮色、暗色两张桌面页。这套稿子暴露了三个问题：水平翻转的图层（Figma 数据里写成旋转 180°）、只有描边没有填充的图层的投影、文字里的 U+2028 换行符。DM Sans 要用老的 v1 版本，新版宽 1.5% 左右。手机页用了 Switzer 字体（npm 上没有），按只用开源字体的规则去掉了。按钮是带变体和文字属性的组件，在调试页可以切变体、改文字。',
   },
   [E_LEARNING]: {
     label: '真实稿子：Mobile E-Learning App',
@@ -66,13 +53,9 @@ const GROUPS: Record<string, { label: string; note?: string }> = {
     label: '真实稿子：Golio 落地页',
     note: '3 张 1920 宽的整站长页，Lexend 和 Inter。补上 Lexend 字体以后没改别的规则，都在 0.12% 以下。',
   },
-  [FRESHGO]: {
-    label: '真实稿子：FreshGo 外卖 App',
-    note: '手机页，只用 Inter。首页有一张水平翻转的图片，修好翻转以后 3.36% → 0.39%。',
-  },
   [FURNITURE]: {
     label: '真实稿子：Furniture 家具电商',
-    note: 'Lato 和 Montserrat。首页 6782 高，一次截完整页时，顶部大图和评价区有好几块是空白，Chrome 没把它们画出来（8.82%）；改成分段截图以后 0.23%。',
+    note: 'Lato 和 Montserrat。首页 6782 高，截图时 Chrome 会丢掉一些画面图块，同一页时好时坏（最多 9%）；改成浏览器窗口只开一段高、移动镜头分段截以后，每次都是 0.23%。',
   },
 };
 
@@ -80,7 +63,6 @@ const HELD_OUT =
   '留作考试的一页：修渲染规则时没看过它的差异图，用来检验规则对没见过的稿子是不是也管用。';
 
 const CASE_NOTES: Record<string, string> = {
-  [`${GEMINI}/gemini-macbook-pro-14---public-links-screen`]: HELD_OUT,
   [`${UNTITLED_UI}/informational-pages-mobile-2`]: HELD_OUT,
 };
 
