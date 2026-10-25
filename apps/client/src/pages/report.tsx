@@ -14,14 +14,15 @@ const GOALS: { title: string; status: 'done' | 'open'; result: string }[] = [
   },
   {
     title: '补不用商业字体的新用例',
-    status: 'open',
+    status: 'done',
     result:
-      '没做：要在 Figma 桌面版里复制社区稿子再导出，夜里屏幕锁着，自动操作用不了',
+      '补了 45 个（130 → 175）：50+ Landing 24 张、Furniture 15、E-Learning 4、Golio 2，为此装了 5 种开源字体。顺带修了 4 个文字问题，原来 130 个平均 0.0662% → 0.0645%，新的 45 个平均 0.19%',
   },
   {
     title: '导出所有主组件，重建主组件和实例的关联',
     status: 'done',
-    result: '2025 个实例连上 1671 个，15.8 万个字段里只有 70 个说不出来源',
+    result:
+      '175 个用例里 2033 个实例连上 1984 个，28.5 万个字段里只有 104 个说不出来源',
   },
   {
     title: '在 tldraw 里实现组件体系',
@@ -52,6 +53,54 @@ const REMOVED: { file: string; cases: number; fonts: string }[] = [
   { file: 'Bankpick 银行 App', cases: 5, fonts: 'SF Pro Display' },
   { file: 'FreshGo 外卖 App', cases: 3, fonts: 'SF Pro' },
   { file: 'SaaS Framer 手机页', cases: 1, fonts: 'Switzer（npm 上没有）' },
+];
+
+const ADDED: { file: string; cases: number; note: string }[] = [
+  {
+    file: '50+ Landing page designs',
+    cases: 24,
+    note: '55 张里原来有 6 张；16 张字体本来就在清单里，8 张装了 Work Sans、Zilla Slab、Roboto Mono、Bitter、Space Mono 以后补上；25 张用了 Avenir、Times、Helvetica 这些商业字体，没导',
+  },
+  {
+    file: 'Furniture 家具电商',
+    cases: 15,
+    note: '剩下的 15 页：首页 2～5、搜索 1～5、商品详情 2～3、下单流程 4 页，Lato + Montserrat，组件多',
+  },
+  {
+    file: 'Mobile E-Learning App',
+    cases: 4,
+    note: '线框图页的 4 张，只有形状',
+  },
+  {
+    file: 'Golio 落地页',
+    cases: 2,
+    note: 'Consulting 公司官网（15320px 高，最长的一页）和 Dribbble Shot',
+  },
+];
+
+const TEXT_FIXES: { problem: string; cause: string; fix: string }[] = [
+  {
+    problem: 'Lato 粗斜体的 “digital” 画成了正体',
+    cause:
+      '斜体一律写 oblique 10deg（给 Inter 用的），Chrome 遇到它不选真正的斜体字形',
+    fix: '只有 Inter 写 oblique 10deg，别的字体写 italic',
+  },
+  {
+    problem: 'Lato Light、Black 的字变宽，换行不一样',
+    cause: 'lato.css 只声明了 400～800，浏览器拿相邻的字重代替',
+    fix: '补上 300 和 900，每个字重都带斜体',
+  },
+  {
+    problem: '“beautiful” 里的 ti 没连起来',
+    cause: 'Chrome 在字间距不为 0 时关掉连字，Figma 不关',
+    fix: '有字间距时打开 liga、clig',
+  },
+  {
+    problem: '居中的标题整行偏左 6～7px',
+    cause:
+      '文字末尾有空格。Figma 居中、右对齐时不算行尾的空格，Chrome 的 pre-wrap 算',
+    fix: '居中、右对齐的固定宽度文字，画的时候去掉每段末尾的空格',
+  },
 ];
 
 const GROUPS: [string, number, string, string, string][] = [
@@ -93,10 +142,10 @@ const PIPELINE: { title: string; code: string; text: string }[] = [
 ];
 
 const FIELDS: [string, string, string][] = [
-  ['主组件', '149073', '和主组件一样，直接用主组件的值'],
-  ['Figma 的覆盖记录', '8104', '实例的 overrides 里列了这个字段'],
-  ['组件属性', '917', '布尔、文字、换实例属性管的字段'],
-  ['推断的覆盖', '70', '和主组件不一样又没记录，保留实例的值并补进覆盖'],
+  ['主组件', '275031', '和主组件一样，直接用主组件的值'],
+  ['Figma 的覆盖记录', '8529', '实例的 overrides 里列了这个字段'],
+  ['组件属性', '962', '布尔、文字、换实例属性管的字段'],
+  ['推断的覆盖', '104', '和主组件不一样又没记录，保留实例的值并补进覆盖'],
 ];
 
 const BEHAVIORS: { action: string; result: string }[] = [
@@ -173,6 +222,16 @@ const PROBLEMS: { title: string; seen: string; fix: string }[] = [
     fix: '每条先在 Node 里写测试复现、确认修之前失败再修，测试从 12 条加到 26 条。复现不出来的 2 条没改；"在主组件里重置嵌套实例，实例给那一层记的覆盖值会丢"记成已知问题。',
   },
   {
+    title: '夜里没法操作 Figma',
+    seen: '补新用例要在 Figma 桌面版里点插件导出。自动操作电脑的工具一直报“屏幕不可用”；Figma 桌面版又不认远程调试参数，没法像网页那样控制。',
+    fix: '换成 macOS 自带的办法：screencapture 截屏看界面，System Events 点菜单打开插件、等保存对话框，再写一个十几行的 Swift 小程序发鼠标点击。不选东西时插件导出整页的 frame，每页点一次。',
+  },
+  {
+    title: '新用例里的四个文字问题',
+    seen: '新补的 37 个用例第一次跑平均 0.29%，最差的 designs-48 2.29%，三个最差的都是 Lato 的稿子，差异几乎全在文字上。',
+    fix: '斜体画成正体、缺两个字重、有字间距时没有连字、居中文字算了行尾空格，四处都改了（见第 2 节）。全量重跑，老用例也跟着变好一点，没有变差的。',
+  },
+  {
     title: '家具首页时好时坏',
     seen: '同一页对比结果 0.23%、1.82%、2.62%、9.07% 都出现过，每次空白的地方不一样。',
     fix: '浏览器窗口按整页高度开，Chrome 要同时备好大约 245 MB 的画面图块，超了就丢块。改成窗口只有一段高、移动镜头分段截，每段截到稳定为止，连跑 4 次都是 0.23%。',
@@ -182,11 +241,13 @@ const PROBLEMS: { title: string; seen: string; fix: string }[] = [
 const SHOWCASE: string[] = [
   '展示页 /showcase：去掉 Gemini、Social App、Bankpick、FreshGo 四套稿子的分组和原稿链接；Framer、Furniture 的说明按现在的情况改写；顶上四个数字跟着最新报告变成 130 个用例。',
   '思路介绍页 /how-it-works：示例换成不缺字体的用例；"还做不到的"里去掉"只能移动"（现在能编辑），加上组件；字体那条规律改成"只用开源字体"。',
+  '展示页的分组说明：50+ Landing 从 6 张补到 30 张，Furniture 从 4 张到 19 张，E-Learning 多了 4 张线框图，Golio 多了 2 页，写明了没导的稿子用的是哪些商业字体。',
   '调试页 /canvas：图层树上面多了页面标签，能切到"组件"页；实例、主组件是紫色；面板多了"实例""组件"两节；网址加 select=<节点 id> 能直接选中一个图层。',
 ];
 
 const LEFT: string[] = [
-  '补新的开源字体用例：需要 Figma 桌面版和屏幕，等有人在电脑前时做。',
+  '50+ Landing 还有 25 张用了 Avenir、Times、Helvetica 这些商业字体，按规则没导。',
+  '大小字号混排的一行（designs-48 的 “digital”，1.24%）基线比 Figma 高 10px 左右；混排的规则只验证过一个用例。',
   '换实例属性（INSTANCE_SWAP）只显示不能改：Figma 给的候选是组件 key，导出的数据里对不上 node id。',
   'Slots、组件属性的新建和改名、变量模式都没做。',
   '在主组件里重置嵌套实例或给它切变体时，实例给那一层记的覆盖值会丢（覆盖记录还在）；Figma 里这种操作少，先记下。',
@@ -274,7 +335,7 @@ function Stats({ report }: { report: FidelityReport }) {
     [String(results.length), '用例（只用开源字体）'],
     [formatDiff(average), '平均差异'],
     [String(results.filter((r) => r.diff < 1).length), '差异小于 1%'],
-    ['1671', '连上主组件的实例'],
+    ['1984', '连上主组件的实例'],
   ];
   return (
     <div className="space-y-2">
@@ -392,7 +453,7 @@ export function ReportPage() {
 
       <Section
         title="2. 只留开源字体的用例"
-        lead="商业字体没有合法的网页版，浏览器只能用后备字体画，这部分差异和渲染无关，混在平均分里看不出真实水平。规则：一个用例只能用开源、能从 npm 装上的字体（Inter、Noto Sans SC、Red Hat Display、Poppins、Montserrat、Lato、DM Sans、Urbanist、Lexend、Nunito），导入脚本自动跳过不合规的用例。"
+        lead="商业字体没有合法的网页版，浏览器只能用后备字体画，这部分差异和渲染无关，混在平均分里看不出真实水平。规则：一个用例只能用开源、能从 npm 装上的字体（Inter、Noto Sans SC、Red Hat Display、Poppins、Montserrat、Lato、DM Sans、Urbanist、Lexend、Nunito，补新用例时又加了 Work Sans、Zilla Slab、Roboto Mono、Bitter、Space Mono），导入脚本自动跳过不合规的用例。"
       >
         <Table
           head={['去掉的稿子', '用例数', '用到的商业字体']}
@@ -402,6 +463,30 @@ export function ReportPage() {
           去掉的 21 个用例原来平均 0.549%，剩下的 130 个平均
           <b className="font-medium"> 0.1334% → 0.0662%</b>
           ：平均分里一半的差异来自商业字体。130 个全部小于 1%，47 个逐像素一致。
+        </p>
+        <h3 className="pt-2 font-medium">补的新用例</h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          按同一条规则从已经复制到草稿里的社区稿子补，优先挑组件多的页面。新装的
+          5 种字体先量过宽度，和 Figma 的比值在 0.991～1.001 之间。
+        </p>
+        <Table
+          head={['稿子', '补的用例', '说明']}
+          rows={ADDED.map((a) => [a.file, a.cases, a.note])}
+        />
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          第一次跑 37 个新用例（那时还没装新字体）平均 0.29%，最差的三个都是
+          Lato 的稿子。看差异图找到四个文字问题：
+        </p>
+        <Table
+          head={['问题', '原因', '改法']}
+          rows={TEXT_FIXES.map((f) => [f.problem, f.cause, f.fix])}
+        />
+        <p className="text-sm leading-relaxed">
+          改完以后 175 个用例平均 <b className="font-medium">0.0961%</b>，174
+          个小于 1%。原来的 130 个
+          <b className="font-medium"> 0.0662% → 0.0645%</b>
+          ，没有一个变差；新的 45 个平均 0.19%，最差的 designs-48 从 2.29% 降到
+          1.24%，剩下的差异在大小字号混排的那一行。
         </p>
       </Section>
 
@@ -463,10 +548,10 @@ export function ReportPage() {
           ])}
         />
         <p className="text-sm text-muted-foreground">
-          6 套真实稿子 43 个用例重新导出后：实例 2025
-          个（最外层和换过主组件的），连上主组件 1671 个，连不上的 354
-          个是主组件被删掉的；换过主组件的 333 个；图层 8203
-          个，实例比主组件多或少的图层都是 0。
+          175 个用例（2026-10-26 补完新用例后）：实例 2033
+          个（最外层和换过主组件的），连上主组件 1984 个，连不上的 49
+          个是主组件被删掉的（或嵌在这些实例里的）；换过主组件的 333 个；图层
+          15927 个，实例比主组件多或少的图层都是 0。
         </p>
       </Section>
 
@@ -546,6 +631,12 @@ export function ReportPage() {
           秒；截图对比时不建这一页。xhigh 审查修完后又全量跑了一遍：平均还是
           0.0662%，129 个用例差异像素数一个不差（high
           那轮只改了编辑时的同步，截图不经过这段代码）。
+        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          上面的表是 130 个用例时的结果。补到 175
+          个、修完四个文字问题以后全量再跑：平均 0.0961%，174 个小于 1%，48
+          个逐像素一致；差异最大的是 designs-48（1.24%），其次是
+          designs-30（0.855%）。
         </p>
         <p className="text-sm">
           <Link to="/showcase" className="underline underline-offset-4">

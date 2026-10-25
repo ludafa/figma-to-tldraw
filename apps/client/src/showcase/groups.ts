@@ -39,7 +39,7 @@ const GROUPS: Record<string, { label: string; note?: string }> = {
   },
   [LANDING_50]: {
     label: '真实稿子：50+ Landing page designs',
-    note: '6 张落地页，用 Poppins、Montserrat、Lato。Figma 的 Lato 是 2.0 版（有 Medium、SemiBold、ExtraBold），Google Fonts 上的是只有 5 个字重的老版本，所以换成 lato-font 包里的 Lato 2.0。designs-29 有一个藏起填充、只留背景模糊的容器，Figma 不画这种模糊，我们原来画了，修掉后 1.17% → 0.36%。',
+    note: '30 张落地页：稿子里一共 55 张，用了 Avenir、Times、Helvetica 这些商业字体的 25 张没导，剩下的用 Poppins、Montserrat、Lato，还有 8 张用 Work Sans、Zilla Slab、Roboto Mono、Bitter、Space Mono（2026-10-26 从 6 张补到 30 张，为此装了这 5 种开源字体）。designs-48 的 "digital" 是 Lato 粗斜体，原来画成了正体，修好后 2.29% → 1.24%；剩下的差异在大小字号混排的那一行，基线高了 10px 左右。Figma 的 Lato 是 2.0 版（有 Medium、SemiBold、ExtraBold），Google Fonts 上的是只有 5 个字重的老版本，所以换成 lato-font 包里的 Lato 2.0。designs-29 有一个藏起填充、只留背景模糊的容器，Figma 不画这种模糊，我们原来画了，修掉后 1.17% → 0.36%。',
   },
   [FRAMER]: {
     label: '真实稿子：SaaS Website UI Kit（Framer）',
@@ -47,15 +47,15 @@ const GROUPS: Record<string, { label: string; note?: string }> = {
   },
   [E_LEARNING]: {
     label: '真实稿子：Mobile E-Learning App',
-    note: '4 张手机页，Urbanist 和 Inter。补上 Urbanist 和 Inter Light（300）以后都在 0.21% 以下。',
+    note: '4 张手机页，Urbanist 和 Inter。补上 Urbanist 和 Inter Light（300）以后都在 0.21% 以下。另有 4 张线框图（Wireframe 页，只有形状没有文字），2026-10-26 补的。',
   },
   [GOLIO]: {
     label: '真实稿子：Golio 落地页',
-    note: '3 张 1920 宽的整站长页，Lexend 和 Inter。补上 Lexend 字体以后没改别的规则，都在 0.12% 以下。',
+    note: '5 张 1920 宽的整站长页，Lexend 和 Inter。补上 Lexend 字体以后没改别的规则，前 3 张都在 0.12% 以下。2026-10-26 补了 Consulting Company Website（15320 高，最长的一页）和 Dribbble Shot。',
   },
   [FURNITURE]: {
     label: '真实稿子：Furniture 家具电商',
-    note: 'Lato 和 Montserrat。首页 6782 高，截图时 Chrome 会丢掉一些画面图块，同一页时好时坏（最多 9%）；改成浏览器窗口只开一段高、移动镜头分段截以后，每次都是 0.23%。',
+    note: 'Lato 和 Montserrat。首页 6782 高，截图时 Chrome 会丢掉一些画面图块，同一页时好时坏（最多 9%）；改成浏览器窗口只开一段高、移动镜头分段截以后，每次都是 0.23%。2026-10-26 把 Design 页剩下的 15 张也导了（首页 2～5、搜索 1～5、商品详情 2～3、下单流程 4 张），一共 19 张，按钮、输入框、商品卡片都是组件。',
   },
 };
 

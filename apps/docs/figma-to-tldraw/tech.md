@@ -212,7 +212,8 @@ SVG 的 `stroke-dasharray` 只会从起点一直往下重复。所以矩形虚�
 - 字体：Inter 和 Noto Sans SC 用 npm 的 `@fontsource` 包加载，和 Figma 用同样的字重。代码在 `apps/client/src/figma/fonts.ts`。
 - Red Hat Display（2026-10-24，真实稿子考试补）：`@fontsource/red-hat-display` 5.3.0 的 400 和 700。常规字重宽度和 Figma 一样（28px 的 "Built with Material" 216.4px，Figma 217px）；粗体窄一点（"Unofficial Recreation" 272.2px，Figma 279px）。试过 4.0.0、4.5.12 和可变字体版 `@fontsource-variable/red-hat-display`，量出来都是 272.2px，没找到和 Figma 一样的版本，先接受。
 - **Inter 必须用 3.x 版本**（2026-10-24，第一份报告发现）：Figma 用的是 Inter 3.19，新版 Inter 4（`@fontsource/inter` 5.x）的字宽不一样，24px 的 "The quick brown fox jumps" 宽 306.9px，Figma 是 305px，3.19 量出来是 304.6px。所以锁定 `@fontsource/inter@4.5.15`（里面是 Inter 3.19）。也试过 Inter 4 的光学尺寸（`opsz`），24px 时只有 292.5px，更不对。
-- Inter 3.19 的字体包没有静态斜体。Figma 的 Inter Italic 是正体倾斜 10°，所以斜体改用同一个包里带倾斜轴的可变字体 `InterVariable`，CSS 写 `font-style: oblique 10deg`。
+- Inter 3.19 的字体包没有静态斜体。Figma 的 Inter Italic 是正体倾斜 10°，所以斜体改用同一个包里带倾斜轴的可变字体 `InterVariable`，CSS 写 `font-style: oblique 10deg`。只有 Inter 这样写；别的字体有真正的斜体字形，写 `font-style: italic`（`fonts.ts` 的 `fontStyleCss`）。
+  > 2026-10-24 → 2026-10-26 修订：原来所有字体的斜体都写 `oblique 10deg`。理由：Chrome 遇到 `oblique 10deg` 不选声明成 `italic` 的字形，选正体（实测 128px Lato Bold 的 "digital"，`oblique 10deg` 宽 349.64px，和正体一样；`italic` 宽 338.89px），Lato 的斜体全画成了正体（§15.1）。
 - 行高（2026-10-24 改过两次）：
   - 单位是 `INTRINSIC_%`（自动）时，Figma 实际用的是**四舍五入到整像素**的行高：16px 的 Inter 在 REST 里是 19.36，但 5 行的段落框高是 95 = 5 × 19；所有单行文字的框高也都是取整后的行高。所以自动行高 = `round(lineHeightPx ÷ 基础字号 × 这段的字号)`（`text/wrap` 0.93% → 0.02%）。
   - 同一段里字号不同的部分各自算行高，写在每个 `<span>` 上，大字会撑高所在的行（`text/mixed-styles` 2.15% → 0.57%）。
@@ -303,6 +304,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 
 **字体特性一律重置**：seed 项目给界面用的 Inter 在 `main.css` 设了 `font-feature-settings: 'cv11', 'ss01', 'ss03'`，画布里的文字会继承下来。Figma 渲染时不开这些特性，所以 `figma-text.tsx` 的 `runStyle` 把 `fontFeatureSettings` 设成 `normal`。原来用的 Inter 3.19 文件对这几个特性没有反应，所以以前没发现；Google Sans Flex 的 `ss01` 会把双层的 a 换成单层的 a，和 Product Sans 不一样（重置后 Gemini 平均 0.87% → 0.53%）。
 
+**有字间距时保留连字**（2026-10-26 补，§15.1）：Chrome 在 `letter-spacing` 不为 0 时自动关掉连字（`liga`、`clig`），Figma 不关。所以字间距不为 0 的文字 `fontFeatureSettings` 写成 `"liga" 1, "clig" 1`，其他照旧 `normal`。实测 Lato Black 56px、字间距 0.56px 的 "beautiful"：不加时 t 和 i 分开画，加了以后是 Figma 截图里的 ti 连字。
+
 ## 7. 对比脚本（2026-10-24）
 
 `apps/client/scripts/compare.ts`，命令 `pnpm --filter @figma-to-tldraw/client compare [用例…]`：
@@ -359,6 +362,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | 同步按 node 字段逐个抄（§16.4），图形上 node 以外的数据只抄了 `svg`、`images`、`imageSizes`、`maskPath`、`flipX`；以后图形加了新的 props 会漏                                                                                                                                    | 加 props 时同步检查 `syncInstances`                                                                                                        |
 | 在主组件里重置嵌套实例、给它切变体或换实例（§16.4 的 `swapMain` 作用在主组件里的图层上）时，同步是一次写入跑一次：先把每个实例里对应的图层删掉，再按主组件重新建。实例给这些图层记过的覆盖，值会丢，覆盖记录还在，之后这个字段跟不上主组件（code review 发现，2026-10-26，没修） | 要改成整个换主组件的操作结束后再同步、按名字路径把实例里的覆盖搬过去（像 `swapMain` 对单个实例做的那样）；Figma 里这种操作本来就少，先记下 |
 | "组件"页让大稿子打开变慢（Untitled UI 5.5 秒，§16.3）                                                                                                                                                                                                                            | 慢了再改成打开"组件"页时才建，或只建用例用到的主组件                                                                                       |
+| 居中、右对齐时去掉行尾空格（§15.1）只在 designs-50 上对过；宽度自动的文字没去，带下划线的行尾空格 Figma 画不画没查                                                                                                                                                               | 全量对比没有用例变差；碰到再查                                                                                                             |
+| 大小字号混排的一行，基线只按 `text/mixed-styles` 一个用例定的规则（§6.4）；designs-48 的 "digital" 一行比 Figma 高 10px 左右（§15.1）                                                                                                                                            | 记成已知问题，designs-48 1.24%；再碰到混排的用例时一起研究                                                                                 |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -501,21 +506,22 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 
 **怎么判断版本对不对**：拿稿子里"宽度自动、单行、没有样式覆盖、没有大小写变换、没有旋转"的文字，比 Figma 的 `absoluteRenderBounds.width`（字形实际画出来的宽度）和 Chrome `measureText` 的 `actualBoundingBoxLeft + actualBoundingBoxRight`，按字体和字重求平均比值。比值离 1 越近越对。脚本没有放进仓库（一次性的量具），做法就是上面这句。
 
-| 字体               | 用的包                                  | 字重                    | 实测比值（Chrome ÷ Figma） |
-| ------------------ | --------------------------------------- | ----------------------- | -------------------------- |
-| Poppins            | `@fontsource/poppins` 5.3.0             | 400、500、600、700      | 400：0.9999                |
-| Montserrat         | `@fontsource/montserrat` 5.3.0          | 400、500、600、700、800 | 0.989～1.000               |
-| Lato               | `lato-font` 3.0.0（Lato 2.0），见下面   | 400～800，含斜体        | 0.997～1.002               |
-| DM Sans            | `@fontsource/dm-sans` **4.5.9**（锁死） | 400、700                | 400：0.9999；700：0.9997   |
-| Urbanist           | `@fontsource/urbanist` 5.3.0            | 400、500、600           | 1.0000～1.0002             |
-| Lexend             | `@fontsource/lexend` 5.3.0              | 400、500、600、700      | 0.9999～1.0000             |
-| Nunito             | `@fontsource/nunito` 5.3.0              | 600                     | 没有能量的样本             |
-| Inter 300（Light） | 原来的 `@fontsource/inter` 4.5.15       | 300                     | 1.0000                     |
+| 字体               | 用的包                                  | 字重                    | 实测比值（Chrome ÷ Figma）      |
+| ------------------ | --------------------------------------- | ----------------------- | ------------------------------- |
+| Poppins            | `@fontsource/poppins` 5.3.0             | 400、500、600、700      | 400：0.9999                     |
+| Montserrat         | `@fontsource/montserrat` 5.3.0          | 400、500、600、700、800 | 0.989～1.000                    |
+| Lato               | `lato-font` 3.0.0（Lato 2.0），见下面   | 300～900，含斜体        | 0.997～1.002；300、900 见 §15.1 |
+| DM Sans            | `@fontsource/dm-sans` **4.5.9**（锁死） | 400、700                | 400：0.9999；700：0.9997        |
+| Urbanist           | `@fontsource/urbanist` 5.3.0            | 400、500、600           | 1.0000～1.0002                  |
+| Lexend             | `@fontsource/lexend` 5.3.0              | 400、500、600、700      | 0.9999～1.0000                  |
+| Nunito             | `@fontsource/nunito` 5.3.0              | 600                     | 没有能量的样本                  |
+| Inter 300（Light） | 原来的 `@fontsource/inter` 4.5.15       | 300                     | 1.0000                          |
 
 （实测，2026-10-25，151 个用例里的全部合格样本；Inter 400 有 483 段，平均 1.0001。）
 
 - **DM Sans 要用 v1**：`@fontsource/dm-sans` 5.x 和可变字体版是 DM Sans 4.0（加了光学尺寸），比 Figma 宽 1.5% 左右；4.5.9 里是老的 v1，和 Figma 一样。4.5.10 不存在，所以写死 4.5.9。
-- **Lato 要用 2.0**：Figma 的 Lato 有 Medium、SemiBold、ExtraBold，这是 Lato 2.0 才有的字重；Google Fonts 和 `@fontsource/lato` 是只有 5 个字重（100、300、400、700、900）的 Lato 1。`lato-font` 包（MIT + OFL，没有安装脚本）里是 Lato 2.0，但它自带的 CSS 把字重标错了，所以不用它的 CSS，自己在 `apps/client/src/figma/lato.css`（新）里按 Figma 的字重写 `@font-face`：normal 400、medium 500、semibold 600、bold 700、heavy 800，400、500、700 带斜体。
+- **Lato 要用 2.0**：Figma 的 Lato 有 Medium、SemiBold、ExtraBold，这是 Lato 2.0 才有的字重；Google Fonts 和 `@fontsource/lato` 是只有 5 个字重（100、300、400、700、900）的 Lato 1。`lato-font` 包（MIT + OFL，没有安装脚本）里是 Lato 2.0，但它自带的 CSS 把字重标错了，所以不用它的 CSS，自己在 `apps/client/src/figma/lato.css`（新）里按 Figma 的字重写 `@font-face`：light 300、normal 400、medium 500、semibold 600、bold 700、heavy 800、black 900，每个字重都带斜体。
+  > 2026-10-25 → 2026-10-26 修订：原来只有 400～800、400 / 500 / 700 带斜体，因为当时的用例只用到这些。新补的用例用到 Light 300 和 Black 900，没有对应字形时浏览器拿相邻的字重画，字变宽、换行跟着变（§15.1）。
 - 字体都在 `apps/client/src/figma/figma.css` 里 `@import`。
 
 **拿不到的字体**（照旧报"缺字体"警告，用后备字体 Inter 画，§9.6）：
@@ -674,6 +680,9 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 - product-list 的标签栏差 1/3～1 像素（Figma 自己的取整）。
 - Golio 的 5 个 "Company Logo" 差 6 像素（上面说的单个子图层居中）。
 - furniture 的 12 个 "Aspect ratio keeper # Rotated Auto Layout" 差 7.63 像素：用旋转的自动布局 frame 保持图片比例的技巧，Figma 的结果我们算不出来。
+
+> 2026-10-26 补：加了 45 个新用例（§15.1）以后，`auto-layout.test.ts` 里 21085 个图层有 59 个动。多出来的 36 个都是上面这个 "Aspect ratio keeper"：furniture 新导的首页 3、首页 4、商品详情 3 里各有一份同样的组件，每份 12 个。测试的上限从 24 改成 59。
+
 - Golio 旋转提示框里的 3 个矢量差 3～6 像素：旋转 frame 里矢量的渲染范围换算不准。
 - Gemini 一段文字重新量出来差 0.81 像素，它所在的 "Prompt Cards" 跟着动。
 
@@ -950,6 +959,54 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 **对比脚本加了重跑。** 全量跑 130 个用例时，偶尔有一两个用例截图时图片还没加载完（单独跑就正常），比如 Furniture 首页一次是 9.07%，单独跑 0.23%。`scripts/compare.ts` 现在对差异 ≥ 1%（`RETRY_ABOVE`）的用例自动再跑一次，取好的那次。重跑放在并行的一轮全部跑完以后、一个一个跑，打印 `重跑 <目录>：a% → b%`；一开始放在并行里马上重跑，机器还是忙的，Furniture 首页重跑也没好。
 
+### 15.1 补新用例（2026-10-26）
+
+§15 去掉商业字体的用例以后，按同一条规则补新用例（用户追加）。挑的是已经复制到草稿里、组件多、字体都开源的页面。
+
+**怎么导出的。** 夜里自动操作电脑的工具（computer use）一直报"屏幕不可用"；Figma 桌面版又不认 `--remote-debugging-port`（带这个参数重开过一次，端口没有监听），没法像网页那样用 CDP 控制。最后用的是 macOS 自带的几样东西：
+
+1. `screencapture -x` 截屏，看 Figma 现在是什么样；
+2. `osascript` 调 System Events 点菜单：`Plugins → Development → Fidelity Test Cases` 打开插件，用 `count (sheets of window 1)` 等保存对话框出来；
+3. 一个十几行的 Swift 小程序发鼠标点击（`CGEvent`），点插件面板里的"导出测试数据"和保存对话框的"保存"。
+
+插件不选中任何东西时导出当前页面所有最外层的 frame，所以每个页面点一次就够了。导出的 zip 照旧用 `pnpm --filter @figma-to-tldraw/client import-cases` 导入，按 §15 的规则跳过字体不在清单里的用例。小程序和截图都是一次性的，没有放进仓库。
+
+**补了哪些**（130 → 175 个用例）：
+
+| 稿子                     | 补的用例 | 说明                                                                                                                                                       |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 50+ Landing page designs | 24       | 一共 55 张，原来有 6 张（designs-25～30）。新导出的 49 张里 16 张字体本来就在清单里，8 张装了 5 种开源字体以后补上（见下面），25 张用了商业字体没导        |
+| Furniture                | 15       | Design 页剩下的 15 张（首页 2～5、搜索 1～5、商品详情 2～3、配送和付款、确认订单、物流、客户信息），都是 Lato + Montserrat，按钮、输入框、商品卡片都是组件 |
+| E-Learning               | 4        | Wireframe 页的 4 张线框图，只有形状，没有文字                                                                                                              |
+| Golio                    | 2        | Consulting 公司官网（15320px 高，目前最长的一页）和 Dribbble Shot                                                                                          |
+
+没导的 25 张落地页用的字体：Avenir 12 张、Times 12、Times New Roman 5、Helvetica / Helvetica Neue 4、Proxima Nova 1、PT Serif 1（有的一张用好几种）。
+
+**再装 5 种开源字体。** 另外 8 张只用了开源、但还没装的字体：Work Sans（designs-8）、Zilla Slab（24、35）、Roboto Mono（36、37、39）、Bitter + Space Mono（44、45）。按 §12.1 的办法量了 `@fontsource` 5.3.0 和 4.x 两个版本，和 Figma 的宽度比值都在 0.991～1.001（Roboto Mono 400 是 0.9914，10 段；Bitter、Space Mono 0.9995～1.0008；Work Sans、Zilla Slab 没有能量的样本），两个版本量出来几乎一样，装 5.3.0（锁死版本号），都是 OFL 许可。在 `figma.css` 里只引用用到的字重，名字加进 `OPEN_FONTS`。
+
+**第一次跑**（还没改代码，`reports/fidelity/20261026-013307/`）：37 个新用例平均 0.29%，35 个小于 1%。最差的三个都是 Lato 的稿子：designs-48 2.29%、designs-50 1.01%、designs-23 0.90%。看差异图找到四个问题，都是文字：
+
+| 问题                                                 | 原因                                                                                         | 改法                                                                                                                                                                     |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| designs-48 的 "digital"（Lato 粗斜体）画成正体       | 斜体一律写 `oblique 10deg`，Chrome 遇到它不选声明成 `italic` 的字形                          | 只有 Inter 写 `oblique 10deg`，别的字体写 `italic`（§6.4 的修订）                                                                                                        |
+| Lato Light（300）和 Black（900）的字变宽、换行不一样 | `lato.css` 只声明了 400～800，浏览器拿相邻字重代替                                           | 补上 300、900，每个字重都带斜体（§12.1 的修订）                                                                                                                          |
+| designs-50 标题里 "beautiful" 的 ti 没连起来         | Chrome 在字间距不为 0 时关掉连字，Figma 不关                                                 | 有字间距时打开 `liga`、`clig`（§6.9）                                                                                                                                    |
+| designs-50 标题第二行整行偏左 6～7px                 | 文字是 "…you need "，末尾有空格。Figma 居中、右对齐时不算行尾的空格，Chrome 的 `pre-wrap` 算 | 居中、右对齐、宽度固定的文字，画的时候去掉每段末尾的空格（`figma-text.tsx` 的 `trimTrailingSpaces`）；文字内容本身不改。宽度自动的文字（`pre`）不去，框宽是 Figma 量好的 |
+
+第四条全部用例里有 15 段文字、12 个用例碰到。
+
+**结果。** 先在 167 个用例上改完四处、全量重跑（`reports/fidelity/20261026-014551/`），和改之前（`20261026-005838` + `20261026-013307`）逐个比：平均 0.1164% → 0.0930%，变好的 19 个（designs-48 2.29% → 1.24%、designs-23 0.90% → 0.28%、designs-50 1.01% → 0.46%，老用例 designs-28 0.37% → 0.19%），变差的只有 designs-42、designs-51，各多 0.007%、0.006%：这两张的 Lato Light 和 Black 现在用上了真正的字形，看起来更像，像素差反而多了一点。再装 5 种字体、补上 8 张以后，最终全量 175 个（`reports/fidelity/20261026-015324/`，实测）：
+
+| 范围       | 用例 | 平均                      | 小于 1% | 逐像素一致 | 最大                 |
+| ---------- | ---- | ------------------------- | ------- | ---------- | -------------------- |
+| 原来的用例 | 130  | 0.0645%（改之前 0.0662%） | 130     | 47         | 0.855%（designs-30） |
+| 新补的用例 | 45   | 0.19%                     | 44      | 1          | 1.237%（designs-48） |
+| 全部       | 175  | 0.0961%                   | 174     | 48         | 1.237%               |
+
+新用例按稿子分：50+ Landing 24 张平均 0.24%，Furniture 15 页 0.16%，Golio 2 页 0.10%，E-Learning 线框图 4 张 0.004%。designs-48 剩下的差异在 "We are / digital / studio" 这段：72、128、88px 三种字号混排，"digital" 那一行的基线比 Figma 高 10px 左右，是 §6.4 混排规则没覆盖到的情况（风险表）。两次全量之间同一个用例的抖动最多 0.014%（designs-39，代码没变）。
+
+`auto-layout.test.ts` 整棵树重排的用例跟着变多，见 §13.2 的补充说明。
+
 ## 16. Figma 组件（2026-10-25，用户追加）
 
 用户定的目标（用户追加）：导出所有主组件，重新建立主组件和实例的关联；在 tldraw 里实现组件体系；逐个用例切换到新的组件体系，还原度不能下降。方向按 [probe-components.md](probe-components.md) §6 的方案 A：实例里的图层还是真实图形，实例记覆盖，主组件放单独的"组件"页，不用 tldraw 的绑定。调研里留给用户定的几件事，用户说"中途帮我做决定"，按调研的推荐定了：方案 A；主组件放"组件"页；组件集整套导出，变体超过 60 个的只导用到的。
@@ -1001,6 +1058,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 | 字段                    | 158164 个：主组件 149073，覆盖记录 8104，组件属性 917，推断 70                                   |
 | 多 / 少的图层           | 0 / 0；补上隐藏嵌套实例的图层 12 个                                                              |
 | 推断的字段              | `strokes` / `strokeWeight` / `styles` 各 16，`uniformScaleFactor` 10，`layoutSizing*` 10，其他 2 |
+
+> 2026-10-25 → 2026-10-26 修订：上表是最后一次重新导出之前量的。按最终的数据重新量：原来的 130 个用例实例 1733 个、连上 1693、找不到 40、推断 95；补完新用例（§15.1）以后 175 个用例：实例 2033 个，连上 1984，找不到 49（主组件被删了的，或嵌在这些实例里的），换过主组件 333；图层 15927 个；字段 284626 个：主组件 275031，覆盖记录 8529，组件属性 962，推断 104；多 / 少的图层 0 / 0，补上隐藏嵌套实例的图层 96 个。推断的字段：`strokeWeight` 36，`strokes` / `styles` 各 16，`uniformScaleFactor` 15，`layoutSizing*` 13，`exportSettings` 7，`characters` 1。汇报页和施工计划里的数字按新的写。
 
 推断的字段从一开始的 1650 个降到 70 个，降的那部分是三类规则没写对：换过主组件的嵌套实例要和新主组件比（330 个 `componentId`、218 个 `componentProperties`……）；`fills` 的覆盖也覆盖了 `styles`；`background` 这些派生字段不比。`uniformScaleFactor` 是缩放过的实例（调研里说的 37 个那类），整个实例按比例缩放，Figma 不把它算进覆盖。
 
@@ -1107,13 +1166,15 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 | --------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------- |
 | 开头                  | 一句话说明这一轮做了什么，四个数字：用例数、平均差异、小于 1% 的个数实时读最新报告，连上主组件的实例数写死 | `loadLatestReport()`；§16.2 |
 | 1. 六件事做到哪了     | 用户定的六件事，每件一行结果；没做完的写明原因                                                             | `docs/施工计划.md` 第 10 步 |
-| 2. 只留开源字体的用例 | 规则、去掉的稿子和字体、前后平均分                                                                         | §15                         |
+| 2. 只留开源字体的用例 | 规则、去掉的稿子和字体、前后平均分；补的新用例、新装的字体、修的四个文字问题、补完的平均分                 | §15、§15.1                  |
 | 3. 实现思路           | 插件找主组件 → 快照 `mains` → 按主组件重建 → "组件"页 → 组件引擎，五步；id 怎么对上；字段来源表            | §16.1～§16.3                |
 | 4. tldraw 里的组件    | 操作和结果的表；两个能直接玩的例子                                                                         | §16.4、§16.5                |
-| 5. 遇到的问题         | 七个问题，每个写看到了什么、怎么修的                                                                       | §12.2、§16.1～§16.4         |
-| 6. 效果               | 切换前后逐个用例比的结果、差异最大的几个用例                                                               | verification.md §4          |
+| 5. 遇到的问题         | 九个问题，每个写看到了什么、怎么修的                                                                       | §12.2、§15.1、§16.1～§16.4  |
+| 6. 效果               | 切换前后逐个用例比的结果、补新用例以后的全量结果、差异最大的几个用例                                       | verification.md §4          |
 | 7. 展示页的更新       | `/showcase`、`/how-it-works`、`/canvas` 各改了什么                                                         | §10、§11、§16.5             |
-| 8. 还没做的           | 新用例、换实例属性、Slots、打开速度                                                                        | §8、§16                     |
+| 8. 还没做的           | 用商业字体的落地页、大小字号混排、换实例属性、Slots、打开速度                                              | §6.4、§8、§15.1、§16        |
+
+> 2026-10-26 补：补了新用例（§15.1）以后，第 1 节第 2 件事改成做完，第 2、5、6、8 节加了新用例的内容，组件的数字换成 175 个用例重新量的（§16.2）。
 
 除了开头的三个实时数字，其余数字都写死在页面里，是 tech.md、verification.md 的摘要，改了相关做法时要一起改。
 

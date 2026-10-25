@@ -86,7 +86,7 @@ function runStyle(style: FigmaTypeStyle, node: FigmaNode): CSSProperties {
     fontFamily: fontFamilyCss(style),
     fontVariationSettings: fontVariationCss(style),
     // See apps/docs/figma-to-tldraw/tech.md §6.9.
-    fontFeatureSettings: 'normal',
+    fontFeatureSettings: style.letterSpacing ? '"liga" 1, "clig" 1' : 'normal',
     fontWeight: style.fontWeight,
     fontStyle: fontStyleCss(style),
     fontSize: style.fontSize,
@@ -168,6 +168,23 @@ function paragraphs(runs: Run[]): Run[][] {
     });
   }
   return out;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §15.1.
+function trimTrailingSpaces(paras: Run[][]): Run[][] {
+  return paras.map((para) => {
+    const out = [...para];
+    while (out.length) {
+      const last = out[out.length - 1];
+      const text = last.text.replace(/ +$/, '');
+      if (text) {
+        out[out.length - 1] = { ...last, text };
+        break;
+      }
+      out.pop();
+    }
+    return out;
+  });
 }
 
 // See apps/docs/figma-to-tldraw/tech.md §6.4.
@@ -310,7 +327,12 @@ function textLayout(node: FigmaNode, w: number, h: number): TextLayout {
         : undefined))
     : undefined;
 
-  const paras = paragraphs(textRuns(node));
+  const align = style.textAlignHorizontal;
+  const paras =
+    autoResize !== 'WIDTH_AND_HEIGHT' &&
+    (align === 'CENTER' || align === 'RIGHT')
+      ? trimTrailingSpaces(paragraphs(textRuns(node)))
+      : paragraphs(textRuns(node));
   const gradient = paras
     .flat()
     .map((run) => gradientFill(run.style, node))
