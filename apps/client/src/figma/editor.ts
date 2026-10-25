@@ -18,11 +18,16 @@ export function putSnapshot(
     assetBase,
   });
   withoutFigmaEffects(editor, () =>
-    editor.run(() => {
-      editor.selectNone();
-      editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
-      editor.createShapes<FigmaShape>(shapes);
-    }),
+    editor.run(
+      () => {
+        editor.selectNone();
+        editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
+        editor.createShapes<FigmaShape>(shapes);
+      },
+      { history: 'ignore' },
+    ),
   );
+  // See apps/docs/figma-to-tldraw/tech.md §13.
+  editor.clearHistory();
   return [...snapshot.meta.warnings, ...warnings];
 }

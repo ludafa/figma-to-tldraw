@@ -8,6 +8,7 @@ import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 import { cn } from '@/lib/utils';
 
 import {
+  FigmaStylePanel,
   figmaTextOptions,
   relayoutAll,
   startFigmaEditing,
@@ -80,7 +81,10 @@ function ExpectedOverlay() {
   );
 }
 
-const components: TLComponents = { OnTheCanvas: ExpectedOverlay };
+const components: TLComponents = {
+  OnTheCanvas: ExpectedOverlay,
+  StylePanel: FigmaStylePanel,
+};
 
 function showSnapshot(
   editor: Editor,

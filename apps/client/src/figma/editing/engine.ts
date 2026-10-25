@@ -20,6 +20,7 @@ import {
   relayout,
 } from './auto-layout';
 import { constrain } from './constraints';
+import { type DragStyle, installDragStyle } from './drag-style';
 import {
   figmaChildren,
   figmaParent,
@@ -43,6 +44,8 @@ interface EditingState {
   dirty: Set<TLShapeId>;
   measure: MeasureText;
   slack: Map<TLShapeId, Slack>;
+  dragged: Set<TLShapeId>;
+  dragStyle: DragStyle;
 }
 
 const STATES = new WeakMap<Editor, EditingState>();
@@ -299,6 +302,18 @@ function onChange(
   }
   const translating = editor.isIn('select.translating');
   if (
+    moved &&
+    translating &&
+    inFlow(node) &&
+    editor.getSelectedShapeIds().includes(next.id)
+  ) {
+    const parent = figmaParent(editor, next);
+    if (parent && isAutoLayout(parent.props.node)) {
+      state.dragged.add(next.id);
+      state.dragStyle.show();
+    }
+  }
+  if (
     (inFlow(prev.props.node) || inFlow(node)) &&
     (sized ||
       nodeChanged ||
@@ -311,7 +326,18 @@ function onChange(
 }
 
 function flush(editor: Editor, state: EditingState) {
-  if (state.paused || !state.dirty.size) {
+  if (state.paused) {
+    return;
+  }
+  for (const id of state.dragged) {
+    const shape = editor.getShape(id) as FigmaShape | undefined;
+    const parent = shape && figmaParent(editor, shape);
+    if (parent) {
+      swap(editor, parent, shape);
+    }
+  }
+  state.dragged.clear();
+  if (!state.dirty.size) {
     return;
   }
   const ids = [...state.dirty].filter((id) => editor.getShape(id));
@@ -320,7 +346,12 @@ function flush(editor: Editor, state: EditingState) {
     ids.map((id) => [id, editor.getShapeAncestors(id).length]),
   );
   ids.sort((a, b) => depth.get(b)! - depth.get(a)!);
-  const host = tldrawLayoutHost(editor);
+  const host = tldrawLayoutHost(
+    editor,
+    editor.isIn('select.translating')
+      ? new Set(editor.getSelectedShapeIds())
+      : undefined,
+  );
   for (const id of ids) {
     const shape = editor.getShape(id) as FigmaShape;
     if (isGroup(shape)) {
@@ -340,6 +371,8 @@ export function enableFigmaEditing(
     dirty: new Set(),
     measure,
     slack: new Map(),
+    dragged: new Set(),
+    dragStyle: installDragStyle(editor),
   };
   STATES.set(editor, state);
   const { sideEffects } = editor;
@@ -370,6 +403,7 @@ export function enableFigmaEditing(
   ];
   return () => {
     offs.forEach((off) => off());
+    state.dragStyle.dispose();
     STATES.delete(editor);
   };
 }
@@ -425,6 +459,33 @@ function withSizing(
   return out;
 }
 
+export function setSizing(
+  node: FigmaNode,
+  axis: Axis,
+  sizing: FigmaLayoutSizing,
+  parent: FigmaNode | undefined,
+): FigmaNode {
+  let next = node;
+  if (node.type === 'TEXT') {
+    const mode = node.style?.textAutoResize ?? 'NONE';
+    let resize = mode;
+    if (axis === 'x') {
+      resize =
+        sizing === 'HUG'
+          ? 'WIDTH_AND_HEIGHT'
+          : mode === 'WIDTH_AND_HEIGHT'
+            ? 'HEIGHT'
+            : mode;
+    } else {
+      resize = sizing === 'HUG' ? (mode === 'NONE' ? 'HEIGHT' : mode) : 'NONE';
+    }
+    if (resize !== mode) {
+      next = withAutoResize(node, resize);
+    }
+  }
+  return withSizing(next, axis, sizing, parent);
+}
+
 export function figmaResize(
   editor: Editor,
   shape: FigmaShape,
@@ -471,26 +532,42 @@ export function resizedNode(
   return node;
 }
 
-// See apps/docs/figma-to-tldraw/tech.md §13.2.
-function reorder(editor: Editor, parent: FigmaShape, shape: FigmaShape) {
+// See apps/docs/figma-to-tldraw/tech.md §13.6.
+function swap(editor: Editor, parent: FigmaShape, shape: FigmaShape) {
+  if (!isAutoLayout(parent.props.node) || !inFlow(shape.props.node)) {
+    return;
+  }
   const horiz = parent.props.node.layoutMode === 'HORIZONTAL';
+  const span = (c: FigmaShape) => {
+    const b = layoutBox(c);
+    return horiz ? [b.x, b.x + b.w] : [b.y, b.y + b.h];
+  };
+  const mid = (c: FigmaShape) => {
+    const [a, b] = span(c);
+    return (a + b) / 2;
+  };
   const flow = figmaChildren(editor, parent.id).filter((c) =>
     inFlow(c.props.node),
   );
-  const center = (c: FigmaShape) => {
-    const b = layoutBox(c);
-    return horiz ? b.x + b.w / 2 : b.y + b.h / 2;
-  };
   const others = flow.filter((c) => c.id !== shape.id);
-  const mine = center(shape);
-  let slot = others.findIndex((c) => mine < center(c));
-  if (slot < 0) {
-    slot = others.length;
-  }
-  const order = [...others.slice(0, slot), shape, ...others.slice(slot)];
-  if (order.every((c, i) => c.id === flow[i]?.id)) {
+  const from = flow.findIndex((c) => c.id === shape.id);
+  if (from < 0) {
     return;
   }
+  const [start, end] = span(shape);
+  let slot = from;
+  while (slot > 0 && start < mid(others[slot - 1])) {
+    slot--;
+  }
+  if (slot === from) {
+    while (slot < others.length && end > mid(others[slot])) {
+      slot++;
+    }
+  }
+  if (slot === from) {
+    return;
+  }
+  const order = [...others.slice(0, slot), shape, ...others.slice(slot)];
   const zOrder = parent.props.node.itemReverseZIndex ? order.reverse() : order;
   const at = zOrder.findIndex((c) => c.id === shape.id);
   const below = zOrder[at - 1]?.index as IndexKey | undefined;
@@ -508,7 +585,7 @@ export function figmaTranslateEnd(editor: Editor, shape: FigmaShape) {
     return;
   }
   if (isAutoLayout(parent.props.node) && inFlow(shape.props.node)) {
-    reorder(editor, parent, editor.getShape(shape.id) as FigmaShape);
+    swap(editor, parent, editor.getShape(shape.id) as FigmaShape);
     relayout(tldrawLayoutHost(editor), parent.id);
   } else if (isGroup(parent)) {
     const state = STATES.get(editor);

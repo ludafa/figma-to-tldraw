@@ -113,7 +113,11 @@ export function figmaParent(
   return isFigmaShape(parent) ? parent : undefined;
 }
 
-export function tldrawLayoutHost(editor: Editor): LayoutHost<TLShapeId> {
+/** `pinned` layers keep their place (the one being dragged). */
+export function tldrawLayoutHost(
+  editor: Editor,
+  pinned?: ReadonlySet<TLShapeId>,
+): LayoutHost<TLShapeId> {
   const shape = (id: TLShapeId) => editor.getShape(id) as FigmaShape;
   return {
     node: (id) => shape(id).props.node,
@@ -133,6 +137,9 @@ export function tldrawLayoutHost(editor: Editor): LayoutHost<TLShapeId> {
     box: (id) => layoutBox(shape(id)),
     rigid: (id) => isRigid(shape(id)),
     setBox: (id, box) => {
+      if (pinned?.has(id)) {
+        return;
+      }
       editor.updateShape<FigmaShape>(placeBox(shape(id), box));
     },
   };

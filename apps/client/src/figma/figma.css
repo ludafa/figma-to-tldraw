@@ -60,6 +60,14 @@
   margin-bottom: var(--figma-paragraph-spacing);
 }
 
+/* See apps/docs/figma-to-tldraw/tech.md §13.4. */
+.tlui-style-panel:has(.figma-panel) {
+  width: 252px;
+  max-width: 252px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
 .tl-shape:has([data-figma-blend='darken']) {
   mix-blend-mode: darken;
 }
