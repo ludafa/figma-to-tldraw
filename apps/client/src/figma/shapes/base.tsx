@@ -6,12 +6,20 @@ import {
   type RecordProps,
   ShapeUtil,
   T,
+  type TLResizeInfo,
   type TLShapeId,
+  type TLShapePartial,
   useEditor,
   useValue,
 } from 'tldraw';
 
 import { clipPathsFor } from '../clip';
+import {
+  figmaResize,
+  figmaTranslateEnd,
+  isFigmaEditing,
+} from '../editing/engine';
+import { figmaDoubleClick } from '../editing/selection';
 import type {
   FigmaShape,
   FigmaShapeProps,
@@ -62,16 +70,45 @@ export abstract class FigmaShapeUtil<
     return new Rectangle2d({ width: w, height: h, isFilled: true });
   }
 
+  // See apps/docs/figma-to-tldraw/tech.md §13.1.
   override canResize() {
-    return false;
+    return isFigmaEditing(this.editor);
   }
 
   override hideResizeHandles() {
-    return true;
+    return !isFigmaEditing(this.editor);
   }
 
   override hideRotateHandle() {
-    return true;
+    return !isFigmaEditing(this.editor);
+  }
+
+  override canResizeChildren(shape: FigmaShape<Type>) {
+    return shape.props.node.type === 'GROUP';
+  }
+
+  override onResize(
+    shape: FigmaShape<Type>,
+    info: TLResizeInfo<FigmaShape<Type>>,
+  ) {
+    return figmaResize(
+      this.editor,
+      shape as FigmaShape,
+      info as unknown as TLResizeInfo<FigmaShape>,
+    );
+  }
+
+  override onTranslateEnd(
+    _initial: FigmaShape<Type>,
+    current: FigmaShape<Type>,
+  ) {
+    figmaTranslateEnd(this.editor, current as FigmaShape);
+  }
+
+  override onDoubleClick(shape: FigmaShape<Type>) {
+    return figmaDoubleClick(this.editor, shape as FigmaShape) as
+      | TLShapePartial<FigmaShape<Type>>
+      | undefined;
   }
 
   override canEdit() {

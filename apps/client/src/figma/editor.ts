@@ -1,5 +1,6 @@
 import type { Editor } from 'tldraw';
 
+import { withoutFigmaEffects } from './editing/engine';
 import type { FigmaShape } from './shape-types';
 import { snapshotToShapes } from './to-shapes';
 import type { Snapshot } from './types';
@@ -16,10 +17,12 @@ export function putSnapshot(
     idPrefix,
     assetBase,
   });
-  editor.run(() => {
-    editor.selectNone();
-    editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
-    editor.createShapes<FigmaShape>(shapes);
-  });
+  withoutFigmaEffects(editor, () =>
+    editor.run(() => {
+      editor.selectNone();
+      editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
+      editor.createShapes<FigmaShape>(shapes);
+    }),
+  );
   return [...snapshot.meta.warnings, ...warnings];
 }

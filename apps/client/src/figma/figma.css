@@ -33,6 +33,9 @@
 .figma-vector > svg {
   display: block;
   overflow: visible;
+  /* See apps/docs/figma-to-tldraw/tech.md §13.1. */
+  width: 100%;
+  height: 100%;
 }
 
 .tl-shape:has([data-figma-blend='darken']) {

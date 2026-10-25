@@ -125,7 +125,40 @@ export interface FigmaArcData {
   innerRadius: number;
 }
 
-export interface FigmaNode {
+export type FigmaLayoutSizing = 'FIXED' | 'HUG' | 'FILL';
+
+export interface FigmaLayoutConstraint {
+  horizontal: 'LEFT' | 'RIGHT' | 'CENTER' | 'LEFT_RIGHT' | 'SCALE';
+  vertical: 'TOP' | 'BOTTOM' | 'CENTER' | 'TOP_BOTTOM' | 'SCALE';
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §13.2.
+export interface FigmaLayoutProps {
+  layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID';
+  layoutWrap?: 'NO_WRAP' | 'WRAP';
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  itemSpacing?: number;
+  primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
+  counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  primaryAxisSizingMode?: 'FIXED' | 'AUTO';
+  counterAxisSizingMode?: 'FIXED' | 'AUTO';
+  strokesIncludedInLayout?: boolean;
+  layoutAlign?: 'INHERIT' | 'STRETCH' | 'MIN' | 'CENTER' | 'MAX';
+  layoutGrow?: number;
+  layoutPositioning?: 'AUTO' | 'ABSOLUTE';
+  layoutSizingHorizontal?: FigmaLayoutSizing;
+  layoutSizingVertical?: FigmaLayoutSizing;
+  minWidth?: number | null;
+  maxWidth?: number | null;
+  minHeight?: number | null;
+  maxHeight?: number | null;
+  constraints?: FigmaLayoutConstraint;
+}
+
+export interface FigmaNode extends FigmaLayoutProps {
   id: string;
   name: string;
   type: string;

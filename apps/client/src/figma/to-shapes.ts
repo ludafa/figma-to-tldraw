@@ -65,7 +65,7 @@ function shapeTypeFor(node: FigmaNode): FigmaShapeType | undefined {
   return SHAPE_TYPES[node.type];
 }
 
-function svgSize(svg: string): { w: number; h: number } | undefined {
+export function svgSize(svg: string): { w: number; h: number } | undefined {
   const match = /<svg[^>]*?\swidth="([\d.]+)"[^>]*?\sheight="([\d.]+)"/.exec(
     svg,
   );

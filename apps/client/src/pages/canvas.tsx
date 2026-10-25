@@ -7,6 +7,7 @@ import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
+import { relayoutAll, startFigmaEditing } from '../figma/editing';
 import { putSnapshot } from '../figma/editor';
 import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
@@ -19,6 +20,7 @@ import type { CaseIndex, Snapshot } from '../figma/types';
 declare global {
   interface Window {
     editor?: Editor;
+    __figmaRelayoutAll?: () => void;
     __figmaReady?: boolean;
     __figmaWarnings?: string[];
   }
@@ -235,8 +237,10 @@ export function CanvasPage() {
   function handleMount(e: Editor) {
     if (import.meta.env.DEV) {
       window.editor = e;
+      window.__figmaRelayoutAll = () => relayoutAll(e);
     }
     setEditor(e);
+    return startFigmaEditing(e);
   }
 
   const overlay: Overlay | null =
