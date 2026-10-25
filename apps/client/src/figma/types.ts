@@ -196,7 +196,56 @@ export interface FigmaNode extends FigmaLayoutProps {
   style?: FigmaTypeStyle;
   characterStyleOverrides?: number[];
   styleOverrideTable?: Record<string, FigmaTypeStyle>;
+  styles?: Record<string, string>;
+  /** Instances: the main component's node id. */
+  componentId?: string;
+  componentProperties?: Record<string, FigmaComponentProperty>;
+  componentPropertyDefinitions?: Record<
+    string,
+    FigmaComponentPropertyDefinition
+  >;
+  /** Which of this layer's fields a component property drives. */
+  componentPropertyReferences?: Record<string, string>;
+  overrides?: FigmaOverride[];
+  uniformScaleFactor?: number;
+  /** Component sets exported with only the variants a page uses. */
+  partial?: boolean;
+  variantCount?: number;
   children?: FigmaNode[];
+}
+
+export type FigmaComponentPropertyType =
+  | 'BOOLEAN'
+  | 'TEXT'
+  | 'INSTANCE_SWAP'
+  | 'VARIANT'
+  | 'SLOT';
+
+export interface FigmaComponentProperty {
+  type: FigmaComponentPropertyType;
+  value: string | boolean;
+  preferredValues?: { type: string; key: string }[];
+}
+
+export interface FigmaComponentPropertyDefinition {
+  type: FigmaComponentPropertyType;
+  defaultValue?: string | boolean;
+  variantOptions?: string[];
+  preferredValues?: { type: string; key: string }[];
+}
+
+/** Fields an instance changed on one of its layers (or on itself). */
+export interface FigmaOverride {
+  id: string;
+  overriddenFields: string[];
+}
+
+export interface FigmaComponentMeta {
+  key: string;
+  name: string;
+  description?: string;
+  remote?: boolean;
+  componentSetId?: string;
 }
 
 // See apps/docs/figma-to-tldraw/tech.md §4.2.
@@ -221,13 +270,22 @@ export interface SnapshotMeta {
   imageSizes?: Record<string, { width: number; height: number }>;
   masks?: Record<string, string>;
   warnings: string[];
+  /** Main components and sets exported next to the page. */
+  mains?: number;
+  mainFonts?: string[];
 }
 
 export interface Snapshot {
   meta: SnapshotMeta;
-  rest: { document: FigmaNode };
+  rest: {
+    document: FigmaNode;
+    components?: Record<string, FigmaComponentMeta>;
+    componentSets?: Record<string, FigmaComponentMeta>;
+  };
   svgs: Record<string, string>;
   transforms?: Record<string, NodeTransform>;
+  /** Main components (or whole component sets) the page's instances use, by node id. */
+  mains?: Record<string, FigmaNode>;
 }
 
 export interface CaseSummary {

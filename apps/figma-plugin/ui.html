@@ -58,6 +58,13 @@
     <button id="exp" class="secondary">导出测试数据</button>
   </div>
 
+  <div class="step">
+    <b>3. 按列表导出</b>
+    <span>贴一段 JSON：[{"id": "节点 id", "dir": "用例目录"}…]，按 id 找节点、按给定目录导出。用来原样重新导出已有的用例。</span>
+    <textarea id="list" rows="4" style="width:100%;font:11px monospace"></textarea>
+    <button id="expList" class="secondary">按列表导出</button>
+  </div>
+
   <div id="status"></div>
   <div id="log"></div>
 
@@ -236,6 +243,7 @@ function log(text, isErr) {
 function busy(on) {
   $gen.disabled = on;
   $exp.disabled = on;
+  document.getElementById("expList").disabled = on;
 }
 
 function send(msg) {
@@ -265,6 +273,20 @@ $exp.onclick = function () {
   $log.innerHTML = '';
   $status.textContent = '开始导出…';
   send({ type: 'export' });
+};
+
+document.getElementById('expList').onclick = function () {
+  var items;
+  try {
+    items = JSON.parse(document.getElementById('list').value);
+  } catch (e) {
+    log('列表不是合法的 JSON：' + e.message, true);
+    return;
+  }
+  busy(true);
+  $log.innerHTML = '';
+  $status.textContent = '开始导出 ' + items.length + ' 个…';
+  send({ type: 'export-list', items: items });
 };
 
 var exportState = null;
@@ -324,6 +346,7 @@ onmessage = function (event) {
       exportState.files.push({ name: 'cases/' + f.path, data: f.bytes ? f.bytes : enc.encode(f.text) });
     });
     exportState.cases.push(msg.summary);
+    log(msg.summary.name + '：主组件 ' + msg.summary.mains + ' 个');
     msg.summary.warnings.forEach(function (w) { log('  ⚠ ' + w, true); });
   } else if (msg.type === 'export-error') {
     exportState.errors.push({ name: msg.name, error: msg.text });

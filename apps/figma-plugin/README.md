@@ -26,6 +26,12 @@ pnpm --filter @figma-to-tldraw/client import-cases ~/Downloads/figma-test-cases-
 
 完全被裁掉、画不出东西的节点（`absoluteRenderBounds` 为空）不导出 SVG，也不报警告。
 
+**按列表重新导出**：第 3 步"按列表导出"贴一段 `[{"id": "节点 id", "dir": "用例目录"}]`，插件按 id 找节点（能跨页面），按给定的目录导出。已有的用例想原样重导一遍（比如插件导出的内容变了）就用它，目录名不变。
+
+**主组件**：导出时会顺带导出用例里实例用到的主组件和整套变体（变体超过 60 个的只导用到的），放在 `snapshot.json` 的 `mains` 里。主组件被删掉的实例原样导出，记一条警告。详见 `apps/docs/figma-to-tldraw/tech.md` §16.1。
+
+**字体**：用例只能用开源、能从 npm 装上的字体（`apps/client/src/figma/fonts.ts` 的 `OPEN_FONTS`），`import-cases` 会跳过用到其他字体的用例。挑社区稿子时先看它用的字体（`tech.md` §15）。
+
 ## 导出的数据长什么样
 
 ```
@@ -42,21 +48,22 @@ cases/
   ...
 ```
 
-`snapshot.json` 里有四部分：
+`snapshot.json` 里有五部分：
 
 | 字段 | 内容 |
 | --- | --- |
 | `rest` | `exportAsync({ format: "JSON_REST_V1" })` 的原始结果，也就是节点树 |
 | `svgs` | 矢量类节点（VECTOR、布尔运算、星形、多边形、线、椭圆）单独导出的 SVG，key 是节点 id |
-| `transforms` | 每个可见节点的 `absoluteTransform`（2×3 矩阵）和节点本身的宽高 `{ m, w, h }`。REST 格式里没有这些，旋转的节点要靠它摆放 |
-| `meta` | 用例名、尺寸、用到的字体、图片文件路径、图片原始尺寸（`imageSizes`）、蒙版图层的填充路径（`masks`）、导出时的警告 |
+| `transforms` | 每个节点（包括隐藏的和主组件里的）的 `absoluteTransform`（2×3 矩阵）和节点本身的宽高 `{ m, w, h }`。REST 格式里没有这些，旋转的节点要靠它摆放 |
+| `meta` | 用例名、尺寸、用到的字体、图片文件路径、图片原始尺寸（`imageSizes`）、蒙版图层的填充路径（`masks`）、导出时的警告、主组件个数（`mains`）和主组件用到的字体（`mainFonts`） |
+| `mains` | 用例外面的主组件和组件集，key 是它的 node id，值是 `JSON_REST_V1` 导出的节点树（太大的组件集是只含用到的变体的 `partial: true` 组件集） |
 
 几点说明：
 
 - **图片**：节点里图片填充的 `imageRef` 就是图片 hash，对应 `meta.images` 里的文件路径
 - **图片滤镜**：图片填充调了曝光、对比度等滤镜时，插件让 Figma 按原图尺寸渲染一份带滤镜的图，`meta.filteredImages` 里记 `<imageRef>?<滤镜>` → 文件路径。渲染时临时建一个矩形，导完马上删掉（详见 `apps/docs/figma-to-tldraw/tech.md` §6.8）
 - **SVG 的位置**：导出的 SVG 包含了描边和阴影，所以它的尺寸可能比节点本身大。摆放时可以用节点的 `absoluteRenderBounds`（包含描边、阴影在内的实际渲染范围），而不是 `absoluteBoundingBox`
-- **隐藏图层**：节点树里还在（`visible: false`），但不会导出它的 SVG
+- **隐藏图层**：节点树里还在（`visible: false`），也记位置（`transforms`），但不会导出它的 SVG
 - **蒙版图层**：单独导出 SVG 会失败，所以不导 SVG，改为在 `meta.masks` 里给出它的 `fillGeometry` 路径（节点自己的坐标系）
 - **字体**：`meta.fonts` 列出了用到的字体。浏览器那边要装同样的字体，否则对比结果没有意义
 
