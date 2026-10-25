@@ -31,9 +31,17 @@ import {
 
 // See apps/docs/figma-to-tldraw/tech.md §13.1 and §13.2.
 
+export type MeasureText = (
+  editor: Editor,
+  node: FigmaNode,
+  width: number | undefined,
+  h: number,
+) => { w: number; h: number };
+
 interface EditingState {
   paused: number;
   dirty: Set<TLShapeId>;
+  measure: MeasureText;
   slack: Map<TLShapeId, Slack>;
 }
 
@@ -66,6 +74,19 @@ export function isGroup(shape: FigmaShape): boolean {
   return shape.type === 'figma-frame' && shape.props.node.type === 'GROUP';
 }
 
+function textKey(node: FigmaNode): string {
+  const { fills: _fills, ...style } = node.style ?? {};
+  const table = Object.entries(node.styleOverrideTable ?? {}).map(
+    ([key, { fills: _f, ...rest }]) => [key, rest],
+  );
+  return JSON.stringify([
+    node.characters,
+    style,
+    node.characterStyleOverrides,
+    table,
+  ]);
+}
+
 export function withAutoResize(
   node: FigmaNode,
   mode: NonNullable<NonNullable<FigmaNode['style']>['textAutoResize']>,
@@ -86,6 +107,36 @@ export function withAutoResize(
           ? 'FIXED'
           : 'HUG',
   };
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §13.3.
+export function fitText(editor: Editor, shape: FigmaShape) {
+  const { node, w, h } = shape.props;
+  const mode = node.style?.textAutoResize ?? 'NONE';
+  const state = STATES.get(editor);
+  if (!state || (mode !== 'WIDTH_AND_HEIGHT' && mode !== 'HEIGHT')) {
+    return;
+  }
+  const size = state.measure(
+    editor,
+    node,
+    mode === 'HEIGHT' ? w : undefined,
+    h,
+  );
+  const nextW = mode === 'HEIGHT' ? w : size.w;
+  if (near(nextW, w) && near(size.h, h)) {
+    return;
+  }
+  const align = node.style?.textAlignHorizontal;
+  const grow = nextW - w;
+  const dx = align === 'CENTER' ? -grow / 2 : align === 'RIGHT' ? -grow : 0;
+  editor.updateShape<FigmaShape>({
+    id: shape.id,
+    type: shape.type,
+    x: shape.x + dx * Math.cos(shape.rotation),
+    y: shape.y + dx * Math.sin(shape.rotation),
+    props: { w: nextW, h: size.h },
+  });
 }
 
 function applyConstraints(
@@ -220,12 +271,20 @@ function onChange(
   if (state.paused || !isFigmaShape(prev) || !isFigmaShape(next)) {
     return;
   }
-  const sized = prev.props.w !== next.props.w || prev.props.h !== next.props.h;
+  const resizedW = prev.props.w !== next.props.w;
+  const sized = resizedW || prev.props.h !== next.props.h;
   const nodeChanged = prev.props.node !== next.props.node;
   const moved =
     prev.x !== next.x || prev.y !== next.y || prev.rotation !== next.rotation;
   const node = next.props.node;
 
+  if (
+    next.type === 'figma-text' &&
+    ((nodeChanged && textKey(prev.props.node) !== textKey(node)) ||
+      (resizedW && node.style?.textAutoResize === 'HEIGHT'))
+  ) {
+    fitText(editor, editor.getShape(next.id) as FigmaShape);
+  }
   if (next.type === 'figma-frame' && sized && !isGroup(next)) {
     applyConstraints(editor, editor.getShape(next.id) as FigmaShape, {
       w: prev.props.w,
@@ -272,10 +331,14 @@ function flush(editor: Editor, state: EditingState) {
   }
 }
 
-export function enableFigmaEditing(editor: Editor): () => void {
+export function enableFigmaEditing(
+  editor: Editor,
+  measure: MeasureText,
+): () => void {
   const state: EditingState = {
     paused: 0,
     dirty: new Set(),
+    measure,
     slack: new Map(),
   };
   STATES.set(editor, state);

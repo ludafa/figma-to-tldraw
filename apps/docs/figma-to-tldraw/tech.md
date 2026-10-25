@@ -346,7 +346,9 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | 字体版本靠实测比值挑出来（§12.1），`@fontsource` 升级可能换掉字体版本                                      | DM Sans 锁死 4.5.9、Inter 锁死 4.5.15；升级字体包后重跑全量对比                                                          |
 | 长页面分段截图（§12.2）：段与段的接缝处如果正好有动画或没画完的图块，会出一条缝                            | 现在 151 个用例没有看到接缝；出现时再调 `STRIP_HEIGHT`                                                                   |
 | 只有描边的投影（§12.4）不支持四边不同粗细；背景模糊"要有填充"（§12.6）没验证模糊强度和填充不透明度的关系   | 遇到用例再补                                                                                                             |
+| 编辑时每打一个字都要重新量文字、重排一串 frame（§13.3）；最大的页面有几千个图形，没测过会不会卡            | 只重排被标记的 frame（已做）；卡的话给量文字加缓存，或者打字时只量不排、停下再排                                         |
 | 拉伸矢量时描边跟着变粗，Figma 不会（§13.1）                                                                | 第 5 步改成按几何数据画矢量                                                                                              |
+| TipTap 用 `requestAnimationFrame` 聚焦，测试用的浏览器标签页在后台时进入编辑后拿不到焦点（§13.3 实测）     | 只影响自动化测试；测之前把标签页切到前台（verification.md §4）                                                           |
 | 自动布局只复现了 151 个用例里出现过的情况，换行、网格不支持，"Rotated Auto Layout" 这类技巧算不对（§13.2） | 遇到对不上的再按数据补规则；不支持的布局在面板里写明"暂不支持编辑"                                                       |
 
 ## 9. 用真实稿子考试（2026-10-24）
@@ -576,22 +578,24 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 ## 13. 在 tldraw 里编辑（2026-10-25，用户追加）
 
-方向按 [probe-editing.md](probe-editing.md) 的结论定（用户拍板）：图形和画法不动，Figma 节点数据 `props.node` 仍然是唯一的数据来源，编辑就是改它。用户确认先做调研里建议的前 4 步（自动布局算在内，组件实例当普通 frame）：缩放和选择、自动布局、文字编辑、属性面板。这里先写了前两步，文字编辑和属性面板还没做。
+方向按 [probe-editing.md](probe-editing.md) 的结论定（用户拍板）：图形和画法不动，Figma 节点数据 `props.node` 仍然是唯一的数据来源，编辑就是改它。用户确认先做调研里建议的前 4 步（自动布局算在内，组件实例当普通 frame）：缩放和选择、自动布局、文字编辑、属性面板。这里写了前三步，属性面板还没做。
 
-只有 `/canvas` 打开编辑：`pages/canvas.tsx` 的 `handleMount` 调 `startFigmaEditing(editor)`，展示页和介绍页还是只能看。导入用例时 `putSnapshot` 包在 `withoutFigmaEffects` 里，加载过程不触发套约束和重排，所以导入画出来的东西和以前一样（还原度对比不变，见 [verification.md §4](verification.md#4-各次实际结果)）。
+只有 `/canvas` 打开编辑：`pages/canvas.tsx` 的 `handleMount` 调 `startFigmaEditing(editor)`，展示页和介绍页还是只能看。导入用例时 `putSnapshot` 包在 `withoutFigmaEffects` 里，加载过程不触发重新量文字和重排，所以导入画出来的东西和以前一样（还原度对比不变，见 [verification.md §4](verification.md#4-各次实际结果)）。
 
 代码在 `apps/client/src/figma/editing/`（新）：
 
-| 文件             | 内容                                                                                         |
-| ---------------- | -------------------------------------------------------------------------------------------- |
-| `index.ts`       | `startFigmaEditing`：打开下面的引擎和选择规则                                                |
-| `engine.ts`      | 编辑引擎：监听图形变化，套约束、标记要重排的 frame，一次操作结束后统一重排；缩放时改尺寸方式 |
-| `auto-layout.ts` | 自动布局算法，不依赖 tldraw，测试里直接跑在快照数据上                                        |
-| `constraints.ts` | 约束：父 frame 变大小时子图层怎么动                                                          |
-| `host.ts`        | 把 tldraw 图形接到自动布局算法上：图层在父图层里占的框、怎么把新框写回图形                   |
-| `selection.ts`   | Figma 式的单击、双击、Esc / Enter 选择                                                       |
+| 文件               | 内容                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `index.ts`         | `startFigmaEditing`：打开下面的引擎和选择规则；导出 `figmaTextOptions`                               |
+| `engine.ts`        | 编辑引擎：监听图形变化，量文字、套约束、标记要重排的 frame，一次操作结束后统一重排；缩放时改尺寸方式 |
+| `auto-layout.ts`   | 自动布局算法，不依赖 tldraw，测试里直接跑在快照数据上                                                |
+| `constraints.ts`   | 约束：父 frame 变大小时子图层怎么动                                                                  |
+| `host.ts`          | 把 tldraw 图形接到自动布局算法上：图层在父图层里占的框、怎么把新框写回图形                           |
+| `selection.ts`     | Figma 式的单击、双击、Esc / Enter 选择                                                               |
+| `text-measure.tsx` | 按画法量文字尺寸                                                                                     |
+| `rich-text.ts`     | Figma 文字和 TipTap 文档互相转换；加给 TipTap 的两个扩展                                             |
 
-**引擎怎么跑。** `enableFigmaEditing` 在 tldraw 的 `editor.sideEffects` 上挂四个回调：图形改了、建了、删了，以及"一次操作结束"（`registerOperationCompleteHandler`）。前三个只做两件事：马上要做的（frame 变大小就套约束）当场做；要重排的 frame 和组记进一个"待办"集合。操作结束时按层级从深到浅处理待办：自动布局 frame 重排、组重算边界。先深后浅，里层"包裹内容"的 frame 先定好尺寸，外层再排。回调里改的东西和用户的操作落在同一个撤销步骤里，所以一次撤销能整个退回。
+**引擎怎么跑。** `enableFigmaEditing` 在 tldraw 的 `editor.sideEffects` 上挂四个回调：图形改了、建了、删了，以及"一次操作结束"（`registerOperationCompleteHandler`）。前三个只做两件事：马上要做的（文字内容变了就重新量、frame 变大小就套约束）当场做；要重排的 frame 和组记进一个"待办"集合。操作结束时按层级从深到浅处理待办：自动布局 frame 重排、组重算边界。先深后浅，里层"包裹内容"的 frame 先定好尺寸，外层再排。回调里改的东西和用户的操作落在同一个撤销步骤里，所以一次撤销能整个退回。
 
 ### 13.1 缩放、旋转、约束、组和选择
 
@@ -613,7 +617,7 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 **选择（`selection.ts`）。** tldraw 默认单击选中最外层的图形（就是整页的根 frame），双击才往里走一层，和 Figma 差别很大。做法是改写 `editor.getOutermostSelectableShape`（tldraw 每次单击都问它"这一下选谁"）：把页面最外层的图形和当前选中图层的所有上级都当成"已经打开"，单击选中从外往里第一个没打开的图层。效果和 Figma 一样：一开始单击选中根 frame 的直接子图层；选中一个按钮后，再单击旁边的图层选中按钮的兄弟，单击按钮里面选中按钮里的子图层。
 
-- 双击：`onDoubleClick` 选中鼠标下面、比当前选中深一层的图层；返回一个空改动，阻止 tldraw 在双击处新建文字。
+- 双击：`onDoubleClick` 选中鼠标下面、比当前选中深一层的图层；返回一个空改动，阻止 tldraw 在双击处新建文字。深一层正好是文字时直接进入编辑（§13.3）。
 - 键盘：Esc 或 Shift+Enter 选父图层，Enter 选子图层，和 Figma 一样。在 `window` 上按捕获阶段监听，只在选择工具空闲、画布有焦点、焦点不在输入框时生效；选中的是文字时 Enter 交给 tldraw，进入编辑。
 
 ### 13.2 自动布局
@@ -644,3 +648,40 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 - furniture 的 12 个 "Aspect ratio keeper # Rotated Auto Layout" 差 7.63 像素：用旋转的自动布局 frame 保持图片比例的技巧，Figma 的结果我们算不出来。
 - Golio 旋转提示框里的 3 个矢量差 3～6 像素：旋转 frame 里矢量的渲染范围换算不准。
 - Gemini 一段文字重新量出来差 0.81 像素，它所在的 "Prompt Cards" 跟着动。
+
+### 13.3 文字：重新量尺寸和编辑
+
+**量尺寸（`text-measure.tsx`）。** `figma-text.tsx` 把画文字的代码拆成 `textLayout`（算样式）和 `textBody`（生成每段每个片段），导出的 `TextInner` 只画文字块本身。`measureText` 用 `renderToStaticMarkup` 把 `TextInner` 渲染进编辑器容器里一个隐藏的 div 量尺寸，画法和量法是同一份代码，换行一定一致。自动宽度用 `width: max-content`，自动高度用固定宽度。调研时实测 2812 段文字里 2811 段量出来的行数和 Figma 一样（[probe-editing.md §3.5](probe-editing.md#35-文字编辑)）。
+
+**什么时候量（`fitText`）。** 文字内容或样式（不算颜色）变了，或者自动高度的文字宽度变了，就重新量。自动宽度的文字变宽时按对齐方式决定往哪边长：居中两边长，右对齐往左长，和 Figma 一样。尺寸变了会接着触发父图层重排。
+
+**编辑用 tldraw 自带的 TipTap。** `figma-text.tsx` 的 `EditableText`：
+
+- `canEdit` 在编辑打开时返回 true；进入编辑后，把静态文字换成 tldraw 的 `RichTextArea`（TipTap 富文本编辑器），事件处理用 `useEditableRichText` 给的那套，只有 `handleChange` 换成自己的：把 TipTap 文档转回 Figma 的 `characters` / `characterStyleOverrides` / `styleOverrideTable`，写进 `props.node`。写进去之后就是普通的节点变化，引擎重新量尺寸、重排。
+- `RichTextArea` 发现传进来的 `richText` 和它自己最后交出去的不是同一个对象时，会调 `setContent` 整个替换内容，光标会跳到末尾。所以把它最后交出来的文档存在一个 tldraw atom（`useAtom`）里，节点内容和它对得上时原样传回去。
+- 和 tldraw 自己的 `RichTextLabel` 一样，文字被选中时就先挂上 `RichTextArea`（没进入编辑时它什么都不画，但已经在监听"全选""放光标"事件），不然 tldraw 开始编辑时发的"全选"事件会漏掉。
+- 编辑结束时文字是空的，删掉这个图层（`onEditEnd`），父图层重排把空位收掉。
+
+**怎么进入编辑。** 选中文字后双击或按 Enter（tldraw 自带，进入时全选文字）。另外，选中一个 frame 后双击它里面的文字，直接进入编辑，不用先双击选中文字再双击一次（`selection.ts` 的 `figmaDoubleClick` 自己调 `select`、`setEditingShape` 和切到 `select.editing_shape` 状态）。这条路进入时文字原来没选中，`RichTextArea` 是在这一刻才挂上的，所以由 `EditableText` 挂上之后自己补发一次"全选"。
+
+**转换（`rich-text.ts`）。**
+
+| Figma                     | TipTap                                           |
+| ------------------------- | ------------------------------------------------ |
+| `\n`（段落）              | 段落（paragraph）                                |
+| U+2028（段内换行）        | 换行节点（hardBreak）                            |
+| 样式覆盖号不为 0 的一段字 | 带 `figmaStyle` 标记，属性是覆盖号和显示用的 CSS |
+| 换行符自己的覆盖号        | 段落或换行节点上的 `figmaBreak` 属性             |
+
+- 新打的字跟着光标所在那段的样式走（TipTap 的标记默认向后延续），和 Figma 一样。
+- Cmd+B / Cmd+I / Cmd+Shift+S（TipTap 的粗体、斜体、删除线标记）转回来时变成新的样式覆盖：字重 700、`italic`、删除线。同样的样式只建一条。标题、列表这些 Figma 没有的结构当普通段落。
+- 两个扩展（`figmaStyle` 标记和 `figmaBreak` 属性）接在 tldraw 默认扩展后面，组成 `figmaTextOptions`，传给 `<Tldraw textOptions>`。它必须在整个页面生命周期里是同一个对象，`RichTextArea` 看到配置对象变了会重建编辑器。
+- 换行符自己的覆盖号画的时候用不到，留着它是为了来回转换完全一致：151 个用例里 3215 段文字转成 TipTap、经过 TipTap 真实的 schema、再转回来，全部和原来一样（`rich-text.test.ts`）。
+
+**编辑时的样子。** 编辑框用和静态文字一样的外层和内层样式，位置一样。实测进出编辑时文字的横向位置和宽度完全一致，纵向差 1 像素（静态文字量的是行内框，编辑框量的是段落框）。几处要处理：
+
+- tldraw 给编辑框（`.tl-text-input`）设了绝对定位、`text-transform: none`、`white-space: pre-wrap`、`font-kerning: auto` 等，`figma.css` 在 `.figma-text-editing` 下改成继承文字自己的样式，不然大写、自动宽度不换行、字距都会变。
+- 渐变文字静态时是透明字加背景裁剪（§6.7），编辑时用渐变的第一个颜色显示。
+- 编辑时去掉行数截断和图层模糊。
+
+**已知的小问题。** 进入编辑时是全选状态，这时按 Enter 不起作用，要先按方向键或点一下放光标（TipTap 本身的行为，tldraw 自带文字也一样）。macOS 上 End 键只滚动不移光标。

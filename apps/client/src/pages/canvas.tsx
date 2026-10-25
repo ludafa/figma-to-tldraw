@@ -7,7 +7,11 @@ import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
-import { relayoutAll, startFigmaEditing } from '../figma/editing';
+import {
+  figmaTextOptions,
+  relayoutAll,
+  startFigmaEditing,
+} from '../figma/editing';
 import { putSnapshot } from '../figma/editor';
 import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
@@ -260,6 +264,7 @@ export function CanvasPage() {
           <Tldraw
             shapeUtils={figmaShapeUtils}
             components={components}
+            textOptions={figmaTextOptions}
             hideUi={shot}
             onMount={handleMount}
           />

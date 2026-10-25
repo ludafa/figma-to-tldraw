@@ -1,5 +1,22 @@
-import type { CSSProperties, ReactNode } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
+import {
+  RichTextArea,
+  type TLRichText,
+  useAtom,
+  useEditableRichText,
+  useEditor,
+  useValue,
+} from 'tldraw';
 
+import { isFigmaEditing } from '../editing/engine';
+import { fromRichText, toRichText } from '../editing/rich-text';
 import { layerBlurCss, textShadowCss } from '../effects';
 import { fontFamilyCss, fontStyleCss, fontVariationCss } from '../fonts';
 import { rgba } from '../geometry';
@@ -233,8 +250,55 @@ function runLineStyle(
   };
 }
 
-export function TextContent({ shape }: { shape: FigmaShape }) {
-  const { w, h, node } = shape.props;
+interface TextLayout {
+  style: FigmaTypeStyle;
+  lineHeight: number;
+  paras: Run[][];
+  gradient: FigmaPaint | undefined;
+  outer: CSSProperties;
+  inner: CSSProperties;
+}
+
+function textBody(
+  node: FigmaNode,
+  layout: TextLayout,
+  gradientLayer: boolean,
+): ReactNode[] {
+  const { paras, style, lineHeight } = layout;
+  return paras.map((runs, i) => (
+    <div
+      key={i}
+      style={{
+        marginBottom:
+          i < paras.length - 1 && style.paragraphSpacing
+            ? style.paragraphSpacing
+            : undefined,
+      }}
+    >
+      {runs.length ? (
+        runs.map((run, j) => (
+          <span
+            key={j}
+            style={{
+              ...runStyle(run.style, node),
+              ...runLineStyle(run, style, lineHeight),
+              visibility:
+                gradientLayer && !gradientFill(run.style, node)
+                  ? 'hidden'
+                  : undefined,
+            }}
+          >
+            {run.text}
+          </span>
+        ))
+      ) : (
+        <br />
+      )}
+    </div>
+  ));
+}
+
+function textLayout(node: FigmaNode, w: number, h: number): TextLayout {
   const style = node.style ?? {};
   const lineHeight = resolvedLineHeight(style);
   const autoResize = style.textAutoResize ?? 'NONE';
@@ -251,38 +315,6 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     .flat()
     .map((run) => gradientFill(run.style, node))
     .find((p) => p !== undefined);
-  const body = (gradientLayer: boolean): ReactNode[] =>
-    paras.map((runs, i) => (
-      <div
-        key={i}
-        style={{
-          marginBottom:
-            i < paras.length - 1 && style.paragraphSpacing
-              ? style.paragraphSpacing
-              : undefined,
-        }}
-      >
-        {runs.length ? (
-          runs.map((run, j) => (
-            <span
-              key={j}
-              style={{
-                ...runStyle(run.style, node),
-                ...runLineStyle(run, style, lineHeight),
-                visibility:
-                  gradientLayer && !gradientFill(run.style, node)
-                    ? 'hidden'
-                    : undefined,
-              }}
-            >
-              {run.text}
-            </span>
-          ))
-        ) : (
-          <br />
-        )}
-      </div>
-    ));
 
   const justify =
     style.textAlignVertical === 'CENTER'
@@ -329,10 +361,32 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
     filter: layerBlurCss(node.effects),
   };
 
+  return { style, lineHeight, paras, gradient, outer, inner };
+}
+
+/** The text block alone, for measuring; see tech.md §13.3. */
+export function TextInner({
+  node,
+  w,
+  h,
+}: {
+  node: FigmaNode;
+  w: number;
+  h: number;
+}) {
+  const layout = textLayout(node, w, h);
+  return <div style={layout.inner}>{textBody(node, layout, false)}</div>;
+}
+
+export function TextContent({ shape }: { shape: FigmaShape }) {
+  const { w, h, node } = shape.props;
+  const layout = textLayout(node, w, h);
+  const { gradient, outer, inner } = layout;
+
   return (
     <>
       <div style={outer}>
-        <div style={inner}>{body(false)}</div>
+        <div style={inner}>{textBody(node, layout, false)}</div>
       </div>
       {gradient && (
         // See apps/docs/figma-to-tldraw/tech.md §6.7.
@@ -345,9 +399,156 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
             WebkitBackgroundClip: 'text',
           }}
         >
-          <div style={{ ...inner, textShadow: undefined }}>{body(true)}</div>
+          <div style={{ ...inner, textShadow: undefined }}>
+            {textBody(node, layout, true)}
+          </div>
         </div>
       )}
+    </>
+  );
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §13.3.
+
+const UNITLESS = new Set(['fontWeight', 'lineHeight', 'opacity', 'zIndex']);
+
+function cssText(css: CSSProperties): string {
+  return Object.entries(css)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => {
+      const prop = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+      return `${prop}:${typeof v === 'number' && !UNITLESS.has(k) ? `${v}px` : v}`;
+    })
+    .join(';');
+}
+
+function editingColor(
+  style: FigmaTypeStyle,
+  node: FigmaNode,
+): string | undefined {
+  const gradient = gradientFill(style, node);
+  const stop = gradient?.gradientStops?.[0];
+  return stop
+    ? rgba(stop.color, gradient.opacity ?? 1)
+    : fillColor(style, node);
+}
+
+function runCss(node: FigmaNode, key: number): string {
+  const base = node.style ?? {};
+  const override = node.styleOverrideTable?.[String(key)];
+  const style = { ...base, ...override };
+  return cssText({
+    ...runStyle(style, node),
+    color: editingColor(style, node),
+    lineHeight: `${resolvedLineHeight(base, override)}px`,
+  });
+}
+
+function contentKey(node: FigmaNode): string {
+  return JSON.stringify([
+    node.characters,
+    node.characterStyleOverrides,
+    node.styleOverrideTable,
+    node.style,
+    node.fills,
+  ]);
+}
+
+function EditableText({ shape }: { shape: FigmaShape }) {
+  const editor = useEditor();
+  const { w, h, node } = shape.props;
+  const {
+    rInput,
+    isEditing,
+    isReadyForEditing,
+    handleFocus,
+    handleBlur,
+    handleKeyDown,
+    handleInputPointerDown,
+    handleDoubleClick,
+    handlePaste,
+  } = useEditableRichText(shape.id, shape.type);
+  const isSelected = useValue(
+    'figma text selected',
+    () => editor.getOnlySelectedShapeId() === shape.id,
+    [editor, shape.id],
+  );
+  const emitted = useAtom<{ key: string; richText: TLRichText } | null>(
+    'figma emitted text',
+    null,
+  );
+  const last = useValue(emitted);
+  const fresh = useMemo(() => toRichText(node, (k) => runCss(node, k)), [node]);
+  const richText = last?.key === contentKey(node) ? last.richText : fresh;
+
+  const handleChange = useCallback(
+    ({ richText }: { richText?: TLRichText }) => {
+      const current = editor.getShape<FigmaShape>(shape.id);
+      if (!richText || !current || editor.getEditingShapeId() !== shape.id) {
+        return;
+      }
+      const next = fromRichText(richText, current.props.node);
+      emitted.set({ key: contentKey(next), richText });
+      editor.updateShape<FigmaShape>({
+        id: shape.id,
+        type: shape.type,
+        props: { node: next },
+      });
+    },
+    [editor, emitted, shape.id, shape.type],
+  );
+
+  const hasArea = isFigmaEditing(editor) && (isSelected || isReadyForEditing);
+  const hadArea = useRef(hasArea || isEditing);
+  useLayoutEffect(() => {
+    if (isEditing && !hadArea.current) {
+      editor.emit('select-all-text', { shapeId: shape.id });
+    }
+    hadArea.current = hasArea || isEditing;
+  }, [editor, shape.id, isEditing, hasArea]);
+
+  if (!isEditing && !hasArea) {
+    return <TextContent shape={shape} />;
+  }
+  const layout = textLayout(node, w, h);
+  return (
+    <>
+      {!isEditing && <TextContent shape={shape} />}
+      <div
+        style={{
+          ...layout.outer,
+          filter: undefined,
+          pointerEvents: isEditing ? 'all' : 'none',
+        }}
+      >
+        <div
+          className="figma-text-editing"
+          style={
+            {
+              ...layout.inner,
+              display: 'block',
+              WebkitLineClamp: undefined,
+              overflow: 'visible',
+              color: editingColor(layout.style, node),
+              '--figma-paragraph-spacing': `${layout.style.paragraphSpacing ?? 0}px`,
+            } as CSSProperties
+          }
+        >
+          <RichTextArea
+            ref={rInput}
+            shapeId={shape.id}
+            isEditing={isEditing}
+            richText={richText}
+            handleFocus={handleFocus}
+            handleBlur={handleBlur}
+            handleKeyDown={handleKeyDown}
+            handleChange={handleChange}
+            handleInputPointerDown={handleInputPointerDown}
+            handleDoubleClick={handleDoubleClick}
+            handlePaste={handlePaste}
+          />
+        </div>
+      </div>
     </>
   );
 }
@@ -355,10 +556,20 @@ export function TextContent({ shape }: { shape: FigmaShape }) {
 export class FigmaTextShapeUtil extends FigmaShapeUtil<'figma-text'> {
   static override type = 'figma-text' as const;
 
+  override canEdit() {
+    return isFigmaEditing(this.editor);
+  }
+
+  override onEditEnd(shape: FigmaShape<'figma-text'>) {
+    if (!shape.props.node.characters) {
+      this.editor.deleteShapes([shape.id]);
+    }
+  }
+
   component(shape: FigmaShape<'figma-text'>) {
     return (
       <FigmaShapeContainer shape={shape}>
-        <TextContent shape={shape} />
+        <EditableText shape={shape} />
       </FigmaShapeContainer>
     );
   }

@@ -37,6 +37,7 @@
     "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.8",
+    "@tiptap/core": "2.27.3",
     "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.2.6",

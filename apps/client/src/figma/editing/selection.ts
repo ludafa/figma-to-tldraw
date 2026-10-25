@@ -74,7 +74,7 @@ export function installFigmaSelection(editor: Editor): () => void {
   };
 }
 
-/** Double click: select one level deeper. */
+/** Double click: edit a selected text, otherwise select one level deeper. */
 export function figmaDoubleClick(
   editor: Editor,
   shape: FigmaShape,
@@ -84,6 +84,9 @@ export function figmaDoubleClick(
     return noop;
   }
   const selected = editor.getOnlySelectedShape();
+  if (selected?.id === shape.id && editor.getShapeUtil(shape).canEdit(shape)) {
+    return undefined;
+  }
   const hit = editor.getShapeAtPoint(editor.inputs.currentPagePoint, {
     hitInside: true,
     renderingOnly: true,
@@ -94,7 +97,16 @@ export function figmaDoubleClick(
   const chain = [...editor.getShapeAncestors(hit), hit];
   const at = chain.findIndex((s) => s.id === selected.id);
   const inner = at >= 0 ? chain[at + 1] : undefined;
-  if (inner) {
+  if (inner && inner.id === hit.id && editor.getShapeUtil(hit).canEdit(hit)) {
+    // See apps/docs/figma-to-tldraw/tech.md §13.3.
+    editor.markHistoryStoppingPoint('editing shape');
+    editor.select(hit.id);
+    editor.setEditingShape(hit.id);
+    editor.setCurrentTool('select.editing_shape', {
+      target: 'shape',
+      shape: hit,
+    });
+  } else if (inner) {
     editor.markHistoryStoppingPoint('select inner layer');
     editor.select(inner.id);
   }

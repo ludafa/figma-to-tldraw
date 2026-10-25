@@ -14,6 +14,7 @@
 | `apps/client/src/figma/geometry.test.ts`            | 圆角矩形拆成四条边和四个角（虚线按段排用），段长正确；没有圆角时不出现长度为 0 的角                                                                                                                                                                                                                        | 2026-10-24                |
 | `apps/client/src/figma/editing/auto-layout.test.ts` | 自动布局：横排、两端对齐里的填充、旋转子图层不改尺寸、绝对定位不参与排列；读 `cases/` 时每个用例整棵树重排一遍，15644 个图层里最多 24 个动（已知的几处，tech.md §13.2），没有 `cases/` 时跳过                                                                                                              | 2026-10-25                |
 | `apps/client/src/figma/editing/constraints.test.ts` | 约束：左 / 右 / 居中 / 左右 / 缩放各自怎么挪，旋转的图层在拉伸约束下只挪半个变化量，尺寸不会变成负数                                                                                                                                                                                                       | 2026-10-25                |
+| `apps/client/src/figma/editing/rich-text.test.ts`   | 文字和 TipTap 互转：段落、段内换行、样式片段；新打的字跟着所在片段的样式；Cmd+B 变成一条共用的样式覆盖；空文字；读 `cases/` 时 3215 段文字经过 TipTap 的 schema 转一圈完全一样                                                                                                                             | 2026-10-25                |
 
 命令：`pnpm --filter @figma-to-tldraw/client test`。
 
@@ -47,10 +48,12 @@
 15. 打开 `/canvas?case=real/saas-website-ui-kit-framer-website-kit-c/light-page-desktop` → 只有描边的卡片外面是淡淡的一圈影子，不是整块的深影子。换成 `light-page-mobile` → 页脚卡片 "Enhance your productivity by connecting" 后面换行。
 16. 打开 `/canvas?case=real/50-landing-page-designs-community/designs-29` → 左边文字区块右下角后面的那艘船是清楚的，没有被糊掉。
 17. `pnpm --filter @figma-to-tldraw/client compare real/saas-website-ui-kit-framer-website-kit-c/light-page-mobile` → 9497 高的页面能截图，不报错，差异 1% 以下。
-18. 打开 `/canvas?case=page/mobile-login`，单击 Sign in 按钮 → 选中 "Primary button"，不是整页；再双击按钮上的字 → 选中这段文字；按 Esc 选中按钮，再按 Esc 选中整页，按 Enter 选中整页的全部子图层。
+18. 打开 `/canvas?case=page/mobile-login`，单击 Sign in 按钮 → 选中 "Primary button"，不是整页；再双击按钮上的字 → 直接进入编辑，文字全选；按 Esc 退出编辑，再按 Esc 选中按钮，再按 Esc 选中整页，按 Enter 选中整页的全部子图层。
 19. 同一页，拖整页根 frame 的右边往右拉 100 → 输入框、按钮这些"填充"的子图层一起变宽，里面的内容跟着重新居中；按一次撤销，全部回到原样。
 20. 同一页，选中 Sign in 按钮往上拖到输入框上面松手 → 按钮插到第一个输入框前面，下面的图层依次下移；撤销恢复。
-21. 打开 `/canvas?case=container/group`，选中 Group 拖右下角手柄放大 → 里面的矩形、圆和文字框一起放大（字号不变）；把组里的圆往右下挪 → 组的选框跟着变大。
+21. 同一页，双击按钮上的字，输入 "Continue to your workspace" → 文字一边打一边变宽，始终在按钮里居中；按 Esc 退出后文字位置不跳。
+22. 同一页，选中副标题"登录后继续使用你的工作区"，按 Enter 编辑，按 → 再按 Enter，输入"第二段" → 副标题变成多行，下面的输入框整体下移；选中"第二段"按 Cmd+B → 退出编辑后这三个字是粗体。清空 "Welcome back" 后按 Esc → 这个图层被删掉，下面的图层往上补位。
+23. 打开 `/canvas?case=container/group`，选中 Group 拖右下角手柄放大 → 里面的矩形、圆和文字框一起放大（字号不变）；把组里的圆往右下挪 → 组的选框跟着变大。
 
 ## 4. 各次实际结果
 

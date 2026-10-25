@@ -38,6 +38,28 @@
   height: 100%;
 }
 
+/* See apps/docs/figma-to-tldraw/tech.md §13.3. */
+.figma-text-editing .tl-text-input {
+  position: static;
+  display: block;
+  width: 100%;
+  height: auto;
+  font-kerning: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  text-rendering: inherit;
+  text-transform: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+}
+.figma-text-editing .tl-rich-text .ProseMirror {
+  white-space: inherit;
+  overflow-wrap: inherit;
+}
+.figma-text-editing .tl-rich-text p:not(:last-child) {
+  margin-bottom: var(--figma-paragraph-spacing);
+}
+
 .tl-shape:has([data-figma-blend='darken']) {
   mix-blend-mode: darken;
 }
