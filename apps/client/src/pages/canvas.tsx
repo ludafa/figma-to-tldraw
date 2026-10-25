@@ -24,6 +24,7 @@ import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
 import { figmaShapeUtils } from '../figma/shapes';
+import { shapeIdFor } from '../figma/to-shapes';
 import type { CaseIndex, Snapshot } from '../figma/types';
 
 // See apps/docs/figma-to-tldraw/tech.md §7.
@@ -282,6 +283,20 @@ export function CanvasPage() {
       cancelled = true;
     };
   }, [editor, search.case, shot]);
+
+  // See apps/docs/figma-to-tldraw/tech.md §17.
+  useEffect(() => {
+    if (!editor || !snapshot || shot || !search.select) {
+      return;
+    }
+    const id = shapeIdFor(search.case ?? 'fixture/hello', search.select);
+    const page = editor.getShape(id) && editor.getAncestorPageId(id);
+    if (page) {
+      editor.setCurrentPage(page);
+      editor.select(id);
+      editor.zoomToSelection();
+    }
+  }, [editor, snapshot, shot, search.case, search.select]);
 
   function handleMount(e: Editor) {
     if (import.meta.env.DEV) {

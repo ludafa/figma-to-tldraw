@@ -267,6 +267,9 @@ export function HowItWorksPage() {
           <Link to="/showcase" className="hover:text-foreground">
             ← 还原展示
           </Link>
+          <Link to="/report" className="hover:text-foreground">
+            汇报
+          </Link>
           <Link to="/canvas" className="hover:text-foreground">
             调试页
           </Link>
