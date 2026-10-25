@@ -11,6 +11,7 @@ import type { FigmaNode, FigmaPaint } from '../types';
 import { isAutoLayout } from './auto-layout';
 import { flowIndex, isGroup } from './engine';
 import { figmaParent } from './host';
+import { isInsideInstance } from './instances';
 import { autoLineHeight } from './panel-ops';
 
 // See apps/docs/figma-to-tldraw/tech.md §14.1.
@@ -131,6 +132,9 @@ export function dropTarget(
       isFigmaShape(shape) &&
       shape.type === 'figma-frame' &&
       !isGroup(shape) &&
+      // See apps/docs/figma-to-tldraw/tech.md §16.4.
+      shape.props.node.type !== 'INSTANCE' &&
+      !isInsideInstance(editor, shape) &&
       !editor.isShapeHidden(shape) &&
       editor.isPointInShape(shape, point, { hitInside: true, margin: 0 }) &&
       !clippedAway(editor, shape, point)

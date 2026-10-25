@@ -118,3 +118,9 @@
 .figma-shot .tl-background {
   background-color: #fff;
 }
+
+/* See apps/docs/figma-to-tldraw/tech.md §16.4. */
+.tl-container.figma-component-selected {
+  --color-selection-stroke: #9747ff;
+  --color-selection-fill: rgb(151 71 255 / 16%);
+}

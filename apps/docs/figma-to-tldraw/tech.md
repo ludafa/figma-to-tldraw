@@ -355,6 +355,9 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | 图层树每次图形变化都重新读整棵树、转 JSON 比较（§14.2）；最大的用例 621 个图层没感觉到卡，几千个图层没测过                                                                                                            | 卡的话改成只在结构、名字、隐藏、锁定变化时重读                                                                           |
 | 整套组件集一起导出（§16.1），Untitled UI 每页的快照到了 40 MB，打开用例要多读、多建图形                                                                                                                               | 截图对比时不建"组件"页；慢了再改成只放用到的组件集，或者打开"组件"页时才建                                               |
 | "被删掉的主组件"靠"所在页面不在 `figma.root.children` 里"来认（§16.1），这是实测出来的，Figma 文档没写                                                                                                                | 认错的后果只是实例原样导入、不连主组件；导入端另有一道"主组件是空壳"的判断兜底                                           |
+| 组件引擎包了 tldraw 的 `createShapes`、`deleteShapes`、`undo` / `redo`（§16.4），还依赖 `duplicateShapes` 先子后父、一次 `createShapes` 只写一次 store 这些内部做法；tldraw 升级可能改掉                              | tldraw 锁在 3.15.6；升级后跑 `instances.test.ts` 和 verification.md §3 的组件条目                                        |
+| 同步按 node 字段逐个抄（§16.4），图形上 node 以外的数据只抄了 `svg`、`images`、`imageSizes`、`maskPath`、`flipX`；以后图形加了新的 props 会漏                                                                         | 加 props 时同步检查 `syncInstances`                                                                                      |
+| "组件"页让大稿子打开变慢（Untitled UI 5.5 秒，§16.3）                                                                                                                                                                 | 慢了再改成打开"组件"页时才建，或只建用例用到的主组件                                                                     |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -999,3 +1002,78 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 | 推断的字段              | `strokes` / `strokeWeight` / `styles` 各 16，`uniformScaleFactor` 10，`layoutSizing*` 10，其他 2 |
 
 推断的字段从一开始的 1650 个降到 70 个，降的那部分是三类规则没写对：换过主组件的嵌套实例要和新主组件比（330 个 `componentId`、218 个 `componentProperties`……）；`fills` 的覆盖也覆盖了 `styles`；`background` 这些派生字段不比。`uniformScaleFactor` 是缩放过的实例（调研里说的 37 个那类），整个实例按比例缩放，Figma 不把它算进覆盖。
+
+### 16.3 导入：实例、隐藏图层和"组件"页
+
+`apps/client/src/figma/to-shapes.ts` 的 `snapshotToShapes` 先用 `rebuildTree(snapshot.rest.document, indexMains(snapshot))` 把页面上的实例重建一遍（§16.2），再转成图形。重建后每个实例的 `overrides` 是完整的，编辑时只看这一份记录。
+
+**隐藏的图层也建图形。** 以前隐藏的图层（`visible: false`，或者在隐藏的父图层里）直接跳过。现在组件属性和变体会把隐藏的图层显示出来，所以要建图形。这些图形本来就不显示：tldraw 的 `getShapeVisibility` 用 `figmaShapeVisibility`（§14.2）把它们藏起来，也点不中，所以画出来和以前一样。几个细节：
+
+- 隐藏的矢量没有 SVG（§16.1，Figma 渲染不出隐藏的图层）。这时按 `transforms` 或包围盒放一个 `svg: ''` 的占位图形，等它被显示出来时再说（`placement(node, type, hidden)`）。
+- "缺少位置或 SVG"的警告和"`absoluteRenderBounds` 为空就跳过"只对看得见的图层生效。
+- 隐藏的蒙版图层不当蒙版用；`clip.ts` 的 `isOpaqueBox` 对隐藏的图层返回 false，不拿它去裁下面的图层（§4.1）。
+
+**主组件放在"组件"页。** `snapshotToShapes` 加了 `mains` 选项：打开时把 `snapshot.mains` 里每个主组件或组件集转成图形，按导出顺序从左往右排，间隔 80（`MAIN_GAP`），一行排满 4000（`MAIN_ROW`）换行。结果里多一个 `mains` 数组，最上层的图形没有 `parentId`。`apps/client/src/figma/editor.ts` 的 `putSnapshot` 先删掉第一页以外的页面，在第一页建用例的图形，再新建 id 为 `page:components`（`COMPONENTS_PAGE`）、名字叫"组件"的页面，把主组件放上去。用例里本来就有的主组件（比如 `component/instances`）留在原地，不挪到"组件"页。
+
+**截图对比时不建"组件"页。** `/canvas?shot=1`（对比脚本用的地址）传 `{ mains: false }`，只建用例本身的图形，省时间也省内存（`apps/client/src/pages/canvas.tsx` 的 `showSnapshot`）。
+
+**一页最多的图形数调到 10 万。** tldraw 默认一页最多 4000 个图形（`maxShapesPerPage`），超过就不让建。它数的是**当前页**的图形数，所以在第一页建"组件"页的图形时也按第一页算。Untitled UI 的"组件"页有 11892 个图形，超过 4000 就一个都建不出来。`canvas.tsx` 的 `options` 里改成 `maxShapesPerPage: 100_000`。实测（2026-10-25，Chromium）：Untitled UI dashboards-desktop 打开要 5.5 秒（"组件"页 11892 个图形），Golio 的"组件"页 6390 个图形。
+
+### 16.4 tldraw 里的组件引擎
+
+代码在 `apps/client/src/figma/editing/instances.ts`（新），由 `engine.ts` 里的副作用接进来。数据还是只有 `props.node`：
+
+- **主组件**：`type: 'COMPONENT'` 的图形，在哪一页都行。组件集是 `COMPONENT_SET`，变体是它下面的主组件，名字是 `属性=值, 属性=值`（`variantProps` 解析）。
+- **实例**：`type: 'INSTANCE'` 的图形，`componentId` 指向主组件的 node id，带 `componentProperties` 和 `overrides`。
+- **实例里的图层**：普通图形，node id 是 `I<实例 id>;<主组件里图层的 id>`，靠 id 和主组件里的图层对上（`copyId`）。嵌套的实例也是实例，自己再往下接。
+
+**1. 改实例里的图层：记覆盖。** `onChange` 里调 `recordOverride`：比较改前改后的 node（`changedFields`），把变了的字段加进**最外层**实例的 `overrides` 里这个图层那一条。`id`、`type`、`overrides`、`componentId`、`componentProperties` 这些不算覆盖（`NOT_OVERRIDES`）。文字改内容时 tldraw 会顺带把图层名改成文字，这时 `name` 不算覆盖。
+
+**2. 改主组件：同步到所有实例。** 主组件里的图形改了、新建了、删了，分别记进 `mainEdits` 的 `changed`、`created`、`deleted`。一次操作结束时（`flush`，tldraw 的 operation complete）调 `syncInstances`，对这个主组件的每个实例（包括嵌在别的实例里的）：
+
+- **改了**：把变了的字段抄到实例里对应的图层上，跳过三类：这个实例覆盖了的字段、组件属性管的字段（`componentPropertyReferences`）、`exposedInstances` 这类不该抄的（`NOT_SYNCED`）。位置、尺寸、旋转只有在实例图层原来和主组件**改之前**一样时才跟着改，这样实例自己的排版不会被冲掉。图形上 node 以外的数据（`svg`、`images`、`imageSizes`、`maskPath`、`flipX`）也一起抄。换了父图层、换了顺序，实例里也跟着换。
+- **新建了**：在实例里对应的父图层下面建一份，id 用 `copyId`，蒙版指向也换成实例里的那一份。
+- **删了**：删掉实例里对应的图层。
+
+**3. 引擎自己的写入不算覆盖。** 同步、换主组件这些是引擎自己改的，改之前把图形 id 放进 `quiet`，`onChange` 看到就不记覆盖、不跑约束。`flush` 开头清空 `quiet`。
+
+**4. 撤销和重做。** 同步写进去的图层改动和用户的改动在同一步历史里，撤销时一起回去。`patchHistory` 把 `editor.undo` / `redo` 包了一层，重放期间（`replaying`）不记覆盖、不记主组件改动、不改 id，免得重放出来的改动又被当成新的编辑。
+
+**5. 跟 Figma 一样的限制。**
+
+- 实例里的图层不能拖动、缩放、旋转：`registerBeforeChangeHandler` 里的 `keepInstanceLayout`，在 `select.translating` / `resizing` / `rotating` 时把选中的、在实例里的图层的位置、尺寸、旋转、父图层和顺序还原。
+- 删实例里的图层等于隐藏它：`patchDelete` 把 `editor.deleteShapes` 包了一层，实例里的图层改成 `visible: false`，记一条 `visible` 覆盖。整个实例、主组件里的图层照常删。
+- 新建的图层不会放进实例：`create.ts` 的 `dropTarget` 跳过实例和实例里面的 frame。
+
+**6. 复制、粘贴、Duplicate。** 复制出来的图层 node id 和原来的一样，不改就会有两个图层抢一个 id，覆盖和同步都会对错图层。`registerBeforeCreateHandler` 里的 `renameOnCreate` 处理：
+
+- id 已经有人用了，就发一个新的（`newNodeId()`，形如 `n<时间>:<序号>`）。
+- 下面的图层跟着换前缀：`I<旧实例>;1:2` 变成 `I<新实例>;1:2`。按最长的已改名前缀换（`renamed`），所以单独复制一个嵌套实例时，它下面的图层跟着它自己的新 id。
+- 粘贴一个主组件，得到的是它的实例（`instanceNode`），下面的图层变成实例里的图层。Figma 也是这样。
+- `overrides` 里的图层 id 一起换。
+
+**这要求父图层先建、子图层后建。** tldraw 的 `duplicateShapes` 是倒着建的（先子后父，`[...shapeIdSet].reverse()`），子图层建的时候还不知道父图层换成了什么 id，结果子图层各自拿到一个不相干的新 id，复制出来的实例不再跟主组件同步（2026-10-25 浏览器里实测发现）。`patchCreate` 把 `editor.createShapes` 包了一层：每次调用先清空改名表 `renames`，再把传进来的图形按"父图层在前"重新排（`parentsFirst`）。tldraw 一次 `createShapes` 只写一次 store，前面的图形写进去后，后面的图形在 before-create 里就能查到它。
+
+**7. 实例上的操作**（`instances.ts`，面板按钮调用，见 §16.5）：
+
+| 操作                            | 做法                                                                                                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 生成实例 `createInstance`       | 在主组件右边 40 处放一个实例，`componentProperties` 用属性定义里的默认值（`defaultProperties`），复制主组件的图层（`cloneLayers`）                                                   |
+| 切变体 `setProperty`（VARIANT） | 在组件集里找这个属性等于新值的变体；有几个时，选其他变体属性和现在一样最多的那个；然后 `swapMain`                                                                                    |
+| 布尔、文字属性 `setProperty`    | 改 `componentProperties`，再按 `componentPropertyReferences` 改图层的 `visible` / `characters`（`applyProperty`）                                                                    |
+| 换实例 INSTANCE_SWAP            | 图层的 `componentPropertyReferences.mainComponent` 指向这个属性时，`swapMain` 换成新主组件，不保留覆盖。面板里只显示，不能改（Figma 给的候选是组件 key，导出的数据里对不上 node id） |
+| 换主组件 `swapMain`             | 删掉实例里的图层，按新主组件重新复制；原来的覆盖按"名字路径"（`/Frame/Label` 这样）搬到新图层上；实例原来和旧主组件一样大时，尺寸跟新主组件走；最外层实例的覆盖记录一起更新          |
+| 重置 `resetInstance`            | 按自己的主组件 `swapMain`，不保留覆盖；布尔、文字属性的值保留并重新应用（我拍板：属性值是用户在面板里设的，不算"改过的地方"）                                                        |
+| 分离 `detachInstance`           | 实例变成 `FRAME`，去掉 `componentId` / `componentProperties` / `overrides`，图层和 id 不动；里面的嵌套实例还是实例。只有最外层实例能分离                                             |
+| 新建组件 `createComponents`     | 选中的 frame 变成 `COMPONENT`。只有不在实例里的 `figma-frame` 能变（`canBecomeComponent`）                                                                                           |
+| 跳到主组件 `goToMain`           | 切到主组件所在的页面，选中它，缩放过去                                                                                                                                               |
+
+**测试。** `instances.test.ts`（新）在 Node 里建一个真的 tldraw `Editor`（只补了几个 DOM 桩：`document.createElement`、`requestAnimationFrame`、`devicePixelRatio` 等），用 `putSnapshot` 放一个小用例（一个主组件和它的实例、一个两个变体的组件集和实例、一个普通 frame），测上面 1～7 的主要行为，12 条。
+
+### 16.5 面板、图层树和快捷键
+
+- **紫色。** 选中的全是主组件、组件集或实例时，选框变成 Figma 的紫色 `#9747ff`：`installComponentColors` 给 tldraw 的容器加 `figma-component-selected` 类，`figma.css` 在这个类下改 `--color-selection-stroke` / `--color-selection-fill`。图层树里这些图层的图标和名字也是紫色（`layers.tsx` 的 `Layer`），面板顶上实例的名字也是紫色。
+- **页面切换。** 图层树上面加了页面标签（`PageTabs`），有两页以上时显示，点了切页面。现在就是用例页和"组件"页。
+- **"实例"一节**（`panel.tsx` 的 `InstanceSection`，选中一个实例时显示）：主组件或组件集的名字（紫色）；每个组件属性一行，变体是下拉框、布尔是勾选框、文字是输入框，换实例只显示换成的组件名；覆盖了几个字段；按钮"跳到主组件""重置所有覆盖""分离实例"（嵌套实例没有"分离实例"）。主组件不在文件里（库组件或已删除）时写明。
+- **"组件"或"组件集"一节**（`MainSection`，选中主组件或组件集时）：属性定义列表（变体几个、布尔、文字、换实例）；主组件还显示文件里有几个实例和"生成实例"按钮。
+- **新建组件。** 选中能变成组件的 frame 时面板显示"新建组件（⌥⌘K）"（`NewComponentSection`）；快捷键 ⌥⌘K（Windows 上 Ctrl+Alt+K）是 `tools.tsx` 里的 `figma-create-component` 动作，和 Figma 一样。

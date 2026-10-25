@@ -2,6 +2,7 @@ import type { Editor, TLShape } from 'tldraw';
 
 import { isFigmaShape } from '../clip';
 import { enableFigmaEditing } from './engine';
+import { installComponentColors } from './instances';
 import { installFigmaSelection } from './selection';
 import { installFigmaSnapping } from './snapping';
 import { measureText } from './text-measure';
@@ -19,7 +20,9 @@ export function startFigmaEditing(editor: Editor): () => void {
   const stopEngine = enableFigmaEditing(editor, measureText);
   const stopSelection = installFigmaSelection(editor);
   const stopSnapping = installFigmaSnapping(editor);
+  const stopColors = installComponentColors(editor);
   return () => {
+    stopColors();
     stopSnapping();
     stopSelection();
     stopEngine();

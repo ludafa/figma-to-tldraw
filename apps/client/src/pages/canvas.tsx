@@ -94,16 +94,23 @@ const components: TLComponents = {
   Toolbar: FigmaToolbar,
 };
 
-// See apps/docs/figma-to-tldraw/tech.md §14.1.
-const options = { createTextOnCanvasDoubleClick: false };
+// See apps/docs/figma-to-tldraw/tech.md §14.1 and §16.3.
+const options = {
+  createTextOnCanvasDoubleClick: false,
+  maxShapesPerPage: 100_000,
+};
 
 function showSnapshot(
   editor: Editor,
   snapshot: Snapshot,
   id: string,
   assetBase: string,
+  shot: boolean,
 ): string[] {
-  const warnings = putSnapshot(editor, snapshot, id, assetBase);
+  // See apps/docs/figma-to-tldraw/tech.md §16.3.
+  const warnings = putSnapshot(editor, snapshot, id, assetBase, {
+    mains: !shot,
+  });
   // See apps/docs/figma-to-tldraw/tech.md §7 and §9.
   const area = renderArea(snapshot);
   const showFrom = (y: number) => {
@@ -249,6 +256,7 @@ export function CanvasPage() {
           snap,
           dir ?? 'fixture/hello',
           assetBase,
+          shot,
         );
         for (const w of list) {
           console.warn(w);
@@ -273,7 +281,7 @@ export function CanvasPage() {
     return () => {
       cancelled = true;
     };
-  }, [editor, search.case]);
+  }, [editor, search.case, shot]);
 
   function handleMount(e: Editor) {
     if (import.meta.env.DEV) {
