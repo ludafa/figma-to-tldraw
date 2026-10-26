@@ -11,7 +11,7 @@ import { measureText } from './text-measure';
 
 export { isFigmaEditing, relayoutAll, withoutFigmaEffects } from './engine';
 export { LayerTree } from './layers';
-export { FigmaStylePanel } from './panel';
+export { FigmaInspector, FigmaStylePanel } from './panel';
 export { figmaTextOptions } from './rich-text';
 export { FigmaToolbar, figmaTools, figmaUiOverrides } from './tools';
 

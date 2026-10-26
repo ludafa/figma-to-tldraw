@@ -1550,10 +1550,9 @@ function FigmaPanel({ items }: { items: Item[] }) {
   );
 }
 
-/** tldraw's style panel slot: ours for Figma layers, tldraw's for the rest. */
-export function FigmaStylePanel(props: TLUiStylePanelProps) {
+function useFigmaItems(): Item[] | undefined {
   const editor = useEditor();
-  const items = useValue(
+  return useValue(
     'figma panel items',
     () => {
       const selected = editor.getSelectedShapes();
@@ -1571,6 +1570,11 @@ export function FigmaStylePanel(props: TLUiStylePanelProps) {
     },
     [editor],
   );
+}
+
+/** tldraw's style panel slot: ours for Figma layers, tldraw's for the rest. */
+export function FigmaStylePanel(props: TLUiStylePanelProps) {
+  const items = useFigmaItems();
   if (!items) {
     return <DefaultStylePanel {...props} />;
   }
@@ -1579,4 +1583,10 @@ export function FigmaStylePanel(props: TLUiStylePanelProps) {
       <FigmaPanel items={items} />
     </DefaultStylePanel>
   );
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §19.1.
+export function FigmaInspector({ empty }: { empty: ReactNode }) {
+  const items = useFigmaItems();
+  return items ? <FigmaPanel items={items} /> : empty;
 }

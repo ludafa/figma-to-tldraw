@@ -27,11 +27,15 @@ function percent(part: number, whole: number): string {
 function Breakdown({
   byKind,
   nodes,
+  hint,
   onHighlight,
+  onPick,
 }: {
   byKind: Record<DiffKind, number>;
   nodes: DiffNode[];
+  hint: string;
   onHighlight: (box: RenderArea | null) => void;
+  onPick?: (node: DiffNode) => void;
 }) {
   const total = KINDS.reduce((s, k) => s + byKind[k.kind], 0);
   const kinds = KINDS.filter((k) => byKind[k.kind] > 0);
@@ -70,15 +74,14 @@ function Breakdown({
         ))}
       </ul>
       <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">
-          差异最多的节点（鼠标移上去，左边的图上会框出它的位置）
-        </p>
+        <p className="text-xs text-muted-foreground">{hint}</p>
         <ul className="divide-y rounded-md border text-sm">
           {nodes.map((n) => (
             <li key={n.id}>
               <button
                 type="button"
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                onClick={() => onPick?.(n)}
                 onMouseEnter={() => onHighlight(n.box)}
                 onMouseLeave={() => onHighlight(null)}
                 onFocus={() => onHighlight(n.box)}
@@ -112,12 +115,18 @@ export function DiffAnalysis({
   result,
   totalPixels,
   notes,
+  hint = '差异最多的节点（鼠标移上去，左边的图上会框出它的位置）',
+  method = 'Figma 导出的 2 倍图和 tldraw 的 2 倍截图逐像素比，pixelmatch 阈值 0.1',
   onHighlight,
+  onPick,
 }: {
   result?: FidelityResult;
   totalPixels: number;
   notes: string[];
+  hint?: string;
+  method?: string;
   onHighlight: (box: RenderArea | null) => void;
+  onPick?: (node: DiffNode) => void;
 }) {
   if (!result) {
     return (
@@ -150,8 +159,7 @@ export function DiffAnalysis({
         </div>
         <p className="text-xs text-muted-foreground">
           不同的像素 {result.diffPixels.toLocaleString()} /{' '}
-          {total.toLocaleString()}：Figma 导出的 2 倍图和 tldraw 的 2
-          倍截图逐像素比，pixelmatch 阈值 0.1
+          {total.toLocaleString()}：{method}
         </p>
       </div>
       {result.error && (
@@ -161,7 +169,9 @@ export function DiffAnalysis({
         <Breakdown
           byKind={result.breakdown.byKind}
           nodes={result.breakdown.nodes}
+          hint={hint}
           onHighlight={onHighlight}
+          onPick={onPick}
         />
       )}
       {result.warnings.length > 0 && (

@@ -413,6 +413,9 @@ export function ReportPage() {
           <Link to="/how-it-works" className="hover:text-foreground">
             核心思路
           </Link>
+          <Link to="/import" className="hover:text-foreground">
+            导入和对比
+          </Link>
           <Link to="/canvas" className="hover:text-foreground">
             调试页
           </Link>
