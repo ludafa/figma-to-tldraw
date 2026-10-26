@@ -11,7 +11,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "compare": "tsx scripts/compare.ts",
-    "import-cases": "tsx scripts/import-cases.ts"
+    "import-cases": "tsx scripts/import-cases.ts",
+    "export-static": "tsx scripts/export-static.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -16,3 +16,7 @@ reports/
 
 # Cases taken out of cases/ (kept for reference)
 archive/
+
+# Static site + data for Vercel, written by apps/client/scripts/export-static.ts
+.deploy/
+.vercel/

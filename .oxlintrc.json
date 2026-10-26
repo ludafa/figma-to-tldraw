@@ -18,7 +18,8 @@
     "apps/client/src/routeTree.gen.ts",
     "apps/figma-plugin/**",
     "cases/**",
-    "reports/**"
+    "reports/**",
+    ".deploy/**"
   ],
   "rules": {
     // See apps/docs/lint-format/tech.md §3.

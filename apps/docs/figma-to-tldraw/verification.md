@@ -235,6 +235,14 @@
 - 测试 13 个文件 80 条通过（`fonts.test.ts` 加 1 条斜体）；`auto-layout.test.ts` 整棵树重排 21085 个图层 59 个动，和加 8 张以前一样，上限不用改。`pnpm lint`、`pnpm typecheck` 通过。
 - 汇报页 `/report` 和展示页的分组说明跟着更新（tech.md §17 的补充说明）。
 
+### 2026-10-26（发布到 Vercel，用户追加）
+
+- `pnpm --filter @figma-to-tldraw/client build` 3 秒；`export-static` 导出 175 个用例到 `.deploy/`：2343 个文件，1.24 GB，最大 50 MB（tech.md §18）。
+- 上线前用按 `vercel.json` 规则写的本机静态服务器跑 `.deploy/`：`/` 跳到 `/showcase`，`/canvas` 画出 Furniture 购物车页 359 个图形，`/report` 读到 175 个用例，没有 404。
+- `vercel link` 在 `.deploy/` 里生成了带令牌的 `.env.local`，删掉，脚本加上 `.vercelignore`（`.env*`）。
+- `npx vercel deploy --prod` 第一次上传成功，正式地址 https://figma-to-tldraw.vercel.app 。线上用 curl 和 Playwright 查过：`/` 307 到 `/showcase`；`/canvas` 两个用例 2.8 秒、2.5 秒画好；`/report` 数字对；50 MB 快照压缩传输 32 MB；缺的数据文件 404；`.env.local` 没传上去。展示页的"原始对比报告"原来 404，导出时补了说明页，重新部署后正常。
+- `pnpm lint`、`pnpm typecheck` 通过（`.oxlintrc.json`、`.oxfmtrc.json` 加了 `.deploy/**`）。
+
 ## 5. Demo 结论（2026-10-24）
 
 最后一份报告是 `reports/fidelity/20261024-211751/`（实测，macOS 上的 Playwright Chromium，真实 2 倍屏，pixelmatch 阈值 0.1）：**79 个用例平均差异 0.004%，全部小于 1%，65 个是 0.00%**，没有出错和警告。第一份报告是平均 0.53%、73 / 79 个小于 1%。

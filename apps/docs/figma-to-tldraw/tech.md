@@ -364,6 +364,7 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | "组件"页让大稿子打开变慢（Untitled UI 5.5 秒，§16.3）                                                                                                                                                                                                                            | 慢了再改成打开"组件"页时才建，或只建用例用到的主组件                                                                                       |
 | 居中、右对齐时去掉行尾空格（§15.1）只在 designs-50 上对过；宽度自动的文字没去，带下划线的行尾空格 Figma 画不画没查                                                                                                                                                               | 全量对比没有用例变差；碰到再查                                                                                                             |
 | 大小字号混排的一行，基线只按 `text/mixed-styles` 一个用例定的规则（§6.4）；designs-48 的 "digital" 一行比 Figma 高 10px 左右（§15.1）                                                                                                                                            | 记成已知问题，designs-48 1.24%；再碰到混排的用例时一起研究                                                                                 |
+| Vercel 上的网站是本机手动上传的（§18）：代码或用例变了不会自动更新；数据 1.24 GB，用例再多可能碰到上传上限或流量额度                                                                                                                                                             | 改完重新 `build` + `export-static` + `vercel deploy`；超了就按目录片段只导一部分，或者把图片转成更小的格式                                 |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -1181,3 +1182,37 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 **能直接玩的例子。** 第 4 节放两个例子（Framer 亮色页的 "Get for free" 按钮：切变体、改文字属性；Furniture 购物车页的 "Input"：改主组件、实例跟着变），每个写好操作步骤。点"在这里打开编辑器"才用 `<iframe>` 嵌入 `/canvas`，不点不加载，免得一打开汇报页就建两份大画布；也可以在新标签页打开。
 
 **`/canvas` 的 `select` 参数。** 例子要一打开就选中某个实例，所以 `/canvas` 加了 `select=<Figma 节点 id>`（`apps/client/src/routes/canvas.tsx` 的 `CanvasSearch`）：用例画好以后，按 `shapeIdFor(用例目录, 节点 id)` 找到图形，切到它所在的页面（主组件在"组件"页），选中并缩放过去（`canvas.tsx` 里单独的一个 `useEffect`）。截图模式（`shot=1`）不管这个参数。
+
+## 18. 发布到 Vercel（2026-10-26，用户追加）
+
+用户要把前端发到 Vercel（用户追加）。发上去的是一个**纯静态网站**：`/showcase`、`/how-it-works`、`/report`、`/canvas` 这四个页面不调后端接口，只读 `/cases/` 和 `/reports/` 下面的文件。seed 自带的登录页和首页要 Hono 服务器和 SQLite，Vercel 上没有，也用不到，所以 `/` 直接跳到 `/showcase`。
+
+**数据要另外放进去。** 开发时 `/cases/`、`/reports/` 是开发服务器的 `serveDir` 从仓库根目录临时提供的（§1.1），`vite build` 打包出来的 `dist/` 里没有，这两个目录也不进 git。所以加了 `apps/client/scripts/export-static.ts`（新，`pnpm --filter @figma-to-tldraw/client export-static [目录片段…]`），把 `dist/` 和页面要读的数据拷进仓库根目录的 `.deploy/`（不进 git，lint 也不查）：
+
+| 拷什么                                            | 怎么处理                                                             | 175 个用例时的大小（实测） |
+| ------------------------------------------------- | -------------------------------------------------------------------- | -------------------------- |
+| `cases/index.json`                                | 只留选中的用例                                                       | —                          |
+| 每个用例的 `snapshot.json`                        | 去掉缩进（原来 938 MB）                                              | 446 MB                     |
+| `expected@2x.png`                                 | 原样                                                                 | 235 MB                     |
+| `images/`                                         | 原样；全部都被快照用到，没有能省的                                   | 447 MB                     |
+| 最新报告的 `results.json` 和每个用例的 `diff.png` | 只留选中的用例；报告里的 `expected.png`、`actual.png` 页面不读，不拷 | 93 MB                      |
+| `vercel.json`、`.vercelignore`                    | 脚本生成，见下面                                                     | —                          |
+
+一共 2342 个文件、1.24 GB，最大的单个文件是 Golio digital agency 页的快照（50 MB）。命令后面跟目录片段时只导匹配的用例，用来在超出上限时只发一部分。
+
+- **`vercel.json`**：`/` 临时跳转到 `/showcase`；除了 `assets/`、`cases/`、`reports/`，其他路径都改写到 `index.html`，交给前端路由（直接打开 `/report` 这类地址也能用）；数据文件找不到时照样返回 404，不会拿到一个 HTML。
+- **`.vercelignore`**：写 `.env*`。`vercel link` 会在目录里生成一个带 OIDC 令牌的 `.env.local`（2026-10-26 实测），网站不需要它，不能跟着传上去。脚本每次导出都会清空 `.deploy/`，只保留 `vercel link` 写的 `.vercel/`（项目关联），所以不用每次重新关联。
+- **不连 GitHub。** 仓库里没有数据，推代码让 Vercel 自动构建也画不出用例，所以一直是从本机上传 `.deploy/`。`vercel link` 时它会试着连 GitHub 仓库，没连上，不影响。
+- **原始对比报告不发。** 展示页顶上"原始对比报告 ↗"链到 `/reports/fidelity/latest/index.html`，那份报告每个用例还有 `expected.png`、`actual.png` 两张 2 倍大图（六百多 MB）。导出时在这个位置写一个说明页（`REPORT_NOTICE`），说明原始报告只在本地有，链回展示页；前端代码不用改。
+- 打包时 `define` 把 `VITE_API_URL` 写成本机的 `SERVER_URL`，只有登录页用，静态网站上不管。
+- 没有买 tldraw 的许可证，正式构建的画布右下角有 "Made with tldraw" 水印。
+
+**发布步骤：**
+
+1. 第一次：`npx vercel login`（用户自己登录），`npx vercel link --yes --project figma-to-tldraw --cwd .deploy`。
+2. `pnpm --filter @figma-to-tldraw/client build`，再 `pnpm --filter @figma-to-tldraw/client export-static`。
+3. `npx vercel deploy --prod --yes --cwd .deploy`。
+
+上线前在本机用一个按 `vercel.json` 规则写的静态服务器把 `.deploy/` 跑了一遍：`/` 跳到 `/showcase`，`/canvas` 画出 Furniture 购物车页 359 个图形，字体和图片都在，`/report` 读到 175 个用例的数字，没有 404。
+
+**结果**（2026-10-26，实测）：正式地址 https://figma-to-tldraw.vercel.app 。1.24 GB 第一次上传就成功了，没有碰到上传上限；之后再部署只传改过的文件，几秒钟。正式地址谁都能打开；每次部署那个带编号的地址（`figma-to-tldraw-<编号>-ludafa1s-projects.vercel.app`）开着 Vercel 默认的登录保护，只有账号主人能看。线上检查：`/` 跳到 `/showcase`；`/canvas` 打开 Furniture 购物车页（359 个图形）2.8 秒、Untitled UI dashboards-desktop（479 个图形）2.5 秒画好；`/report` 读到 175 个用例；50 MB 的快照传输时压缩成 32 MB；找不到的数据文件返回 404；`.env.local`、`.vercelignore` 没有传上去（访问它们拿到的是首页）。
