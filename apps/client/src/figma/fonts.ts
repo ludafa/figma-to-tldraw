@@ -23,6 +23,12 @@ export const OPEN_FONTS = new Set([
   'Space Mono',
 ]);
 
+// See apps/docs/figma-to-tldraw/tech.md §19.4.
+export function closedFonts(fonts: string[]): string[] {
+  const families = fonts.map((f) => f.split(' / ')[0]);
+  return [...new Set(families)].filter((f) => !OPEN_FONTS.has(f));
+}
+
 // See apps/docs/figma-to-tldraw/tech.md §6.9.
 export const FONT_SUBSTITUTES: Record<
   string,

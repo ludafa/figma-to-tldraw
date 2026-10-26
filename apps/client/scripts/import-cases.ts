@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { OPEN_FONTS } from '../src/figma/fonts';
+import { closedFonts } from '../src/figma/fonts';
 
 // See apps/docs/figma-to-tldraw/tech.md §9.
 
@@ -30,13 +30,11 @@ function readIndex(file: string): CaseIndex {
   return JSON.parse(fs.readFileSync(file, 'utf8')) as CaseIndex;
 }
 
-/** Font families a case uses that are not on the open font list. */
-function closedFonts(snapshotFile: string): string[] {
+function closedFontsOf(snapshotFile: string): string[] {
   const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8')) as {
     meta: { fonts: string[] };
   };
-  const families = snapshot.meta.fonts.map((f) => f.split(' / ')[0]);
-  return [...new Set(families)].filter((f) => !OPEN_FONTS.has(f));
+  return closedFonts(snapshot.meta.fonts);
 }
 
 function importZip(zip: string, index: CaseIndex): string[] {
@@ -52,7 +50,7 @@ function importZip(zip: string, index: CaseIndex): string[] {
     const imported: string[] = [];
     for (const c of incoming.cases) {
       const from = path.join(tmp, 'cases', c.dir);
-      const closed = closedFonts(path.join(from, 'snapshot.json'));
+      const closed = closedFontsOf(path.join(from, 'snapshot.json'));
       if (closed.length) {
         console.log(
           `  跳过 ${c.dir}：用到不在开源字体清单里的字体 ${closed.join('、')}`,

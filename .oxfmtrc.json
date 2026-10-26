@@ -21,7 +21,8 @@
     "apps/client/src/routeTree.gen.ts",
     "apps/figma-plugin/**",
     "cases/**",
-    "reports/**"
+    "reports/**",
+    ".deploy/**"
   ],
   "overrides": [
     {

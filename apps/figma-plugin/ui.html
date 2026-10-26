@@ -40,6 +40,14 @@
     white-space: pre-wrap;
   }
   .err { color: #DC2626; }
+  #fontWarn {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border: 1px solid #FCD34D;
+    border-radius: 6px;
+    background: #FFFBEB;
+    color: #92400E;
+  }
 </style>
 </head>
 <body>
@@ -66,6 +74,7 @@
   </div>
 
   <div id="status"></div>
+  <div id="fontWarn" hidden></div>
   <div id="log"></div>
 
 <script>
@@ -228,6 +237,43 @@ function makeRamp() {
 // 界面
 // ---------------------------------------------------------------------------
 var $status = document.getElementById('status');
+var $fontWarn = document.getElementById('fontWarn');
+
+// See apps/docs/figma-to-tldraw/tech.md §19.4.
+var OPEN_FONTS = [
+  'Inter',
+  'Noto Sans SC',
+  'Red Hat Display',
+  'Poppins',
+  'Montserrat',
+  'Lato',
+  'DM Sans',
+  'Urbanist',
+  'Lexend',
+  'Nunito',
+  'Work Sans',
+  'Zilla Slab',
+  'Roboto Mono',
+  'Bitter',
+  'Space Mono',
+];
+
+function closedFonts(fonts) {
+  var out = [];
+  (fonts || []).forEach(function (f) {
+    var family = f.split(' / ')[0];
+    if (OPEN_FONTS.indexOf(family) < 0 && out.indexOf(family) < 0) out.push(family);
+  });
+  return out;
+}
+
+function showFontWarning(families) {
+  $fontWarn.hidden = families.length === 0;
+  $fontWarn.textContent = families.length
+    ? '⚠ 这次导出的设计稿用到了不在开源字体清单里的字体：' + families.join('、') +
+      '。这些多半是商业字体，网页里加载不到，导入后会用 Inter 等字体代替，文字的宽度、换行都会变，还原度会明显变差。想要高还原度，请换成开源字体（清单见插件 README）。'
+    : '';
+}
 var $log = document.getElementById('log');
 var $gen = document.getElementById('gen');
 var $exp = document.getElementById('exp');
@@ -271,6 +317,7 @@ $gen.onclick = async function () {
 $exp.onclick = function () {
   busy(true);
   $log.innerHTML = '';
+  showFontWarning([]);
   $status.textContent = '开始导出…';
   send({ type: 'export' });
 };
@@ -285,6 +332,7 @@ document.getElementById('expList').onclick = function () {
   }
   busy(true);
   $log.innerHTML = '';
+  showFontWarning([]);
   $status.textContent = '开始导出 ' + items.length + ' 个…';
   send({ type: 'export-list', items: items });
 };
@@ -318,6 +366,7 @@ function finishExport() {
 
   var mb = (blob.size / 1024 / 1024).toFixed(1);
   $status.textContent = '导出完成：' + s.cases.length + ' 个用例，' + mb + ' MB' + (s.errors.length ? '，' + s.errors.length + ' 个失败' : '');
+  showFontWarning(s.closedFonts);
   exportState = null;
   busy(false);
 }
@@ -339,7 +388,7 @@ onmessage = function (event) {
     }
     busy(false);
   } else if (msg.type === 'export-start') {
-    exportState = { files: [], cases: [], errors: [], fileName: msg.fileName, pageName: msg.pageName };
+    exportState = { files: [], cases: [], errors: [], closedFonts: [], fileName: msg.fileName, pageName: msg.pageName };
   } else if (msg.type === 'export-case') {
     var enc = new TextEncoder();
     msg.files.forEach(function (f) {
@@ -348,6 +397,11 @@ onmessage = function (event) {
     exportState.cases.push(msg.summary);
     log(msg.summary.name + '：主组件 ' + msg.summary.mains + ' 个');
     msg.summary.warnings.forEach(function (w) { log('  ⚠ ' + w, true); });
+    var closed = closedFonts(msg.summary.fonts);
+    if (closed.length) log('  ⚠ 用到不在开源清单里的字体：' + closed.join('、'), true);
+    closed.forEach(function (f) {
+      if (exportState.closedFonts.indexOf(f) < 0) exportState.closedFonts.push(f);
+    });
   } else if (msg.type === 'export-error') {
     exportState.errors.push({ name: msg.name, error: msg.text });
     log('导出失败：' + msg.name + '：' + msg.text, true);

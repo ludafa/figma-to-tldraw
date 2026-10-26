@@ -1,9 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
+  closedFonts,
   fontFamilyCss,
   fontStyleCss,
   fontVariationCss,
+  OPEN_FONTS,
   primaryFontShorthand,
 } from './fonts';
 
@@ -33,5 +38,31 @@ describe('italic', () => {
     );
     expect(fontStyleCss({ fontFamily: 'Lato', italic: true })).toBe('italic');
     expect(fontStyleCss({ fontFamily: 'Lato' })).toBe('normal');
+  });
+});
+
+describe('closed fonts', () => {
+  it('lists each family once that is not on the open list', () => {
+    expect(
+      closedFonts([
+        'Inter / Regular',
+        'SF Pro Display / Bold',
+        'SF Pro Display / Regular',
+        'Gilroy / Medium',
+      ]),
+    ).toEqual(['SF Pro Display', 'Gilroy']);
+    expect(closedFonts(['Lato / Italic', 'Noto Sans SC / Regular'])).toEqual(
+      [],
+    );
+  });
+
+  it('matches the list the Figma plugin warns with', () => {
+    const html = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../../../figma-plugin/ui.html'),
+      'utf8',
+    );
+    const list = /var OPEN_FONTS = \[([^\]]*)\]/.exec(html)?.[1] ?? '';
+    const plugin = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(plugin).toEqual([...OPEN_FONTS]);
   });
 });

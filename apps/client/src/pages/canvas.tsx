@@ -83,7 +83,7 @@ function ExpectedOverlay() {
         opacity: overlay.mode === 'half' ? 0.5 : 1,
         mixBlendMode: overlay.mode === 'diff' ? 'difference' : undefined,
         pointerEvents: 'none',
-        zIndex: 100000,
+        zIndex: 1_000_000,
       }}
     />
   );

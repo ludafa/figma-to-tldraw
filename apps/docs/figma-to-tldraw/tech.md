@@ -364,6 +364,11 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | "组件"页让大稿子打开变慢（Untitled UI 5.5 秒，§16.3）                                                                                                                                                                                                                            | 慢了再改成打开"组件"页时才建，或只建用例用到的主组件                                                                                       |
 | 居中、右对齐时去掉行尾空格（§15.1）只在 designs-50 上对过；宽度自动的文字没去，带下划线的行尾空格 Figma 画不画没查                                                                                                                                                               | 全量对比没有用例变差；碰到再查                                                                                                             |
 | 大小字号混排的一行，基线只按 `text/mixed-styles` 一个用例定的规则（§6.4）；designs-48 的 "digital" 一行比 Figma 高 10px 左右（§15.1）                                                                                                                                            | 记成已知问题，designs-48 1.24%；再碰到混排的用例时一起研究                                                                                 |
+| Vercel 上的网站是本机手动上传的（§18）：代码或用例变了不会自动更新；数据 1.24 GB，用例再多可能碰到上传上限或流量额度                                                                                                                                                             | 改完重新 `build` + `export-static` + `vercel deploy`；超了就按目录片段只导一部分，或者把图片转成更小的格式                                 |
+| 导入页在浏览器里截图（§19.2），和 Playwright 截屏不是同一条路：一般差零点几个百分点，背景模糊截不出来，部分混合模式和图片采样不一样                                                                                                                                              | 页面上写明以本地对比脚本为准；要更准可以以后加"上传到服务器用 Playwright 截"的方式                                                         |
+| 截图依赖 modern-screenshot 的 `onCreateForeignObjectSvg`、`includeStyleProperties` 两个选项，以及"字体在 SVG 图片里异步解码、画面稳定后就不再变"这个实测的行为（§19.2）                                                                                                          | 版本锁在 4.7.0；升级后用 E-Learning 和 Furniture 两个 zip 重测，分数应该和 §19.3 的表差不多                                                |
+| 导入页比大页面时同时有 2 倍截图、Figma 图和三份像素数组（§19.2、§19.3），最大实测的是 Furniture（15 页）和 Golio personal-portfolio；更大的页面没测过，8000 万像素以上直接拒绝                                                                                                   | 内存不够时改成分段算差异，或者降到 1 倍比                                                                                                  |
+| 导入的数据存在浏览器 IndexedDB（§19.1），会占硬盘；浏览器清理站点数据时会丢                                                                                                                                                                                                      | 导入记录可以删；丢了重新导入 zip 就行                                                                                                      |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -1181,3 +1186,147 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 **能直接玩的例子。** 第 4 节放两个例子（Framer 亮色页的 "Get for free" 按钮：切变体、改文字属性；Furniture 购物车页的 "Input"：改主组件、实例跟着变），每个写好操作步骤。点"在这里打开编辑器"才用 `<iframe>` 嵌入 `/canvas`，不点不加载，免得一打开汇报页就建两份大画布；也可以在新标签页打开。
 
 **`/canvas` 的 `select` 参数。** 例子要一打开就选中某个实例，所以 `/canvas` 加了 `select=<Figma 节点 id>`（`apps/client/src/routes/canvas.tsx` 的 `CanvasSearch`）：用例画好以后，按 `shapeIdFor(用例目录, 节点 id)` 找到图形，切到它所在的页面（主组件在"组件"页），选中并缩放过去（`canvas.tsx` 里单独的一个 `useEffect`）。截图模式（`shot=1`）不管这个参数。
+
+## 18. 发布到 Vercel（2026-10-26，用户追加）
+
+> 2026-10-26 修订：原来发 4 个页面，现在加了导入和对比页 `/import`（§19），也是纯前端，`vercel.json` 的改写规则已经覆盖它，导出脚本不用改。
+
+用户要把前端发到 Vercel（用户追加）。发上去的是一个**纯静态网站**：`/showcase`、`/how-it-works`、`/report`、`/canvas` 这四个页面不调后端接口，只读 `/cases/` 和 `/reports/` 下面的文件。seed 自带的登录页和首页要 Hono 服务器和 SQLite，Vercel 上没有，也用不到，所以 `/` 直接跳到 `/showcase`。
+
+**数据要另外放进去。** 开发时 `/cases/`、`/reports/` 是开发服务器的 `serveDir` 从仓库根目录临时提供的（§1.1），`vite build` 打包出来的 `dist/` 里没有，这两个目录也不进 git。所以加了 `apps/client/scripts/export-static.ts`（新，`pnpm --filter @figma-to-tldraw/client export-static [目录片段…]`），把 `dist/` 和页面要读的数据拷进仓库根目录的 `.deploy/`（不进 git，lint 也不查）：
+
+| 拷什么                                            | 怎么处理                                                             | 175 个用例时的大小（实测） |
+| ------------------------------------------------- | -------------------------------------------------------------------- | -------------------------- |
+| `cases/index.json`                                | 只留选中的用例                                                       | —                          |
+| 每个用例的 `snapshot.json`                        | 去掉缩进（原来 938 MB）                                              | 446 MB                     |
+| `expected@2x.png`                                 | 原样                                                                 | 235 MB                     |
+| `images/`                                         | 原样；全部都被快照用到，没有能省的                                   | 447 MB                     |
+| 最新报告的 `results.json` 和每个用例的 `diff.png` | 只留选中的用例；报告里的 `expected.png`、`actual.png` 页面不读，不拷 | 93 MB                      |
+| `vercel.json`、`.vercelignore`                    | 脚本生成，见下面                                                     | —                          |
+
+一共 2342 个文件、1.24 GB，最大的单个文件是 Golio digital agency 页的快照（50 MB）。命令后面跟目录片段时只导匹配的用例，用来在超出上限时只发一部分。
+
+- **`vercel.json`**：`/` 临时跳转到 `/showcase`；除了 `assets/`、`cases/`、`reports/`，其他路径都改写到 `index.html`，交给前端路由（直接打开 `/report` 这类地址也能用）；数据文件找不到时照样返回 404，不会拿到一个 HTML。
+- **`.vercelignore`**：写 `.env*`。`vercel link` 会在目录里生成一个带 OIDC 令牌的 `.env.local`（2026-10-26 实测），网站不需要它，不能跟着传上去。脚本每次导出都会清空 `.deploy/`，只保留 `vercel link` 写的 `.vercel/`（项目关联），所以不用每次重新关联。
+- **不连 GitHub。** 仓库里没有数据，推代码让 Vercel 自动构建也画不出用例，所以一直是从本机上传 `.deploy/`。`vercel link` 时它会试着连 GitHub 仓库，没连上，不影响。
+- **原始对比报告不发。** 展示页顶上"原始对比报告 ↗"链到 `/reports/fidelity/latest/index.html`，那份报告每个用例还有 `expected.png`、`actual.png` 两张 2 倍大图（六百多 MB）。导出时在这个位置写一个说明页（`REPORT_NOTICE`），说明原始报告只在本地有，链回展示页；前端代码不用改。
+- 打包时 `define` 把 `VITE_API_URL` 写成本机的 `SERVER_URL`，只有登录页用，静态网站上不管。
+- 没有买 tldraw 的许可证，正式构建的画布右下角有 "Made with tldraw" 水印。
+
+**发布步骤：**
+
+1. 第一次：`npx vercel login`（用户自己登录），`npx vercel link --yes --project figma-to-tldraw --cwd .deploy`。
+2. `pnpm --filter @figma-to-tldraw/client build`，再 `pnpm --filter @figma-to-tldraw/client export-static`。
+3. `npx vercel deploy --prod --yes --cwd .deploy`。
+
+上线前在本机用一个按 `vercel.json` 规则写的静态服务器把 `.deploy/` 跑了一遍：`/` 跳到 `/showcase`，`/canvas` 画出 Furniture 购物车页 359 个图形，字体和图片都在，`/report` 读到 175 个用例的数字，没有 404。
+
+**结果**（2026-10-26，实测）：正式地址 https://figma-to-tldraw.vercel.app 。1.24 GB 第一次上传就成功了，没有碰到上传上限；之后再部署只传改过的文件，几秒钟。正式地址谁都能打开；每次部署那个带编号的地址（`figma-to-tldraw-<编号>-ludafa1s-projects.vercel.app`）开着 Vercel 默认的登录保护，只有账号主人能看。线上检查：`/` 跳到 `/showcase`；`/canvas` 打开 Furniture 购物车页（359 个图形）2.8 秒、Untitled UI dashboards-desktop（479 个图形）2.5 秒画好；`/report` 读到 175 个用例；50 MB 的快照传输时压缩成 32 MB；找不到的数据文件返回 404；`.env.local`、`.vercelignore` 没有传上去（访问它们拿到的是首页）。
+
+### 18.1 用例 JSON 的线上地址映射（2026-10-26，用户追加）
+
+用户要一份"用例 id → Vercel 上 Figma JSON 地址"的映射，放进 git（用户追加）。文件是仓库根目录的 `case-urls.json`，一个对象，键是用例 id，值是这个用例 `snapshot.json` 的线上地址，按 id 字母顺序排：
+
+```json
+{
+  "real/furniture-e-commerce-community/design-cart": "https://figma-to-tldraw.vercel.app/cases/real/furniture-e-commerce-community/design-cart/snapshot.json"
+}
+```
+
+- **id 用用例目录**（`cases/index.json` 里的 `dir`），和 `/canvas?case=`、对比报告用的是同一个；Figma 节点 id 在不同文件之间会重复，不拿来当 id。
+- **由 `export-static.ts` 生成**：导出时按这次导出的用例写一遍，地址前缀默认 `https://figma-to-tldraw.vercel.app`，可以用环境变量 `SITE_URL` 换；路径的拼法和页面读数据用的 `caseUrl`（`src/figma/load.ts`）一样，每一段 `encodeURIComponent`（脚本的 TS 配置里没有浏览器环境，引不了 `load.ts`，只能在脚本里写一份）。导出时带了目录片段（只导一部分），映射也只剩那一部分，这种情况不要提交它。
+- 线上的 `snapshot.json` 是去掉缩进的（§18 的表），内容和 `cases/` 里的一样。
+- 映射只在部署后才成立：加了用例要 `build` + `export-static` + `vercel deploy`，再把变了的 `case-urls.json` 一起提交。
+
+2026-10-26 生成的 175 条逐个请求过线上地址，全部 200、`application/json`。
+
+## 19. 导入和对比页 /import（2026-10-26，用户追加）
+
+用户要一个单独的页面（用户追加）：中间是 tldraw 画布；左边上面是导入按钮和每次导入的差异分析报告，下面是组件树（图层树）；右边是节点 inspector；导出时如果用到特殊字体，提醒用户商业字体会让还原度变差；这个页面也要发到 Vercel 上。用户说"直接做，做好了发布"，下面没标"用户"的做法都是我定的。
+
+**整个流程都在浏览器里。** 选 Figma 插件导出的 zip（或者拖到页面上），浏览器解开、画到画布上、截图和 Figma 的 2 倍图逐像素比、出差异分析，不经过服务器，所以 Vercel 上的静态网站也能用（§18）。导入的数据存在这台电脑浏览器的 IndexedDB 里，刷新还在，别人看不到。"tldraw 导出"理解成下载 tldraw 画出来的图（和差异图、`.tldr` 文件，§19.5）。
+
+### 19.1 页面和数据流
+
+- 地址 `/import?id=<导入 id>&case=<用例目录>`，不用登录（和 `/canvas` 一样是顶层路由）。地址里没有 `id` 时打开最新的一次导入。页面在 `apps/client/src/pages/import.tsx`（新），左栏和报告在 `apps/client/src/importer/import-panel.tsx`（新）。
+- **布局**：左栏 320px，上面五分之三是标题、导入按钮、进度条、导入记录（每次导入一块：Figma 文件名、页面、平均分、每个画板的分数，能删）、选中画板的差异报告；下面五分之二是 `LayerTree`（和 `/canvas` 同一个组件，有"组件"页时带页面切换）。中间是 tldraw；右栏 288px 是 inspector。
+- **导入**：`readZipIndex`（`importer/zip.ts`，新）用 fflate 的 `unzip` 只解 `cases/index.json`，生成一条导入记录（`importer/store.ts` 的 `ImportRecord`：文件名、Figma 文件和页面、每个画板的尺寸、字体、不在开源清单里的字体），连同 zip 原文件存进 IndexedDB，然后把每个画板排进对比队列（§19.3），并打开第一个画板。不是 zip、zip 里没有 `cases/index.json` 的，提示一句跳过。
+- **IndexedDB** 库名 `figma-to-tldraw-imports`，三张表：`imports`（导入记录和对比结果）、`zips`（zip 原文件）、`outputs`（每个画板的 tldraw 截图和差异图，§19.3）。打不开 IndexedDB 时（比如某些无痕窗口）退回内存，页面上写一句"刷新后导入的内容会丢"。
+- **打开一个画板**：`readZipCase` 只解这个画板目录下的文件（zip 的字节缓存最近一个，切画板不用重读），`withBlobUrls` 给每张图片建 blob 地址，把快照 `meta.images`、`meta.filteredImages` 里的相对路径换成 blob 地址，资源前缀传空字符串，`putSnapshot(..., { mains: true })` 画到主画布（带"组件"页），再缩放到整个画板（四周共留 160px，避开底部工具栏）。换画板时收回上一个画板的 blob 地址。
+- **右栏 inspector**：用 `/canvas` 属性面板里的同一个 `FigmaPanel`。`panel.tsx` 把"选中了哪些 Figma 图层"抽成 `useFigmaItems`，新导出 `FigmaInspector`（没选中时显示提示）。它要用 editor 和 tldraw 界面的 context，所以放在 `<Tldraw>` 的 children 里，用 `createPortal` 渲染到右栏（`importer/inspector.tsx`，新）；tldraw 自己的样式面板关掉（`components.StylePanel: null`）。面板下面加两块：这个节点在不在"差异最多的节点"里、占全部差异像素多少；"原始节点数据"（`props.node`，子节点只写个数）。
+- **差异报告**：复用展示页的 `DiffAnalysis`（`showcase/diff-analysis.tsx`），加了 `hint`、`method`、`onPick` 三个可选参数。鼠标移到"差异最多的节点"上，画布上用红框框出它（`OnTheCanvas` 里画，框的位置是渲染范围加节点的 `box`）；点一下选中这个图层并移过去。
+- **叠加**：不叠加 / 半透明 / 差异（Figma 图用 `difference` 混合叠上去）/ 差异图（pixelmatch 的输出，红色是不同的像素，黄色是抗锯齿）。顺带修了一个老问题：图形的 `z-index` 从 200000 起，叠加图原来是 100000，被压在图形下面看不见；`/canvas` 和 `/import` 都改成 1000000。
+- 删除一次导入要确认，会删掉 zip、记录和截图。
+
+### 19.2 在浏览器里截 tldraw 的图
+
+本地对比脚本用 Playwright 截浏览器的屏幕（§7），网页里没有这个能力，只能把 DOM 画成图片。试了三种（2026-10-26，同一批用例和 Playwright 的分数比）：
+
+| 方案                                                                           | 结论                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tldraw 自带的 `editor.toImage`                                                 | ❌ 每个图形单独画成一块，跨图形的效果丢了：圆形裁剪、蒙版、混合模式、背景模糊。`fill/angular-gradient` 6.56%、`mask/star-gradient` 8.67%、`blend/modes` 93%（Playwright 是 0、0、0.04%） |
+| modern-screenshot 4.7.0（MIT）直接用：整个 `.tl-container` 克隆进 SVG 再画成图 | ❌ 裁剪、蒙版、图层模糊都对了，但文字退回了系统字体：`text/wrap` 3.06%（Playwright 0.022%）                                                                                              |
+| modern-screenshot + 自己内嵌字体 + 等画面稳定再取                              | ✅ 采用。`text/wrap` 0.022%，和 Playwright 一样                                                                                                                                          |
+
+文字退回系统字体有两个原因：
+
+1. modern-screenshot 只认"自己身上写了 `font-family`"的元素，我们的文字是从父元素继承字体的，它就一个字体都没打包。
+2. 字体放进 SVG 图片以后是异步解码的：图片 `load` 完马上画，用的是后备字体，大约 40 毫秒后才换成正确的字体（实测每 25 毫秒画一次，第二次就变了）。
+
+做法（`apps/client/src/importer/capture.ts`，新）：
+
+- `fontFaceCss(root)`：找出 `root` 下所有带文字的元素，收集它们的字体和用到的字符；从页面的样式表里挑出字体名对得上、`unicode-range` 包含这些字符的 `@font-face`（Noto Sans SC 拆成一百多个分片，只挑用到的），把字体文件读成 data URL（缓存起来，下一张图不用再读）。
+- `captureElement(root, 2)`：`domToForeignObjectSvg` 关掉它自己的字体处理（`font: false`），在 `onCreateForeignObjectSvg` 里把上面的 `@font-face` 塞进 SVG；`includeStyleProperties` 只抄标准 CSS 属性、不抄自定义属性（`--xxx` 已经算进各属性的值里了），`text/wrap` 的 SVG 从 3.6 MB 降到 1.9 MB。SVG 转成 data URL 交给 `Image`（用 blob 地址画到 canvas 上会被浏览器当成跨域图，取不出像素）。
+- `settle`：每 50 毫秒把图缩到 320px 宽画一次、算个签名，连续 3 次一样才算稳定（最多等 3 秒），然后按 2 倍画到 canvas。
+
+**截图用的画布**（`apps/client/src/importer/shot-stage.tsx`，新）：页面里另放一个看不见的 `<Tldraw>`（固定在屏幕左边 10 万像素外，`hideUi`，外面套 `figma-shot`，也调 `startFigmaEditing`），照 `/canvas?shot=1` 的样子摆：
+
+- 相机和 `/canvas` 截图模式一样（§7、§9）：`x = 40 - 0.125 - 渲染范围.x`，缩放 1。
+- 画布宽 = 渲染范围宽 + 80 + 200，高 = 一段的高度 + 80 + 100；多出来的边让 tldraw 右下角的水印落在截取范围外，和对比脚本的大窗口一个道理。
+- 长页面分段（§12.2）：一段 2000 CSS 像素高；很宽的画板段高按 `4000000 / (宽 + 280)` 缩小（至少 400），免得一段的 2 倍 canvas 太大。每段：挪相机、等 3 帧、截图、把对应的行拷进和 `expected@2x.png` 一样大的结果 canvas。
+- 截完删掉这个画布上的图形。
+- Figma 图用 `createImageBitmap(..., { colorSpaceConversion: 'none' })` 解码（和 pngjs 一样拿原始数值，不做色彩管理），画在白底上（同对比脚本的 `onWhite`）。
+- 2 倍图超过 8000 万像素的直接报错，请用本地对比脚本。
+
+### 19.3 算差异
+
+- `apps/client/src/importer/diff-core.ts`（新）的 `compareImages`：pixelmatch 阈值 0.1，再用 `attributeDiff`（§10.2）把不同的像素归到节点，和对比脚本完全一样。放在 Web Worker 里算（`diff.worker.ts`、`diff.ts` 的 `compareInWorker`，新），大页面不卡界面；像素数组转交给 worker，不复制。
+- 结果（`FidelityResult` 加 `analyzedAt`、`ms`）写回导入记录；tldraw 截图和差异图存进 `outputs` 表，给下载和"差异图"叠加用。
+- 一次只比一个画板，左栏有进度条；导入多个 zip 时接着排队。每个画板有"重新对比"；刷新时没比完的，导入记录上有"对比剩下的 N 个"。出错的画板记成"出错"并显示原因，不影响其他画板。
+
+**和 Playwright 的分数比**（2026-10-26，实测，对照 `reports/fidelity/20261026-015324/`）：
+
+| 用例                                 | 浏览器里                                                                                                     | Playwright                 | 用时                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------- | ----------------------------- |
+| E-Learning 线框图 4 张（0.9 MB zip） | 0.012%、0.001%、0、0                                                                                         | 0.01%、0.00%、0.00%、0.00% | 一共 5.2 秒                   |
+| Furniture 15 页（111 MB zip）        | 每页差别都在 0.03 个百分点以内，例如 homepage-5 0.274%、product-detail-3 0.355%、shipping-and-payment 0.052% | 0.29%、0.36%、0.08%        | 一共 92 秒，每页 2.3～10.9 秒 |
+| Untitled UI dashboards-desktop       | 0.016%                                                                                                       | 0.01%                      | 2.3 秒                        |
+| Golio personal-portfolio             | 0.105%                                                                                                       | 0.03%                      | 6.0 秒（SVG 41 MB）           |
+| designs-48                           | 0.845%                                                                                                       | 1.24%                      | 1.3 秒                        |
+| `page/gallery`                       | 1.375%                                                                                                       | 0.073%                     | 0.6 秒                        |
+| `blend/modes`                        | 0.372%                                                                                                       | 0.038%                     | —                             |
+| `effect/background-blur`             | 5.671%                                                                                                       | 0                          | —                             |
+
+第 3 行起是 2026-10-26 实验脚本测的（同样的截图做法，不经过页面）。差得多的三种：`page/gallery` 图片里的网格线采样位置不一样；`blend/modes` 部分混合模式在 SVG 图片里画得不一样；背景模糊（`backdrop-filter`）在 SVG 图片里根本不生效。页面上的说明写了这点：分数以本地对比脚本为准。
+
+### 19.4 商业字体提醒
+
+- `fonts.ts` 加 `closedFonts(fonts)`：从 `meta.fonts`（"字体 / 样式"）里挑出不在 `OPEN_FONTS`（§15）里的字体，每个字体一次。`import-cases` 也改用它。
+- **插件导出时**：插件是不经过打包的纯 JS（`apps/figma-plugin/ui.html`），引不到 TS 里的清单，只能抄一份 `OPEN_FONTS`；`fonts.test.ts` 检查两份一样。每导出一个画板，日志里写它用到的商业字体；导出完在状态下面显示一个黄框：用到了哪些不在开源清单里的字体，它们多半是商业字体，网页里加载不到，会用 Inter 等字体代替，宽度和换行都会变，还原度会明显变差，想要高还原度就换成开源字体。
+- **导入时**：按 `index.json` 里每个画板的字体算。导入后的提示里写一遍；导入记录里一个黄框；每个画板名字后面一个 ⚠（鼠标移上去看是哪些字体）；差异报告的"说明"里再写一遍。和 `import-cases`（跳过这种用例）不同，页面照样导入，让用户看到差多少。
+- 用 Free Banking 那份 zip（5 页，用 SF Pro Display）试过：提示都出来了，History 页 1.66%，左上角 "9:41" 被挤成两行。
+
+### 19.5 导出
+
+左栏差异报告上面四个下载按钮：
+
+| 按钮          | 下载什么                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| tldraw 渲染图 | 对比用的那张 2 倍截图（`<画板名>-tldraw@2x.png`）                                            |
+| 差异图        | pixelmatch 的输出（`<画板名>-diff.png`）                                                     |
+| Figma 渲染图  | zip 里的 `expected@2x.png`（`<画板名>-figma@2x.png`）                                        |
+| .tldr 文件    | 主画布的 tldraw 文档（`serializeTldrawJson`），里面的 blob 地址换成 data URL，图片跟着文件走 |
+
+`.tldr` 里是我们的自定义图形（`figma-frame` 等），tldraw.com 打不开，要用装了这些图形的编辑器读。前两个按钮要等这个画板比完才能点。
+
+**上线**（2026-10-26，实测）：https://figma-to-tldraw.vercel.app/import 。线上导入 E-Learning 和 Free Banking 两份 zip（9 个画板）13.6 秒比完，分数和本机一样。

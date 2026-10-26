@@ -111,6 +111,12 @@ export function CaseList({
           >
             这一轮的汇报 →
           </Link>
+          <Link
+            to="/import"
+            className="font-medium underline-offset-4 hover:underline"
+          >
+            导入自己的设计稿 →
+          </Link>
           <a
             href="/reports/fidelity/latest/index.html"
             target="_blank"
