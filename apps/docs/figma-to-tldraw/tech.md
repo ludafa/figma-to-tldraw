@@ -1223,6 +1223,23 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 **结果**（2026-10-26，实测）：正式地址 https://figma-to-tldraw.vercel.app 。1.24 GB 第一次上传就成功了，没有碰到上传上限；之后再部署只传改过的文件，几秒钟。正式地址谁都能打开；每次部署那个带编号的地址（`figma-to-tldraw-<编号>-ludafa1s-projects.vercel.app`）开着 Vercel 默认的登录保护，只有账号主人能看。线上检查：`/` 跳到 `/showcase`；`/canvas` 打开 Furniture 购物车页（359 个图形）2.8 秒、Untitled UI dashboards-desktop（479 个图形）2.5 秒画好；`/report` 读到 175 个用例；50 MB 的快照传输时压缩成 32 MB；找不到的数据文件返回 404；`.env.local`、`.vercelignore` 没有传上去（访问它们拿到的是首页）。
 
+### 18.1 用例 JSON 的线上地址映射（2026-10-26，用户追加）
+
+用户要一份"用例 id → Vercel 上 Figma JSON 地址"的映射，放进 git（用户追加）。文件是仓库根目录的 `case-urls.json`，一个对象，键是用例 id，值是这个用例 `snapshot.json` 的线上地址，按 id 字母顺序排：
+
+```json
+{
+  "real/furniture-e-commerce-community/design-cart": "https://figma-to-tldraw.vercel.app/cases/real/furniture-e-commerce-community/design-cart/snapshot.json"
+}
+```
+
+- **id 用用例目录**（`cases/index.json` 里的 `dir`），和 `/canvas?case=`、对比报告用的是同一个；Figma 节点 id 在不同文件之间会重复，不拿来当 id。
+- **由 `export-static.ts` 生成**：导出时按这次导出的用例写一遍，地址前缀默认 `https://figma-to-tldraw.vercel.app`，可以用环境变量 `SITE_URL` 换；路径的拼法和页面读数据用的 `caseUrl`（`src/figma/load.ts`）一样，每一段 `encodeURIComponent`（脚本的 TS 配置里没有浏览器环境，引不了 `load.ts`，只能在脚本里写一份）。导出时带了目录片段（只导一部分），映射也只剩那一部分，这种情况不要提交它。
+- 线上的 `snapshot.json` 是去掉缩进的（§18 的表），内容和 `cases/` 里的一样。
+- 映射只在部署后才成立：加了用例要 `build` + `export-static` + `vercel deploy`，再把变了的 `case-urls.json` 一起提交。
+
+2026-10-26 生成的 175 条逐个请求过线上地址，全部 200、`application/json`。
+
 ## 19. 导入和对比页 /import（2026-10-26，用户追加）
 
 用户要一个单独的页面（用户追加）：中间是 tldraw 画布；左边上面是导入按钮和每次导入的差异分析报告，下面是组件树（图层树）；右边是节点 inspector；导出时如果用到特殊字体，提醒用户商业字体会让还原度变差；这个页面也要发到 Vercel 上。用户说"直接做，做好了发布"，下面没标"用户"的做法都是我定的。

@@ -261,6 +261,12 @@
 - `pnpm test` 16 个文件 92 条通过（新增 12 条：`zip.test.ts` 5、`capture.test.ts` 3、`diff-core.test.ts` 2、`fonts.test.ts` 2）；`pnpm lint`、`pnpm typecheck` 通过。
 - 正式构建（`vite preview`）里同样两份 zip（E-Learning + Free Banking，9 个画板）一起导入，分数和开发服务器一模一样，10.8 秒。重新 `build` + `export-static`（2344 个文件，1243 MB）+ `vercel deploy --prod`，https://figma-to-tldraw.vercel.app/import 上用 Playwright 再跑一遍：9 个画板 13.6 秒、分数一样；选节点、四个下载、刷新后记录还在都正常。
 
+### 2026-10-26（用例 JSON 的线上地址映射，用户追加）
+
+- `export-static` 生成仓库根目录的 `case-urls.json`：175 条，用例 id → `https://figma-to-tldraw.vercel.app/cases/<id>/snapshot.json`（tech.md §18.1）。
+- 175 个地址逐个用 `curl -I` 请求：全部 200、`application/json; charset=utf-8`；`fill/solid` 下载下来是完整的快照（`meta`、`rest`、`svgs`、`transforms`）。
+- `pnpm lint`、`pnpm typecheck` 通过。
+
 ## 5. Demo 结论（2026-10-24）
 
 最后一份报告是 `reports/fidelity/20261024-211751/`（实测，macOS 上的 Playwright Chromium，真实 2 倍屏，pixelmatch 阈值 0.1）：**79 个用例平均差异 0.004%，全部小于 1%，65 个是 0.00%**，没有出错和警告。第一份报告是平均 0.53%、73 / 79 个小于 1%。

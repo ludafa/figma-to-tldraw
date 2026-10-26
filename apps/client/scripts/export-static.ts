@@ -11,6 +11,8 @@ const CASES_DIR = path.join(ROOT, 'cases');
 const REPORT_DIR = path.join(ROOT, 'reports/fidelity/latest');
 const DIST = path.resolve(import.meta.dirname, '../dist');
 const OUT = path.join(ROOT, '.deploy');
+const SITE_URL = process.env.SITE_URL ?? 'https://figma-to-tldraw.vercel.app';
+const URL_MAP = path.join(ROOT, 'case-urls.json');
 
 const VERCEL_CONFIG = {
   redirects: [{ source: '/', destination: '/showcase', permanent: false }],
@@ -34,6 +36,10 @@ const REPORT_NOTICE = `<!doctype html>
 </body>
 </html>
 `;
+
+function snapshotUrl(dir: string): string {
+  return `${SITE_URL}/cases/${dir.split('/').map(encodeURIComponent).join('/')}/snapshot.json`;
+}
 
 function matches(dir: string, patterns: string[]): boolean {
   return !patterns.length || patterns.some((p) => dir.includes(p));
@@ -147,10 +153,20 @@ function main() {
     `${JSON.stringify(VERCEL_CONFIG, null, 2)}\n`,
   );
 
+  // See apps/docs/figma-to-tldraw/tech.md §18.1.
+  const urls = Object.fromEntries(
+    cases
+      .map((c) => c.dir)
+      .sort()
+      .map((dir) => [dir, snapshotUrl(dir)]),
+  );
+  fs.writeFileSync(URL_MAP, `${JSON.stringify(urls, null, 2)}\n`);
+
   const { bytes, files, largest } = sizeOf(OUT);
   console.log(
     `${cases.length} 个用例 → ${path.relative(ROOT, OUT)}/：${files} 个文件，${(bytes / 1e6).toFixed(0)} MB，最大的 ${largest}`,
   );
+  console.log(`用例 JSON 的线上地址 → ${path.relative(ROOT, URL_MAP)}`);
 }
 
 main();
