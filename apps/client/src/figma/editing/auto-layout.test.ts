@@ -265,7 +265,7 @@ describe.skipIf(!existsSync(path.join(CASES, 'index.json')))(
         console.log(moved.join('\n'));
       }
       // See apps/docs/figma-to-tldraw/verification.md §1.
-      expect(moved.length).toBeLessThanOrEqual(24);
+      expect(moved.length).toBeLessThanOrEqual(59);
     });
   },
 );

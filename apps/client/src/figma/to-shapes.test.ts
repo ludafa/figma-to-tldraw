@@ -172,7 +172,7 @@ describe('snapshotToShapes', () => {
     expect(upsideDown.rotation).toBeCloseTo(Math.PI);
   });
 
-  it('skips hidden nodes and their children', () => {
+  it('keeps hidden nodes and their children as hidden shapes', () => {
     const doc: FigmaNode = {
       id: '1:1',
       name: 'root',
@@ -192,6 +192,13 @@ describe('snapshotToShapes', () => {
               type: 'RECTANGLE',
               absoluteBoundingBox: box(0, 0, 10, 10),
             },
+            {
+              id: '1:5',
+              name: 'hidden icon',
+              type: 'VECTOR',
+              absoluteBoundingBox: box(2, 3, 4, 5),
+              absoluteRenderBounds: null,
+            },
           ],
         },
         {
@@ -202,8 +209,22 @@ describe('snapshotToShapes', () => {
         },
       ],
     };
-    const { shapes } = snapshotToShapes(snapshot(doc), opts);
-    expect(shapes.map((s) => s.props?.node?.name)).toEqual(['root', 'shown']);
+    const { shapes, warnings } = snapshotToShapes(snapshot(doc), opts);
+    expect(shapes.map((s) => s.props?.node?.name)).toEqual([
+      'root',
+      'hidden',
+      'inside hidden',
+      'hidden icon',
+      'shown',
+    ]);
+    expect(shapes[1].props?.node?.visible).toBe(false);
+    // A hidden vector has no SVG; it is placed by its box and draws nothing.
+    expect(shapes[3]).toMatchObject({
+      x: 2,
+      y: 3,
+      props: { w: 4, h: 5, svg: '' },
+    });
+    expect(warnings).toEqual([]);
   });
 
   it('skips vectors that render nothing without a warning', () => {

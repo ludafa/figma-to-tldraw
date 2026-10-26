@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { OPEN_FONTS } from '../src/figma/fonts';
+
 // See apps/docs/figma-to-tldraw/tech.md §9.
 
 interface CaseEntry {
@@ -28,6 +30,15 @@ function readIndex(file: string): CaseIndex {
   return JSON.parse(fs.readFileSync(file, 'utf8')) as CaseIndex;
 }
 
+/** Font families a case uses that are not on the open font list. */
+function closedFonts(snapshotFile: string): string[] {
+  const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8')) as {
+    meta: { fonts: string[] };
+  };
+  const families = snapshot.meta.fonts.map((f) => f.split(' / ')[0]);
+  return [...new Set(families)].filter((f) => !OPEN_FONTS.has(f));
+}
+
 function importZip(zip: string, index: CaseIndex): string[] {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'figma-cases-'));
   try {
@@ -38,8 +49,17 @@ function importZip(zip: string, index: CaseIndex): string[] {
       page: incoming.page?.trim(),
       exportedAt: incoming.exportedAt,
     };
+    const imported: string[] = [];
     for (const c of incoming.cases) {
       const from = path.join(tmp, 'cases', c.dir);
+      const closed = closedFonts(path.join(from, 'snapshot.json'));
+      if (closed.length) {
+        console.log(
+          `  跳过 ${c.dir}：用到不在开源字体清单里的字体 ${closed.join('、')}`,
+        );
+        continue;
+      }
+      imported.push(c.dir);
       const to = path.join(CASES_DIR, c.dir);
       if (!path.resolve(to).startsWith(CASES_DIR + path.sep)) {
         throw new Error(`用例目录跑出了 cases/：${c.dir}`);
@@ -47,7 +67,11 @@ function importZip(zip: string, index: CaseIndex): string[] {
       fs.rmSync(to, { recursive: true, force: true });
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.cpSync(from, to, { recursive: true });
-      const entry = { ...c, source };
+      const { page, ...rest } = c as CaseEntry & { page?: string };
+      const entry = {
+        ...rest,
+        source: { ...source, page: page?.trim() ?? source.page },
+      };
       const i = index.cases.findIndex((e) => e.dir === c.dir);
       if (i >= 0) {
         index.cases[i] = entry;
@@ -55,7 +79,7 @@ function importZip(zip: string, index: CaseIndex): string[] {
         index.cases.push(entry);
       }
     }
-    return incoming.cases.map((c) => c.dir);
+    return imported;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

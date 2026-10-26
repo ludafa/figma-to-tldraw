@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { fontFamilyCss, fontVariationCss, primaryFontShorthand } from './fonts';
+import {
+  fontFamilyCss,
+  fontStyleCss,
+  fontVariationCss,
+  primaryFontShorthand,
+} from './fonts';
 
 describe('font substitutes', () => {
   it('puts the substitute right after a font we cannot load', () => {
@@ -18,5 +23,15 @@ describe('font substitutes', () => {
       '"Inter", "Inter", "Noto Sans SC", sans-serif',
     );
     expect(fontVariationCss(style)).toBeUndefined();
+  });
+});
+
+describe('italic', () => {
+  it('slants Inter and uses the real italic face of other fonts', () => {
+    expect(fontStyleCss({ fontFamily: 'Inter', italic: true })).toBe(
+      'oblique 10deg',
+    );
+    expect(fontStyleCss({ fontFamily: 'Lato', italic: true })).toBe('italic');
+    expect(fontStyleCss({ fontFamily: 'Lato' })).toBe('normal');
   });
 });

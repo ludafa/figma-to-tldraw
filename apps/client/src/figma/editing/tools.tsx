@@ -13,12 +13,14 @@ import {
   ToolbarItem,
 } from 'tldraw';
 
+import { isFigmaShape } from '../clip';
 import {
   createLayer,
   DEFAULT_SIZE,
   finishLayer,
   type NewLayerKind,
 } from './create';
+import { canBecomeComponent, createComponents } from './instances';
 
 // See apps/docs/figma-to-tldraw/tech.md §14.1.
 
@@ -182,6 +184,25 @@ export const figmaUiOverrides: TLUiOverrides = {
       };
     }
     return tools;
+  },
+  // See apps/docs/figma-to-tldraw/tech.md §16.5.
+  actions(editor, actions) {
+    actions['figma-create-component'] = {
+      id: 'figma-create-component',
+      label: 'action.create-component',
+      kbd: 'cmd+alt+k,ctrl+alt+k',
+      onSelect() {
+        const shapes = editor.getSelectedShapes();
+        if (
+          shapes.length &&
+          shapes.every((s) => isFigmaShape(s) && canBecomeComponent(editor, s))
+        ) {
+          editor.markHistoryStoppingPoint('create component');
+          createComponents(editor, shapes.filter(isFigmaShape));
+        }
+      },
+    };
+    return actions;
   },
 };
 

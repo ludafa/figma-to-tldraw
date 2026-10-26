@@ -5,12 +5,14 @@ import { CanvasPage } from '../pages/canvas';
 export interface CanvasSearch {
   case?: string;
   shot?: 1;
+  select?: string;
 }
 
 export const Route = createFileRoute('/canvas')({
   validateSearch: (search: Record<string, unknown>): CanvasSearch => ({
     case: typeof search.case === 'string' ? search.case : undefined,
     shot: search.shot === 1 || search.shot === '1' ? 1 : undefined,
+    select: typeof search.select === 'string' ? search.select : undefined,
   }),
   component: CanvasPage,
 });

@@ -24,6 +24,7 @@ import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
 import { figmaShapeUtils } from '../figma/shapes';
+import { shapeIdFor } from '../figma/to-shapes';
 import type { CaseIndex, Snapshot } from '../figma/types';
 
 // See apps/docs/figma-to-tldraw/tech.md §7.
@@ -34,6 +35,7 @@ declare global {
     __figmaRelayoutAll?: () => void;
     __figmaReady?: boolean;
     __figmaWarnings?: string[];
+    __figmaShotFrom?: (y: number) => void;
   }
 }
 
@@ -93,23 +95,35 @@ const components: TLComponents = {
   Toolbar: FigmaToolbar,
 };
 
-// See apps/docs/figma-to-tldraw/tech.md §14.1.
-const options = { createTextOnCanvasDoubleClick: false };
+// See apps/docs/figma-to-tldraw/tech.md §14.1 and §16.3.
+const options = {
+  createTextOnCanvasDoubleClick: false,
+  maxShapesPerPage: 100_000,
+};
 
 function showSnapshot(
   editor: Editor,
   snapshot: Snapshot,
   id: string,
   assetBase: string,
+  shot: boolean,
 ): string[] {
-  const warnings = putSnapshot(editor, snapshot, id, assetBase);
+  // See apps/docs/figma-to-tldraw/tech.md §16.3.
+  const warnings = putSnapshot(editor, snapshot, id, assetBase, {
+    mains: !shot,
+  });
   // See apps/docs/figma-to-tldraw/tech.md §7 and §9.
   const area = renderArea(snapshot);
-  editor.setCamera({
-    x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
-    y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y,
-    z: 1,
-  });
+  const showFrom = (y: number) => {
+    editor.setCamera({
+      x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
+      y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y - y,
+      z: 1,
+    });
+  };
+  showFrom(0);
+  // See apps/docs/figma-to-tldraw/tech.md §12.2.
+  window.__figmaShotFrom = showFrom;
   return warnings;
 }
 
@@ -243,6 +257,7 @@ export function CanvasPage() {
           snap,
           dir ?? 'fixture/hello',
           assetBase,
+          shot,
         );
         for (const w of list) {
           console.warn(w);
@@ -267,7 +282,21 @@ export function CanvasPage() {
     return () => {
       cancelled = true;
     };
-  }, [editor, search.case]);
+  }, [editor, search.case, shot]);
+
+  // See apps/docs/figma-to-tldraw/tech.md §17.
+  useEffect(() => {
+    if (!editor || !snapshot || shot || !search.select) {
+      return;
+    }
+    const id = shapeIdFor(search.case ?? 'fixture/hello', search.select);
+    const page = editor.getShape(id) && editor.getAncestorPageId(id);
+    if (page) {
+      editor.setCurrentPage(page);
+      editor.select(id);
+      editor.zoomToSelection();
+    }
+  }, [editor, snapshot, shot, search.case, search.select]);
 
   function handleMount(e: Editor) {
     if (import.meta.env.DEV) {

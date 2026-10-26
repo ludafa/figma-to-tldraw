@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { isFigmaShape } from '../clip';
 import type { FigmaShape } from '../shape-types';
 import { isAutoLayout } from './auto-layout';
+import { isComponentLike } from './instances';
 
 // See apps/docs/figma-to-tldraw/tech.md §14.2.
 
@@ -56,6 +57,8 @@ interface Layer {
   name: string;
   icon: string;
   figma: boolean;
+  /** Components and instances are purple (§16.4). */
+  component: boolean;
   hidden: boolean;
   locked: boolean;
   children: Layer[];
@@ -118,6 +121,7 @@ function readLayers(editor: Editor, parentId: TLParentId): Layer[] {
         name: layerName(shape),
         icon: iconKey(shape),
         figma: isFigmaShape(shape),
+        component: isComponentLike(shape),
         hidden: isFigmaShape(shape) && shape.props.node.visible === false,
         locked: shape.isLocked,
         children: readLayers(editor, id),
@@ -221,6 +225,41 @@ function RowButton({
     >
       {children}
     </button>
+  );
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §16.3.
+function PageTabs({ editor }: { editor: Editor }) {
+  const pages = useValue('figma pages', () => editor.getPages(), [editor]);
+  const current = useValue(
+    'figma current page',
+    () => editor.getCurrentPageId(),
+    [editor],
+  );
+  if (pages.length < 2) {
+    return null;
+  }
+  return (
+    <div className="flex gap-1 border-b px-2 py-1.5" role="tablist">
+      {pages.map((page) => (
+        <button
+          key={page.id}
+          type="button"
+          role="tab"
+          aria-selected={page.id === current}
+          onClick={() => {
+            editor.setCurrentPage(page.id);
+            editor.focus();
+          }}
+          className={cn(
+            'rounded-md px-2 py-0.5 text-xs hover:bg-muted',
+            page.id === current && 'bg-muted font-medium',
+          )}
+        >
+          {page.name}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -346,6 +385,7 @@ export function LayerTree({ editor }: { editor: Editor }) {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
+      <PageTabs editor={editor} />
       <h2 className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
         图层
       </h2>
@@ -417,6 +457,7 @@ export function LayerTree({ editor }: { editor: Editor }) {
               <Icon
                 className={cn(
                   'size-3.5 shrink-0 text-muted-foreground',
+                  layer.component && 'text-[#9747ff]',
                   (dimmed || layer.hidden) && 'opacity-50',
                 )}
               />
@@ -437,6 +478,7 @@ export function LayerTree({ editor }: { editor: Editor }) {
                 <span
                   className={cn(
                     'min-w-0 flex-1 truncate',
+                    layer.component && 'text-[#9747ff]',
                     (dimmed || layer.hidden) && 'text-muted-foreground',
                   )}
                   onDoubleClick={(e) => {

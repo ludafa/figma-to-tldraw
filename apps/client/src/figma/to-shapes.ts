@@ -6,6 +6,7 @@ import {
   type TLShapePartial,
 } from 'tldraw';
 
+import { indexMains, rebuildTree } from './components';
 import { filteredImageKey } from './image-filters';
 import {
   decompose,
@@ -41,13 +42,22 @@ const SHAPE_TYPES: Record<string, FigmaShapeType> = {
 export interface ToShapesOptions {
   idPrefix: string;
   assetBase: string;
+  /** Also lay out the main components from outside the page (§16.3). */
+  mains?: boolean;
 }
 
 export interface ToShapesResult {
   rootId: TLShapeId;
   shapes: TLShapePartial<FigmaShape>[];
+  /** Top-level shapes have no parent; they go on the components page. */
+  mains: TLShapePartial<FigmaShape>[];
   warnings: string[];
 }
+
+/** Gap between main components on the components page. */
+const MAIN_GAP = 80;
+/** Main components wrap to a new row past this width. */
+const MAIN_ROW = 4000;
 
 export function shapeIdFor(prefix: string, nodeId: string): TLShapeId {
   return createShapeId(`figma:${prefix}:${nodeId}`);
@@ -77,6 +87,26 @@ function stripChildren(node: FigmaNode): FigmaNode {
   return rest;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.3.
+function spanVariants(node: FigmaNode): FigmaNode {
+  const boxes = node.absoluteBoundingBox
+    ? []
+    : (node.children ?? []).flatMap((c) =>
+        c.absoluteBoundingBox ? [c.absoluteBoundingBox] : [],
+      );
+  if (!boxes.length) {
+    return node;
+  }
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  return {
+    ...node,
+    absoluteBoundingBox: { x, y, width: right - x, height: bottom - y },
+  };
+}
+
 function imagePaints(node: FigmaNode): FigmaPaint[] {
   const paints = [...(node.fills ?? []), ...(node.strokes ?? [])];
   return paints.filter((p) => p.type === 'IMAGE' && p.imageRef);
@@ -86,17 +116,21 @@ export function snapshotToShapes(
   snapshot: Snapshot,
   opts: ToShapesOptions,
 ): ToShapesResult {
-  const root = snapshot.rest.document;
+  // See apps/docs/figma-to-tldraw/tech.md §16.3.
+  const index = indexMains(snapshot);
+  const root = rebuildTree(snapshot.rest.document, index);
   const transforms = snapshot.transforms ?? {};
-  const shapes: TLShapePartial<FigmaShape>[] = [];
+  let shapes: TLShapePartial<FigmaShape>[] = [];
   const warnings: string[] = [];
 
   function placement(
     node: FigmaNode,
     type: FigmaShapeType,
+    hidden: boolean,
   ): { m: Matrix2x3; w: number; h: number } | undefined {
     const svg = snapshot.svgs[node.id];
-    if (type === 'figma-vector' && !node.isMask) {
+    // See apps/docs/figma-to-tldraw/tech.md §16.3.
+    if (type === 'figma-vector' && !node.isMask && (svg || !hidden)) {
       const rb = node.absoluteRenderBounds;
       if (!svg || !rb) {
         return undefined;
@@ -118,8 +152,8 @@ export function snapshotToShapes(
     return { m: translation(bb.x, bb.y), w: bb.width, h: bb.height };
   }
 
-  const rootPlacement = placement(root, 'figma-frame');
-  const origin = rootPlacement
+  const rootPlacement = placement(root, 'figma-frame', false);
+  let origin = rootPlacement
     ? translation(-rootPlacement.m[0][2], -rootPlacement.m[1][2])
     : IDENTITY;
 
@@ -129,28 +163,33 @@ export function snapshotToShapes(
     parentPage: Matrix2x3,
     index: string,
     mask: string,
+    parentHidden = false,
   ) {
-    if (node.visible === false) {
-      return;
-    }
+    // See apps/docs/figma-to-tldraw/tech.md §16.3.
+    const hidden = parentHidden || node.visible === false;
     const type = shapeTypeFor(node);
     if (!type) {
-      warnings.push(
-        `不支持的节点类型 ${node.type}：${node.name}（${node.id}）`,
-      );
+      if (!hidden) {
+        warnings.push(
+          `不支持的节点类型 ${node.type}：${node.name}（${node.id}）`,
+        );
+      }
       return;
     }
     // See apps/docs/figma-to-tldraw/tech.md §9.
     if (
       type === 'figma-vector' &&
       !node.isMask &&
+      !hidden &&
       node.absoluteRenderBounds === null
     ) {
       return;
     }
-    const place = placement(node, type);
+    const place = placement(node, type, hidden);
     if (!place) {
-      warnings.push(`缺少位置或 SVG：${node.name}（${node.id}）`);
+      if (!hidden) {
+        warnings.push(`缺少位置或 SVG：${node.name}（${node.id}）`);
+      }
       return;
     }
 
@@ -218,16 +257,50 @@ export function snapshotToShapes(
     const indices = getIndices(children.length);
     let currentMask = '';
     children.forEach((child, i) => {
-      if (child.visible === false) {
-        return;
-      }
-      visit(child, id, page, indices[i], child.isMask ? '' : currentMask);
-      if (child.isMask) {
+      visit(
+        child,
+        id,
+        page,
+        indices[i],
+        child.isMask ? '' : currentMask,
+        hidden,
+      );
+      if (child.isMask && child.visible !== false) {
         currentMask = shapeIdFor(opts.idPrefix, child.id);
       }
     });
   }
 
   visit(root, undefined, IDENTITY, 'a1', '');
-  return { rootId: shapeIdFor(opts.idPrefix, root.id), shapes, warnings };
+  const pageShapes = shapes;
+  shapes = [];
+  if (opts.mains) {
+    // See apps/docs/figma-to-tldraw/tech.md §16.3.
+    let x = 0;
+    let y = 0;
+    let rowHeight = 0;
+    const list = Object.values(snapshot.mains ?? {}).map(spanVariants);
+    const indices = getIndices(list.length);
+    for (const [i, main] of list.entries()) {
+      const place = placement(main, 'figma-frame', false);
+      if (!place) {
+        continue;
+      }
+      if (x > 0 && x + place.w > MAIN_ROW) {
+        x = 0;
+        y += rowHeight + MAIN_GAP;
+        rowHeight = 0;
+      }
+      origin = translation(x - place.m[0][2], y - place.m[1][2]);
+      visit(rebuildTree(main, index), undefined, IDENTITY, indices[i], '');
+      x += place.w + MAIN_GAP;
+      rowHeight = Math.max(rowHeight, place.h);
+    }
+  }
+  return {
+    rootId: shapeIdFor(opts.idPrefix, root.id),
+    shapes: pageShapes,
+    mains: shapes,
+    warnings,
+  };
 }

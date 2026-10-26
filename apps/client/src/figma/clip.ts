@@ -41,6 +41,7 @@ function isOpaqueBox(shape: TLShape): boolean {
   }
   const { node } = shape.props;
   if (
+    node.visible === false ||
     node.isMask ||
     (node.blendMode && !['PASS_THROUGH', 'NORMAL'].includes(node.blendMode)) ||
     node.effects?.some((e) => e.visible !== false) ||

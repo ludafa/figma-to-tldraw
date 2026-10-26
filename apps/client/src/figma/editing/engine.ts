@@ -3,6 +3,7 @@ import {
   getIndexBetween,
   type IndexKey,
   resizeBox,
+  type TLParentId,
   type TLResizeInfo,
   type TLShape,
   type TLShapeId,
@@ -29,6 +30,18 @@ import {
   placeBox,
   tldrawLayoutHost,
 } from './host';
+import {
+  emptyMainEdits,
+  emptyRenames,
+  hasMainEdits,
+  isInsideInstance,
+  mainAround,
+  type MainEdits,
+  recordOverride,
+  renameOnCreate,
+  type Renames,
+  syncInstances,
+} from './instances';
 
 // See apps/docs/figma-to-tldraw/tech.md §13.1 and §13.2.
 
@@ -46,6 +59,14 @@ interface EditingState {
   slack: Map<TLShapeId, Slack>;
   dragged: Set<TLShapeId>;
   dragStyle: DragStyle;
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  /** Writes made for the user's edit, not by the user: no overrides, no constraints. */
+  quiet: Set<TLShapeId>;
+  mainEdits: MainEdits;
+  renames: Renames;
+  /** Undo and redo replay a step that already has its side effects. */
+  replaying: number;
+  allowDelete: number;
 }
 
 const STATES = new WeakMap<Editor, EditingState>();
@@ -281,6 +302,17 @@ function onChange(
   if (state.paused || !isFigmaShape(prev) || !isFigmaShape(next)) {
     return;
   }
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  const quiet = state.quiet.delete(next.id);
+  if (!state.replaying) {
+    if (!quiet) {
+      recordOverride(editor, prev, next);
+    }
+    const main = mainAround(editor, next);
+    if (main && !state.mainEdits.changed.has(next.id)) {
+      state.mainEdits.changed.set(next.id, { prev, main: main.props.node.id });
+    }
+  }
   const resizedW = prev.props.w !== next.props.w;
   const sized = resizedW || prev.props.h !== next.props.h;
   const nodeChanged = prev.props.node !== next.props.node;
@@ -307,7 +339,7 @@ function onChange(
   ) {
     fitText(editor, editor.getShape(next.id) as FigmaShape);
   }
-  if (next.type === 'figma-frame' && sized && !isGroup(next)) {
+  if (next.type === 'figma-frame' && sized && !isGroup(next) && !quiet) {
     applyConstraints(editor, editor.getShape(next.id) as FigmaShape, {
       w: prev.props.w,
       h: prev.props.h,
@@ -347,6 +379,13 @@ function onChange(
 function flush(editor: Editor, state: EditingState) {
   if (state.paused) {
     return;
+  }
+  // See apps/docs/figma-to-tldraw/tech.md §16.4.
+  state.quiet.clear();
+  if (hasMainEdits(state.mainEdits)) {
+    const edits = state.mainEdits;
+    state.mainEdits = emptyMainEdits();
+    syncInstances(editor, edits, componentHooks(editor, state));
   }
   for (const id of state.dragged) {
     const shape = editor.getShape(id) as FigmaShape | undefined;
@@ -392,6 +431,11 @@ export function enableFigmaEditing(
     slack: new Map(),
     dragged: new Set(),
     dragStyle: installDragStyle(editor),
+    quiet: new Set(),
+    mainEdits: emptyMainEdits(),
+    renames: emptyRenames(),
+    replaying: 0,
+    allowDelete: 0,
   };
   STATES.set(editor, state);
   const { sideEffects } = editor;
@@ -411,19 +455,198 @@ export function enableFigmaEditing(
       }
       if (!state.paused) {
         markParent(editor, state, shape);
+        // See apps/docs/figma-to-tldraw/tech.md §16.4.
+        const main = state.replaying ? undefined : mainAround(editor, shape);
+        if (main && main.id !== shape.id) {
+          state.mainEdits.created.set(shape.id, main.props.node.id);
+        }
       }
     }),
     sideEffects.registerAfterDeleteHandler('shape', (shape) => {
       if (!state.paused && isFigmaShape(shape)) {
         markParent(editor, state, shape);
+        const parent = editor.getShape(shape.parentId as TLShapeId);
+        const main =
+          state.replaying || !parent ? undefined : mainAround(editor, parent);
+        if (main) {
+          state.mainEdits.deleted.push({ shape, main: main.props.node.id });
+        }
       }
     }),
+    sideEffects.registerBeforeCreateHandler('shape', (shape) =>
+      state.paused ||
+      state.replaying ||
+      state.quiet.has(shape.id) ||
+      !isFigmaShape(shape)
+        ? shape
+        : renameOnCreate(editor, shape, state.renames),
+    ),
+    sideEffects.registerBeforeChangeHandler('shape', (prev, next) =>
+      keepInstanceLayout(editor, state, prev, next),
+    ),
     sideEffects.registerOperationCompleteHandler(() => flush(editor, state)),
+    patchHistory(editor, state),
+    patchCreate(editor, state),
+    patchDelete(editor, state),
   ];
   return () => {
     offs.forEach((off) => off());
     state.dragStyle.dispose();
     STATES.delete(editor);
+  };
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §16.4.
+function componentHooks(editor: Editor, state: EditingState) {
+  return {
+    quiet: (id: TLShapeId) => state.quiet.add(id),
+    deleteShapes: (ids: TLShapeId[]) => {
+      state.allowDelete++;
+      try {
+        editor.deleteShapes(ids);
+      } finally {
+        state.allowDelete--;
+      }
+    },
+    constrain: (frame: FigmaShape, from: { w: number; h: number }) =>
+      applyConstraints(editor, frame, from),
+  };
+}
+
+/** Hooks for instance operations (quiet writes, real deletes). */
+export function figmaComponentHooks(editor: Editor) {
+  const state = STATES.get(editor);
+  return state
+    ? componentHooks(editor, state)
+    : {
+        quiet: () => undefined,
+        deleteShapes: (ids: TLShapeId[]) => editor.deleteShapes(ids),
+        constrain: (frame: FigmaShape, from: { w: number; h: number }) =>
+          applyConstraints(editor, frame, from),
+      };
+}
+
+const MANIPULATING = [
+  'select.translating',
+  'select.resizing',
+  'select.rotating',
+] as const;
+
+/** Layers inside an instance keep their place while the user drags them. */
+function keepInstanceLayout(
+  editor: Editor,
+  state: EditingState,
+  prev: TLShape,
+  next: TLShape,
+): TLShape {
+  if (
+    state.paused ||
+    state.replaying ||
+    !isFigmaShape(prev) ||
+    !isFigmaShape(next) ||
+    !editor.isInAny(...MANIPULATING) ||
+    !editor.getSelectedShapeIds().includes(next.id) ||
+    !isInsideInstance(editor, next)
+  ) {
+    return next;
+  }
+  return {
+    ...next,
+    x: prev.x,
+    y: prev.y,
+    rotation: prev.rotation,
+    parentId: prev.parentId,
+    index: prev.index,
+    props: { ...next.props, w: prev.props.w, h: prev.props.h },
+  };
+}
+
+function patchHistory(editor: Editor, state: EditingState): () => void {
+  const { undo, redo } = editor;
+  const replay = (fn: () => Editor) => (): Editor => {
+    state.replaying++;
+    try {
+      return fn.call(editor);
+    } finally {
+      state.replaying--;
+    }
+  };
+  editor.undo = replay(undo);
+  editor.redo = replay(redo);
+  return () => {
+    editor.undo = undo;
+    editor.redo = redo;
+  };
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §16.4.
+function patchCreate(editor: Editor, state: EditingState): () => void {
+  const original = editor.createShapes;
+  editor.createShapes = function (shapes) {
+    state.renames = emptyRenames();
+    return original.call(editor, parentsFirst(shapes));
+  };
+  return () => {
+    editor.createShapes = original;
+  };
+}
+
+function parentsFirst<T extends { id?: TLShapeId; parentId?: TLParentId }>(
+  shapes: T[],
+): T[] {
+  const byId = new Map(shapes.map((s) => [s.id, s]));
+  const out: T[] = [];
+  const seen = new Set<T>();
+  const visit = (s: T) => {
+    if (seen.has(s)) {
+      return;
+    }
+    seen.add(s);
+    const parent = s.parentId && byId.get(s.parentId as TLShapeId);
+    if (parent) {
+      visit(parent);
+    }
+    out.push(s);
+  };
+  shapes.forEach(visit);
+  return out;
+}
+
+/** Deleting a layer inside an instance hides it, the way Figma does. */
+function patchDelete(editor: Editor, state: EditingState): () => void {
+  const original = editor.deleteShapes;
+  const remove = (ids: TLShapeId[]) =>
+    (original as (ids: TLShapeId[]) => Editor).call(editor, ids);
+  editor.deleteShapes = function (ids) {
+    const list = (ids as (TLShapeId | TLShape)[]).map((i) =>
+      typeof i === 'string' ? i : i.id,
+    );
+    if (state.paused || state.allowDelete) {
+      return remove(list);
+    }
+    const hide: FigmaShape[] = [];
+    const rest: TLShapeId[] = [];
+    for (const id of list) {
+      const shape = editor.getShape(id);
+      if (isFigmaShape(shape) && isInsideInstance(editor, shape)) {
+        hide.push(shape);
+      } else {
+        rest.push(id);
+      }
+    }
+    if (hide.length) {
+      editor.updateShapes(
+        hide.map((s) => ({
+          id: s.id,
+          type: s.type,
+          props: { node: { ...s.props.node, visible: false } },
+        })),
+      );
+    }
+    return remove(rest);
+  };
+  return () => {
+    editor.deleteShapes = original;
   };
 }
 

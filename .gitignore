@@ -13,3 +13,6 @@ node_modules
 # Figma test data exported by apps/figma-plugin, and fidelity reports
 cases/
 reports/
+
+# Cases taken out of cases/ (kept for reference)
+archive/

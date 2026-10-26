@@ -1234,12 +1234,24 @@ async function bakeFilteredImage(hash, filters) {
   }
 }
 
-async function collect(node, out) {
-  if (node.visible === false) return;
-
+async function collect(node, out, hidden) {
   // 节点本身的宽高和绝对变换：REST 格式里没有，旋转的节点要靠它摆放
   if ('absoluteTransform' in node) {
     out.transforms[node.id] = { m: node.absoluteTransform, w: node.width, h: node.height };
+  }
+  // See apps/docs/figma-to-tldraw/tech.md §16.1.
+  if (hidden || node.visible === false) {
+    if ('fills' in node && node.fills !== figma.mixed && Array.isArray(node.fills)) {
+      node.fills.forEach(function (p) {
+        if (p.type === 'IMAGE' && p.imageHash) out.images[p.imageHash] = true;
+      });
+    }
+    if ('children' in node && node.type !== 'BOOLEAN_OPERATION') {
+      for (var h = 0; h < node.children.length; h++) {
+        await collect(node.children[h], out, true);
+      }
+    }
+    return;
   }
   // 蒙版图层单独导出 SVG 会失败，改为导出它的填充路径（节点自己的坐标系）
   if (node.isMask) {
@@ -1285,10 +1297,120 @@ async function collect(node, out) {
   }
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.1.
+var MAX_FULL_SET = 60;
+
+function isInside(node, root) {
+  for (var n = node; n; n = n.parent) if (n === root) return true;
+  return false;
+}
+
+function mergeMaps(rest, part) {
+  ['components', 'componentSets', 'styles'].forEach(function (k) {
+    rest[k] = rest[k] || {};
+    Object.keys(part[k] || {}).forEach(function (id) {
+      rest[k][id] = part[k][id];
+    });
+  });
+}
+
+// 页面里所有实例用到的主组件，连同主组件里面再用到的，一层层找下去
+async function findMains(root, warnings) {
+  var tops = {};
+  var order = [];
+  var seen = {};
+  var queue = [root];
+  while (queue.length) {
+    var n = queue.shift();
+    var insts = n.type === 'INSTANCE' ? [n] : [];
+    if ('findAllWithCriteria' in n) insts = insts.concat(n.findAllWithCriteria({ types: ['INSTANCE'] }));
+    for (var i = 0; i < insts.length; i++) {
+      var main = null;
+      try {
+        main = await insts[i].getMainComponentAsync();
+      } catch (e) {}
+      if (!main) {
+        if (!seen['missing:' + insts[i].name]) warnings.push('找不到主组件：' + insts[i].name + '（' + insts[i].id + '）');
+        seen['missing:' + insts[i].name] = true;
+        continue;
+      }
+      if (seen[main.id]) continue;
+      seen[main.id] = true;
+      // See apps/docs/figma-to-tldraw/tech.md §16.1.
+      if (figma.root.children.indexOf(pageOf(main)) < 0) {
+        warnings.push('主组件已删除，按实例原样导入：' + main.name + '（' + main.id + '）');
+        continue;
+      }
+      var set = main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent : null;
+      var top = set || main;
+      if (!tops[top.id]) {
+        tops[top.id] = { node: top, used: {}, full: !set || set.children.length <= MAX_FULL_SET };
+        order.push(top.id);
+        if (tops[top.id].full) queue.push(top);
+      }
+      tops[top.id].used[main.id] = true;
+      if (!tops[top.id].full) queue.push(main);
+    }
+  }
+  return order.map(function (id) {
+    return tops[id];
+  });
+}
+
+function propertyDefinitions(node) {
+  try {
+    return node.componentPropertyDefinitions;
+  } catch (e) {
+    return undefined;
+  }
+}
+
+async function exportMains(root, rest, out) {
+  var mains = {};
+  var list = await findMains(root, out.warnings);
+  for (var i = 0; i < list.length; i++) {
+    var top = list[i].node;
+    if (isInside(top, root)) continue; // 已经在页面的 rest 里
+    try {
+      if (list[i].full) {
+        var res = await top.exportAsync({ format: 'JSON_REST_V1' });
+        mains[top.id] = res.document;
+        mergeMaps(rest, res);
+        await collect(top, out);
+      } else {
+        // 变体太多的组件集只导用到的变体
+        var children = [];
+        for (var j = 0; j < top.children.length; j++) {
+          var v = top.children[j];
+          if (!list[i].used[v.id]) continue;
+          var part = await v.exportAsync({ format: 'JSON_REST_V1' });
+          children.push(part.document);
+          mergeMaps(rest, part);
+          await collect(v, out);
+        }
+        mains[top.id] = {
+          id: top.id,
+          name: top.name,
+          type: 'COMPONENT_SET',
+          componentPropertyDefinitions: propertyDefinitions(top),
+          variantCount: top.children.length,
+          partial: true,
+          children: children,
+        };
+      }
+    } catch (e) {
+      out.warnings.push('导出主组件失败：' + top.name + '（' + top.id + '）：' + (e && e.message ? e.message : String(e)));
+    }
+  }
+  return mains;
+}
+
 async function exportOne(node, dir) {
   var rest = await node.exportAsync({ format: 'JSON_REST_V1' });
   var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {} };
   await collect(node, out);
+  var pageFonts = Object.keys(out.fonts);
+  var mains = await exportMains(node, rest, out);
 
   var files = [];
   var imageFiles = {};
@@ -1313,6 +1435,9 @@ async function exportOne(node, dir) {
 
   var filteredFiles = {};
   var filtered = filteredImagePaints(rest.document, []);
+  Object.keys(mains).forEach(function (id) {
+    filteredImagePaints(mains[id], filtered);
+  });
   for (var j = 0; j < filtered.length; j++) {
     var f = filtered[j];
     if (filteredFiles[f.key]) continue;
@@ -1338,14 +1463,18 @@ async function exportOne(node, dir) {
     width: node.width,
     height: node.height,
     expectedScale: 2,
-    fonts: Object.keys(out.fonts),
+    fonts: pageFonts,
+    mainFonts: Object.keys(out.fonts).filter(function (f) {
+      return pageFonts.indexOf(f) < 0;
+    }),
+    mains: Object.keys(mains).length,
     images: imageFiles,
     filteredImages: filteredFiles,
     imageSizes: imageSizes,
     masks: out.masks,
     warnings: out.warnings,
   };
-  var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms };
+  var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms, mains: mains };
   files.push({ path: dir + '/snapshot.json', text: JSON.stringify(snapshot, null, 2) });
 
   return {
@@ -1359,6 +1488,7 @@ async function exportOne(node, dir) {
       svgCount: Object.keys(out.svgs).length,
       imageCount: Object.keys(imageFiles).length,
       fonts: meta.fonts,
+      mains: meta.mains,
       warnings: out.warnings,
     },
   };
@@ -1377,19 +1507,53 @@ async function exportCases() {
     return;
   }
 
-  var dirs = exportDirs(targets, figma.root.name, page.name);
-  post({ type: 'export-start', total: targets.length, fileName: figma.root.name, pageName: page.name });
+  // See apps/docs/figma-to-tldraw/tech.md §16.1.
+  await figma.loadAllPagesAsync();
+  await exportTargets(targets, exportDirs(targets, figma.root.name, page.name), page.name);
+}
+
+function pageOf(node) {
+  var n = node;
+  while (n && n.type !== 'PAGE') n = n.parent;
+  return n;
+}
+
+async function exportTargets(targets, dirs, pageName) {
+  post({ type: 'export-start', total: targets.length, fileName: figma.root.name, pageName: pageName });
   for (var i = 0; i < targets.length; i++) {
     var node = targets[i];
     post({ type: 'progress', done: i, total: targets.length, text: node.name });
     try {
       var data = await exportOne(node, dirs[i]);
+      var page = pageOf(node);
+      data.summary.page = page ? page.name : pageName;
       post({ type: 'export-case', files: data.files, summary: data.summary });
     } catch (e) {
       post({ type: 'export-error', name: node.name, text: e && e.message ? e.message : String(e) });
     }
   }
   post({ type: 'export-done' });
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §16.1.
+async function exportList(items) {
+  await figma.loadAllPagesAsync();
+  var targets = [];
+  var dirs = [];
+  var missing = [];
+  for (var i = 0; i < items.length; i++) {
+    var n = await figma.getNodeByIdAsync(items[i].id);
+    if (n) {
+      targets.push(n);
+      dirs.push(items[i].dir);
+    } else missing.push(items[i].dir + '（' + items[i].id + '）');
+  }
+  if (!targets.length) {
+    post({ type: 'error', text: '列表里的节点在这个文件里都找不到。' });
+    return;
+  }
+  await exportTargets(targets, dirs, '按列表');
+  if (missing.length) post({ type: 'error', text: '找不到这些节点：' + missing.join('，') });
 }
 
 // ---------------------------------------------------------------------------
@@ -1400,6 +1564,7 @@ figma.ui.onmessage = async function (msg) {
   try {
     if (msg.type === 'generate') await generate(msg.images);
     else if (msg.type === 'export') await exportCases();
+    else if (msg.type === 'export-list') await exportList(msg.items);
     else if (msg.type === 'close') figma.closePlugin();
   } catch (e) {
     post({ type: 'error', text: e && e.message ? e.message : String(e) });

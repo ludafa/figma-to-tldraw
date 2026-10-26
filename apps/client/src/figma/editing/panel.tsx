@@ -20,8 +20,29 @@ import type {
   FigmaTypeStyle,
 } from '../types';
 import { type Axis, axisSizing, inFlow, isAutoLayout } from './auto-layout';
-import { isFigmaEditing, isGroup, resizedNode, setSizing } from './engine';
+import {
+  figmaComponentHooks,
+  isFigmaEditing,
+  isGroup,
+  resizedNode,
+  setSizing,
+} from './engine';
 import { figmaParent } from './host';
+import {
+  canBecomeComponent,
+  componentSetOf,
+  createComponents,
+  createInstance,
+  detachInstance,
+  goToMain,
+  instanceChain,
+  instancesOf,
+  mainOf,
+  propertyDefinitions,
+  resetInstance,
+  setProperty,
+  shapesByNodeId,
+} from './instances';
 import {
   setFills,
   setLayoutMode,
@@ -1250,6 +1271,216 @@ function TextSection({ items, act }: { items: Item[]; act: Actions }) {
   );
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §16.5.
+const PURPLE = 'text-[#9747ff]';
+
+function propertyName(key: string): string {
+  return key.split('#')[0];
+}
+
+function ActionButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="h-6 rounded-sm bg-black/[0.04] px-2 hover:bg-black/[0.08]"
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+function InstanceSection({ shape }: { shape: FigmaShape }) {
+  const editor = useEditor();
+  const main = useValue('figma main', () => mainOf(editor, shape), [
+    editor,
+    shape,
+  ]);
+  const set = main && componentSetOf(editor, main);
+  const node = shape.props.node;
+  const nested = instanceChain(editor, shape)[0]?.id !== shape.id;
+  const defs = main ? propertyDefinitions(editor, main) : {};
+  const props = Object.entries(node.componentProperties ?? {});
+  const overrides = (node.overrides ?? []).reduce(
+    (n, o) => n + o.overriddenFields.length,
+    0,
+  );
+  const step = (name: string, fn: () => void) => {
+    editor.markHistoryStoppingPoint(name);
+    editor.run(fn);
+  };
+  const hooks = figmaComponentHooks(editor);
+  const set1 = (key: string, value: string | boolean) =>
+    step('component property', () =>
+      setProperty(
+        editor,
+        editor.getShape<FigmaShape>(shape.id)!,
+        key,
+        value,
+        hooks,
+      ),
+    );
+  return (
+    <Section title="实例">
+      <div className={`truncate font-medium ${PURPLE}`}>
+        {main
+          ? (set?.props.node.name ?? main.props.node.name)
+          : '主组件不在这里（库组件或已删除）'}
+      </div>
+      {props.map(([key, prop]) => {
+        const def = defs[key];
+        const label = propertyName(key);
+        if (prop.type === 'VARIANT') {
+          const options = def?.variantOptions ?? [String(prop.value)];
+          return (
+            <SelectField
+              key={key}
+              label={label}
+              value={String(prop.value)}
+              options={options.map((o) => [o, o])}
+              onChange={(v) => set1(key, v)}
+            />
+          );
+        }
+        if (prop.type === 'BOOLEAN') {
+          return (
+            <label key={key} className="flex h-6 items-center gap-2">
+              <input
+                type="checkbox"
+                checked={prop.value === true}
+                onChange={(e) => set1(key, e.currentTarget.checked)}
+              />
+              <span>{label}</span>
+            </label>
+          );
+        }
+        if (prop.type === 'TEXT') {
+          return (
+            <TextField
+              key={key}
+              label={label}
+              value={String(prop.value)}
+              onCommit={(text) => set1(key, text)}
+            />
+          );
+        }
+        const swapTo =
+          prop.type === 'INSTANCE_SWAP'
+            ? shapesByNodeId(editor).get(String(prop.value))
+            : undefined;
+        return (
+          <div key={key} className="flex h-6 items-center gap-1 text-black/60">
+            <span className="text-black/45">{label}</span>
+            <span className="truncate">
+              {swapTo?.props.node.name ?? String(prop.value)}
+            </span>
+          </div>
+        );
+      })}
+      <div className="text-black/45">
+        {overrides ? `覆盖了 ${overrides} 个字段` : '没有覆盖'}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {main && (
+          <ActionButton
+            label="跳到主组件"
+            onClick={() => goToMain(editor, shape)}
+          />
+        )}
+        {main && (
+          <ActionButton
+            label="重置所有覆盖"
+            onClick={() =>
+              step('reset instance', () =>
+                resetInstance(
+                  editor,
+                  editor.getShape<FigmaShape>(shape.id)!,
+                  hooks,
+                ),
+              )
+            }
+          />
+        )}
+        {!nested && (
+          <ActionButton
+            label="分离实例"
+            onClick={() =>
+              step('detach instance', () => detachInstance(editor, shape))
+            }
+          />
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function MainSection({ shape }: { shape: FigmaShape }) {
+  const editor = useEditor();
+  const node = shape.props.node;
+  const count = useValue(
+    'figma instance count',
+    () => (node.type === 'COMPONENT' ? instancesOf(editor, node.id).length : 0),
+    [editor, node.id, node.type],
+  );
+  const defs = Object.entries(
+    node.type === 'COMPONENT'
+      ? propertyDefinitions(editor, shape)
+      : (node.componentPropertyDefinitions ?? {}),
+  );
+  return (
+    <Section title={node.type === 'COMPONENT_SET' ? '组件集' : '组件'}>
+      {defs.map(([key, def]) => (
+        <div key={key} className="flex h-6 items-center justify-between gap-2">
+          <span className="truncate">{propertyName(key)}</span>
+          <span className="shrink-0 text-black/45">
+            {def.type === 'VARIANT'
+              ? `变体 ${def.variantOptions?.length ?? 0} 个`
+              : def.type === 'BOOLEAN'
+                ? '布尔'
+                : def.type === 'TEXT'
+                  ? '文字'
+                  : '替换实例'}
+          </span>
+        </div>
+      ))}
+      {node.type === 'COMPONENT' && (
+        <>
+          <div className="text-black/45">文件里有 {count} 个实例</div>
+          <div>
+            <ActionButton
+              label="生成实例"
+              onClick={() => createInstance(editor, shape)}
+            />
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
+function NewComponentSection({ shapes }: { shapes: FigmaShape[] }) {
+  const editor = useEditor();
+  return (
+    <Section title="组件">
+      <div>
+        <ActionButton
+          label="新建组件（⌥⌘K）"
+          onClick={() => {
+            editor.markHistoryStoppingPoint('create component');
+            createComponents(editor, shapes);
+          }}
+        />
+      </div>
+    </Section>
+  );
+}
+
 const TYPE_LABEL: Record<string, string> = {
   FRAME: 'Frame',
   GROUP: '组',
@@ -1278,7 +1509,11 @@ function FigmaPanel({ items }: { items: Item[] }) {
   return (
     <div className="figma-panel pb-1 text-[11px] text-[var(--color-text-1,#1d1d1d)]">
       <div className="flex items-baseline justify-between gap-2 px-3 py-2">
-        <span className="truncate font-semibold">
+        <span
+          className={`truncate font-semibold ${
+            shapes.length === 1 && types.has('INSTANCE') ? PURPLE : ''
+          }`}
+        >
           {shapes.length === 1
             ? shapes[0].props.node.name
             : `${shapes.length} 个图层`}
@@ -1289,6 +1524,17 @@ function FigmaPanel({ items }: { items: Item[] }) {
             : '混合'}
         </span>
       </div>
+      {shapes.length === 1 && shapes[0].props.node.type === 'INSTANCE' && (
+        <InstanceSection shape={shapes[0]} />
+      )}
+      {shapes.length === 1 &&
+        (shapes[0].props.node.type === 'COMPONENT' ||
+          shapes[0].props.node.type === 'COMPONENT_SET') && (
+          <MainSection shape={shapes[0]} />
+        )}
+      {shapes.every((s) => canBecomeComponent(editor, s)) && (
+        <NewComponentSection shapes={shapes} />
+      )}
       <PositionSection items={items} act={act} />
       {frames && <AutoLayoutSection items={items} act={act} />}
       <SizingSection items={items} act={act} />

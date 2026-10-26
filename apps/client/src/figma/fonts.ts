@@ -4,6 +4,25 @@ import type { FigmaTypeStyle } from './types';
 
 const FALLBACK = '"Inter", "Noto Sans SC", sans-serif';
 
+// See apps/docs/figma-to-tldraw/tech.md §15.
+export const OPEN_FONTS = new Set([
+  'Inter',
+  'Noto Sans SC',
+  'Red Hat Display',
+  'Poppins',
+  'Montserrat',
+  'Lato',
+  'DM Sans',
+  'Urbanist',
+  'Lexend',
+  'Nunito',
+  'Work Sans',
+  'Zilla Slab',
+  'Roboto Mono',
+  'Bitter',
+  'Space Mono',
+]);
+
 // See apps/docs/figma-to-tldraw/tech.md §6.9.
 export const FONT_SUBSTITUTES: Record<
   string,
@@ -31,8 +50,12 @@ export function fontVariationCss(style: FigmaTypeStyle): string | undefined {
   return FONT_SUBSTITUTES[style.fontFamily ?? '']?.variation;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §6.4.
 export function fontStyleCss(style: FigmaTypeStyle): string {
-  return style.italic ? 'oblique 10deg' : 'normal';
+  if (!style.italic) {
+    return 'normal';
+  }
+  return (style.fontFamily ?? 'Inter') === 'Inter' ? 'oblique 10deg' : 'italic';
 }
 
 export function fontShorthand(style: FigmaTypeStyle, size = 16): string {

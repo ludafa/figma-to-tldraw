@@ -16,31 +16,12 @@ const FIGMA_FILES: Record<string, FigmaFile> = {
     community:
       'https://www.figma.com/community/file/1020079203222518115/untitled-ui-free-figma-ui-kit-and-design-system-v2-0',
   },
-  'Google Gemini - Built with Material 3 Design Kit (Community)': {
-    key: 'pEMazdUunFWfr0VeG0Dlwy',
-    label: 'Google Gemini - Built with Material 3 Design Kit',
-    community:
-      'https://www.figma.com/community/file/1346359039607478680/google-gemini-built-with-material-3-design-kit',
-  },
   '50+ Landing page designs (Community)': {
     key: 'z9f9CmmXW9p5cO7JGRHkni',
     label: '50+ Landing page designs',
     community:
       'https://www.figma.com/community/file/1127302394641561751/50-landing-page-designs',
   },
-  'Social App - Free UI Kit 📱 (Community)': {
-    key: 'vc9Y8rli90BbmvQeMQ00oM',
-    label: 'Social App - Free UI Kit',
-    community:
-      'https://www.figma.com/community/file/1074560321292383928/social-app-free-ui-kit',
-  },
-  'Free Banking Mobile App Ui Kit With light & Dark Mode High Quality Ui 43+ Screen template (Community)':
-    {
-      key: 'is1AgQVCYbzdt5ETUheBN4',
-      label: 'Free Banking Mobile App UI Kit (Bankpick)',
-      community:
-        'https://www.figma.com/community/file/1320093355098935734/free-banking-mobile-app-ui-kit-with-light-dark-mode-high-quality-ui-43-screen-template',
-    },
   'SaaS Website UI Kit — Framer Website Kit (Community)': {
     key: '0yc5GNnaqKvnUbeMCmz30Y',
     label: 'SaaS Website UI Kit — Framer Website Kit',
@@ -58,12 +39,6 @@ const FIGMA_FILES: Record<string, FigmaFile> = {
     label: 'Golio - Free Landing Page UI Kit & Design System',
     community:
       'https://www.figma.com/community/file/1189062521764333549/golio-free-landing-page-ui-kit-design-system-community',
-  },
-  'FreshGo - Food Apps, Food Delivery App UI KIT (Community)': {
-    key: 'NKP5m7Fpv03tE3hVQjLCLx',
-    label: 'FreshGo - Food Apps, Food Delivery App UI KIT',
-    community:
-      'https://www.figma.com/community/file/1249743721562101377/freshgo-food-apps-food-delivery-app-ui-kit',
   },
   'Furniture E-commerce (Community)': {
     key: 'of4AwsPW6SxzwCKfVRwK3y',
