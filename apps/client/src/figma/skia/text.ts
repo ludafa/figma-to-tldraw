@@ -111,10 +111,11 @@ function applyCase(text: string, style: FigmaTypeStyle): string {
   return text;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §12.7.
 export function paragraphs(runs: Run[]): Run[][] {
   const out: Run[][] = [[]];
   for (const run of runs) {
-    const parts = run.text.split('\n');
+    const parts = run.text.replaceAll('\r', ' ').split('\n');
     parts.forEach((part, i) => {
       if (i > 0) {
         out.push([]);

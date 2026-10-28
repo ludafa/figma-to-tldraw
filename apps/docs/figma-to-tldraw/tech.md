@@ -615,6 +615,14 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 效果：designs-29 1.17% → 0.36%；其他带背景模糊的用例分数不变。
 
+### 12.7 文字里的 `\r`（2026-10-28，用 /compare 看 Golio 时发现）
+
+Figma 不在 `\r`（回车）处换行，把它画成一个空格。Golio 的 "Selected\rprojects" 在 Figma 里是一行（文字框高度只有一行），我们原来照原样交给 Skia，画出了一个多余的字形。
+
+做法：`skia/text.ts` 的 `paragraphs()` 先把 `\r` 换成空格，再按 `\n` 分段（U+2028 还是段内换行，§12.5）。`skia/text.test.ts`（新）测这两件事。
+
+效果（对比脚本 `reports/fidelity/20261028-093043/`）：175 个用例里只有 Golio 的 3 页有 `\r`：company-website 0.583% → 0.509%，dribbble-shot 0.173% → 0.112%，consulting-company-website 0.173% → 0.112%。
+
 ## 13. 在 tldraw 里编辑（2026-10-25，用户追加）
 
 方向按 [probe-editing.md](probe-editing.md) 的结论定（用户拍板）：图形和画法不动，Figma 节点数据 `props.node` 仍然是唯一的数据来源，编辑就是改它。这次做了调研里建议的前 4 步（用户确认范围，自动布局算在内，组件实例当普通 frame）：缩放和选择、自动布局、文字编辑、属性面板。矢量改颜色（第 5 步）和图层面板等（第 6 步）没做。
