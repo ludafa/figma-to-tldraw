@@ -14,6 +14,7 @@ import {
   drawText,
   type FigmaTextLayout,
   layoutText,
+  withTextShadows,
 } from '../skia/text';
 import { FigmaShapeUtil, layerBlurSigma } from './base';
 
@@ -151,6 +152,7 @@ export class FigmaTextShapeUtil extends FigmaShapeUtil<'figma-text'> {
       t = Math.min(t, box.t - size);
       b = Math.max(b, box.b + size);
     }
+    ({ l, t, r, b } = withTextShadows(node, { l, t, r, b }));
     const blur = layerBlurSigma(node) * 3;
     return this.flipBounds(
       shape,

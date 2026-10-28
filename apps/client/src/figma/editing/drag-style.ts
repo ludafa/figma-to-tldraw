@@ -13,9 +13,11 @@ export interface DragStyle {
 
 export function installDragStyle(editor: Editor): DragStyle {
   let active = false;
+  let ending = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const remove = () => {
     active = false;
+    ending = false;
     const scene = getCanvasController(editor)?.scene;
     scene?.setLifted([]);
     scene?.setSlideMs(0);
@@ -24,16 +26,18 @@ export function installDragStyle(editor: Editor): DragStyle {
   const stop = react('figma drag style', () => {
     if (!editor.isIn('select.translating') && active) {
       clearTimeout(timer);
+      ending = true;
       timer = setTimeout(remove, SLIDE_MS);
     }
   });
   return {
     show() {
-      if (active) {
+      if (active && !ending) {
         return;
       }
       clearTimeout(timer);
       active = true;
+      ending = false;
       const lifted = editor.getShapeAndDescendantIds(
         editor.getSelectedShapeIds(),
       );

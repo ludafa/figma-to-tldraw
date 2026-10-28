@@ -327,6 +327,7 @@ const BLEND_NAMES: Record<string, keyof CanvasKit['BlendMode'] & string> = {
   saturation: 'Saturation',
   color: 'Color',
   luminosity: 'Luminosity',
+  'plus-lighter': 'Plus',
 };
 
 export function blendModeOf(

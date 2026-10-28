@@ -344,6 +344,7 @@ export class Editor {
       this.currentPageId.set(id);
     });
     this.emit('change-page', id);
+    this.emit('camera', this.getCamera());
     return this;
   }
 
@@ -1374,7 +1375,11 @@ export class Editor {
     }
     try {
       // See apps/docs/skia-engine/tech.md §3.
-      this.history.withMode(opts.history ?? 'record', () => transact(fn));
+      if (opts.history) {
+        this.history.withMode(opts.history, () => transact(fn));
+      } else {
+        transact(fn);
+      }
     } finally {
       if (opts.ignoreShapeLock) {
         this.ignoreShapeLock--;

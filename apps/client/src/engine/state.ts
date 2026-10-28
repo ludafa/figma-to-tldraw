@@ -30,12 +30,19 @@ export interface Computed<T> extends Signal<T> {
 }
 
 let globalEpoch = 1;
-let capturing: { parents: Parent[]; epochs: number[] } | null = null;
+interface Frame {
+  parents: Parent[];
+  epochs: number[];
+  seen: Set<Parent>;
+}
+
+let capturing: Frame | null = null;
 let transactionDepth = 0;
 const pendingEffects = new Set<EffectNode>();
 
 function captured(parent: Parent) {
-  if (capturing && !capturing.parents.includes(parent)) {
+  if (capturing && !capturing.seen.has(parent)) {
+    capturing.seen.add(parent);
     capturing.parents.push(parent);
     capturing.epochs.push(parent.lastChangedEpoch);
   }
@@ -67,16 +74,16 @@ function track<T>(
   fn: () => T,
 ): { value: T; parents: Parent[]; epochs: number[] } {
   const prev = capturing;
-  const frame = { parents: [] as Parent[], epochs: [] as number[] };
+  const frame: Frame = { parents: [], epochs: [], seen: new Set() };
   capturing = frame;
   try {
     const value = fn();
-    return { value, ...frame };
+    return { value, parents: frame.parents, epochs: frame.epochs };
   } finally {
     capturing = prev;
     const active = child.isActive();
     for (const p of child.parents) {
-      if (!frame.parents.includes(p)) {
+      if (!frame.seen.has(p)) {
         detach(p, child);
       }
     }

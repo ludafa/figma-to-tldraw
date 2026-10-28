@@ -24,13 +24,18 @@ CanvasKit 版本锁 0.41.1。这个版本的 `Path` 是只读的，要用 `PathB
 
 实现是"按纪元比较"：全局一个纪元计数，`atom.set` 时加一；`computed` 记下自己上次算的时候每个依赖的纪元，被读时先看依赖有没有变，没变直接返回缓存。只有被 `react` 或别的活跃 `computed` 订阅着的 `computed` 才挂在父节点上（attach），没人用的不会因为依赖变化被通知。`transact` 里的多次 `set` 合并成一次通知。类里的字段都显式声明，不用构造函数参数属性（`erasableSyntaxOnly`）。
 
+收集依赖时，每一轮计算（`track` 里的 `Frame`）除了按顺序记下读到的父节点，还带一个 `Set` 去重；计算完对比新旧依赖、摘掉不再用的父节点，也查这个 `Set`。
+
+> 2026-10-27 → 2026-10-28 修订：原来去重和对比都用数组的 `includes`，一个计算读了 N 个信号就是 N² 次比较。`query.records('shape')` 一次读几万个图形的 atom（`/demo` 有 22100 个图形），这个开销就显出来了。理由：code review 发现。
+
 ## 3. 数据层（`engine/store.ts`）（2026-10-27）
 
-`Store` 存所有记录（页面、图形），每条记录一个 atom，按类型再有一个 id 集合 atom，所以"读某个图形"只订阅那一个图形。另外维护父子索引：每个父节点一个版本 atom，`sortedChildIds(parentId)` 按 `index` 排好序并缓存，版本变了才重排。
+`Store` 存所有记录（页面、图形），每条记录一个 atom，按类型再有一个 id 集合（§3.6），所以"读某个图形"只订阅那一个图形。另外维护父子索引：每个父节点一个版本 atom，`sortedChildIds(parentId)` 按 `index` 排好序并缓存，版本变了才重排。
 
 - 写入：`put`、`remove`、`update`、`applyDiff`。`preserve()` 在写入前比较新旧记录：`props`、`meta` 浅比较相等就沿用旧对象，整条记录没变就跳过。渲染器靠"`props` 还是不是同一个对象"决定要不要重录图形（§5），所以这一步很重要。
 - 副作用：`sideEffects.register{Before,After}{Create,Change,Delete}Handler(type, fn)`、`registerOperationCompleteHandler(fn)`，都返回撤销注册的函数，和 tldraw 一样。after 类的回调排队，等最外层操作结束再统一跑；`operationComplete` 循环到没有新改动为止（最多 20 轮）。**排队按记录 id 合并**（和 tldraw 一样，每个 id 只记最早的 `before` 和最新的 `after`）：同一次操作里先删再建同一个 id，回调收到的是一次 `afterChange`；先建再删什么也不发。
-- 一次"操作"是一次 `put` / `remove` / `applyDiff`（或显式的 `store.atomic`）。`editor.run(fn)` 和 tldraw 一样只是信号层的 `transact` 加历史模式，**不把整个 `fn` 合成一次操作**：`fn` 里每次写入结束都会立刻跑 after 回调和 `operationComplete`。
+- 一次"操作"是一次 `put` / `remove` / `applyDiff`（或显式的 `store.atomic`）。`editor.run(fn, opts)` 和 tldraw 一样只是信号层的 `transact`，传了 `opts.history` 才切换历史模式；**不把整个 `fn` 合成一次操作**：`fn` 里每次写入结束都会立刻跑 after 回调和 `operationComplete`。
+  > 2026-10-27 → 2026-10-28 修订：原来没传 `history` 时也按 `record` 包一层，外面套着的 `ignore`（例如 `/import` 截图时 `editor.run(…, { history: 'ignore' })` 里再调别的 `run`）会被里面这层盖掉，改动进了撤销栈。tldraw 只在传了 `history` 时才切换。理由：code review 发现。
   > 2026-10-27 修订：原来 after 回调按发生顺序逐条排队，`editor.run` 也包成一次 `store.atomic`，回调要等整个 `run` 结束才跑。理由：组件引擎（`figma/editing/engine.ts`）按 tldraw 的时机写——`resetInstance` 先删实例的子图层、同步一次副本，再按同样的 id 重建、再同步一次；全部攒到最后才发，副本的子图层被删掉却没有重建（`instances.test.ts` 的 "keep the copies when a nested instance in the main is reset"）。改成和 tldraw 一样以后 `figma/**/*.test.ts` 82 条全部通过。
 - 监听：`listen(fn)` 每次操作结束给一个合并后的 diff（`added` / `updated` / `removed`）；`onApply(fn)` 每次实际写入都给（撤销历史和包围盒缓存用）。
 - 查询：`query.records('shape').get()`、`unsafeGetWithoutCapture(id)`。`createTLStore()` 返回一个空 store。
@@ -41,7 +46,9 @@ CanvasKit 版本锁 0.41.1。这个版本的 `Path` 是只读的，要用 `PathB
 
 ### 3.2 撤销历史（`engine/history.ts`）
 
-`HistoryManager` 记录每次写入的 diff，`mark(id)` 打标记，`undo` / `redo` 以标记为单位，`bailToMark`（取消拖动时整段丢掉）、`squashToMark`、`clear`、`canUndo` / `canRedo`。有三种模式：`record`、`record-preserveRedoStack`、`ignore`。撤销和重做也是用 `store.applyDiff` 写回去（在 `ignore` 模式下），所以副作用照常运行，比如自动布局会重新排。
+`HistoryManager` 记录每次写入的 diff，`mark(id)` 打标记，`undo` / `redo` 以标记为单位，`bailToMark`（取消拖动时整段丢掉；标记已经不在栈里就什么也不做，和 tldraw 一样）、`squashToMark`、`clear`、`canUndo` / `canRedo`。
+
+> 2026-10-27 → 2026-10-28 修订：原来 `bailToMark` 找不到标记时会一直弹到栈底，把整个撤销栈的改动全部退回去（比如标记被 `clearHistory` 清掉以后再按 Esc）。理由：code review 发现；`store.test.ts` 加了一条测试。有三种模式：`record`、`record-preserveRedoStack`、`ignore`。撤销和重做也是用 `store.applyDiff` 写回去（在 `ignore` 模式下），所以副作用照常运行，比如自动布局会重新排。
 
 ### 3.3 分数索引（`engine/indices.ts`）
 
@@ -54,6 +61,17 @@ CanvasKit 版本锁 0.41.1。这个版本的 `Path` 是只读的，要用 `PathB
 ### 3.5 导出 `.tldr`（`engine/serialize.ts`）（2026-10-27）
 
 `/import` 页的"下载 .tldr"（tldraw 版 tech.md §19.5）原来用 tldraw 的 `serializeTldrawJson`。现在引擎自己写同名函数：文件格式版本 1，`schema` 里放 tldraw 3.15.6 自带记录的迁移序号（从 `@tldraw/tlschema` 的 `createTLSchema().serialize()` 抄下来），再给每种自定义图形补一个 `com.tldraw.shape.<type>: 0`；记录是一条 `document:document` 加上所有页面和图形。这样导出的文件还能用装了 Figma 图形类的 tldraw 打开（未验证）。
+
+### 3.6 按类型的 id 集合（2026-10-28）
+
+`Store` 按类型（`shape`、`page`）各存一个普通的可变 `Set`，再配一个版本号 atom（`idVersions`）。增删记录时直接改 `Set`、版本号加一；`shapeIds()`、`pageIds()`、`query.records(type)` 读版本号（这样会被订阅），按版本号缓存一份 `Set` 的副本返回（`idsOf`）。同一个版本读多少次都是同一个副本，版本变了第一次读时才复制。
+
+| 方案                                        | 结论                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 每次增删都复制整个 `Set` 再 `atom.set`      | ❌ 原来的做法。导入 N 个图形要复制 N 次，O(N²)；`/demo` 两万多个图形一次加载时明显变慢 |
+| 可变 `Set` + 版本号，读的时候按版本复制一次 | ✅ 写入 O(1)；返回的副本不会被后面的写入改掉，读的一方拿着它遍历也安全                 |
+
+理由：code review 发现。
 
 ## 4. `ShapeUtil`（`engine/shape-util.ts`）（2026-10-27）
 
@@ -91,7 +109,7 @@ CanvasKit 版本锁 0.41.1。这个版本的 `Path` 是只读的，要用 `PathB
 
 重画由两件事触发：`store.listen`（任何记录变化），以及一个 `react()` 盯着相机、当前页、选择、悬停、编辑中的图形、实例状态（框选、光标）、视口大小、对齐线、工具状态路径和资源版本。都只是 `requestAnimationFrame` 排一帧，一帧里多次改动合并。
 
-GL 上下文只建一次（`GetWebGLContext` + `MakeWebGLContext`），尺寸变了只重建屏幕表面（`MakeOnScreenGLSurface`），这样瓦片的离屏纹理在改尺寸后还能用。截图模式开 `preserveDrawingBuffer`。上下文必须带 alpha（`alpha: 1`）、不开多重采样（`antialias: 0`）：Skia 画 multiply、screen 这类混合模式时要把已经画好的像素拷进一张 RGBA 纹理（`glCopyTexSubImage2D`），不带 alpha 的屏幕缓冲是 RGB，WebGL 不让从 RGB 拷到 RGBA，混合图层会整块变黑（`blend/modes` 用例，2026-10-27 实测）。每帧都先用不透明的底色清屏，所以带 alpha 不影响画面。`whenIdle()` 等到"画完一帧、没有资源在加载、没有不完整的图片"，`/canvas` 截图模式用它代替原来等 DOM 图片和 `document.fonts` 的做法。
+GL 上下文只建一次（`GetWebGLContext` + `MakeWebGLContext`），尺寸变了只重建屏幕表面（`MakeOnScreenGLSurface`），这样瓦片的离屏纹理在改尺寸后还能用。截图模式开 `preserveDrawingBuffer`。卸载（`dispose`）和上下文恢复（`webglcontextrestored`）时都走 `releaseGl()`：删屏幕表面、删 `GrDirectContext`，再用 `ck.deleteContext(handle)` 注销 CanvasKit 记着的上下文句柄（2026-10-28 补上，原来句柄一直留在 CanvasKit 的表里；不用 `WEBGL_lose_context`，React StrictMode 卸载后马上在同一个 `<canvas>` 上重建，丢掉的上下文拿不回来）。上下文必须带 alpha（`alpha: 1`）、不开多重采样（`antialias: 0`）：Skia 画 multiply、screen 这类混合模式时要把已经画好的像素拷进一张 RGBA 纹理（`glCopyTexSubImage2D`），不带 alpha 的屏幕缓冲是 RGB，WebGL 不让从 RGB 拷到 RGBA，混合图层会整块变黑（`blend/modes` 用例，2026-10-27 实测）。每帧都先用不透明的底色清屏，所以带 alpha 不影响画面。`whenIdle()` 等到"画完一帧、没有资源在加载、没有不完整的图片"，`/canvas` 截图模式用它代替原来等 DOM 图片和 `document.fonts` 的做法。
 
 ### 5.1 资源（`engine/render/resources.ts`）
 
@@ -138,7 +156,7 @@ CanvasKit 不能用浏览器的字体，要自己把字体文件交给它。`Fon
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `path`、`rect`、`circle`、`ellipse`、`line`、`polygon`               | 转成 `Path`（`d` 用 `Path.MakeFromSVGString`），先填充再描边；`fill-rule`、线宽、线帽、拐角、`stroke-miterlimit`、`stroke-dasharray`                                                      |
 | 继承的样式                                                           | `fill`、`stroke` 等按 SVG 规则从父元素继承，根 `<svg fill="none">` 也算                                                                                                                   |
-| `opacity`、`style="mix-blend-mode:…"`                                | 单个图形只有填充或只有描边时把透明度乘进颜色；其他情况 `saveLayer` 合成                                                                                                                   |
+| `opacity`、`style="mix-blend-mode:…"`                                | 单个图形只有填充或只有描边时把透明度乘进颜色；其他情况 `saveLayer` 合成。`plus-lighter` 对应 Skia 的 `Plus`（2026-10-28）                                                                 |
 | `linearGradient`、`radialGradient`                                   | `gradientUnits`、`gradientTransform`、`stop-opacity`、`xlink:href` 继承                                                                                                                   |
 | `pattern` + `use` + `image`（`data:` 图片）                          | 只有一个 `use` 指向 `image` 时直接做图片着色器（线性 + mipmap 取样），否则把图案录成图片再平铺                                                                                            |
 | `filter`                                                             | 按滤镜图逐个翻成 `ImageFilter`：`feFlood`、`feColorMatrix`（`SourceAlpha` 也行）、`feOffset`、`feGaussianBlur`、`feMorphology`、`feBlend`、`feComposite`、`feMerge`；滤镜区域作为图层边界 |
@@ -176,12 +194,16 @@ CanvasKit 不能用浏览器的字体，要自己把字体文件交给它。`Fon
 | 补画的单位         | 一块瓦片分成 16 片 128 × 128，总览分成 512 × 512 的片；画完一片就 `flush()`                                                               | 一片的耗时可控，`flush` 把 GPU 那边的活也算进预算 |
 | 每帧补画预算       | 8ms，从视野中心往外补，停着时至少补一片；缩放进行中只给 40%（约 3ms），也不强制补                                                         | 留时间给贴图和选框层；缩放中先用旧层顶着          |
 | 脏块               | 当前层的脏矩形按 128 像素的格子合并（同一格里的取并集），和新瓦片一起按预算重画；没画完的瓦片继续贴旧图，画完一起换。别的层的脏块直接扔掉 | 两万多个图形一起加载时每块瓦片会收到几百个脏矩形  |
-| 总览               | 整页内容画进一张最长边 2048 像素的图，按片在预算里补；新的画完之前一直贴旧的                                                              | 任何地方都有东西兜底                              |
+| 总览               | 整页内容画进一张最长边 2048 像素的图，按片在预算里补；新的画完之前一直贴旧的。改动落到总览范围外时按新的内容范围重建一张（见下）          | 任何地方都有东西兜底                              |
 | 淘汰               | 只留当前层和一个最近用过的层；瓦片总数超过"可见块数 × 2 + 32"时按最近使用淘汰                                                             | GPU 内存有上限                                    |
 
 瓦片贴到屏幕时，位置取整到设备像素、用最近邻采样（倍数正好时），所以平移时画面不会糊；倍数不对时用线性采样。
 
 > 2026-10-27 → 2026-10-28 修订：原来一块瓦片整块画（每帧至少一块），当前层的脏块马上重画、不受预算限制，总览第一次整张画完。`/demo`（22100 个图形）上这三条都会出长帧：整面墙缩小时一块瓦片里有上千个图形，画一块要 25～40ms；图片的某一档解码好以后，用到它的图形全部标脏，脏块一口气重画，帧间隔 100～200ms；Skia 的活大部分在 `flush` 时才做，原来的预算只量了录制的时间。改成分片、`flush` 计时、脏块也按预算以后，整面墙缩放从 46fps 到 60fps（2026-10-28 实测，verification.md §4）。
+
+总览跟着内容扩大（`TileCache.ensureOverview`）：`invalidate` 收到的脏矩形有一块超出总览范围（`overviewCovers`，留一个总览像素的余量），就记下 `overviewGrow`。下一帧重新算整页内容范围，确实比总览大了，就按新范围建一张新总览、照样按片补；补完之前旧总览留在 `overviewPrev` 里继续贴，补完再删。一次只建一张，正在补的时候又超出去，等这张补完再建下一张。
+
+> 2026-10-27 → 2026-10-28 修订：原来总览只在第一次用到时按当时的内容范围建一次，后来加到范围外的图形（新建、拖出去、分批加载）在总览上永远看不到，缩放时露出的空白处没有东西兜底。理由：code review 发现；`render/tiles.test.ts` 测 `overviewCovers`。
 
 ### 5.6 选框层（2026-10-27）
 
@@ -213,7 +235,7 @@ tldraw 版在自动布局里拖动排序时，用一段 CSS 做两件事（tldra
 
 画的时候，滑动中的图形在父空间里先平移当前偏移，再乘自己的局部变换，子图形跟着一起动（tldraw 版每个 `.tl-shape` 各自过渡，时间一样，看起来也是一起动）。滑动中的子树不往 `pageBounds` 缓存里写，免得滑完以后缓存里留着中间位置。
 
-Figma 编辑代码 `figma/editing/drag-style.ts` 的 `installDragStyle` 只是调用方：第一次检测到拖动自动布局里的图层时，把选中的图层连同子图层按原来的上下顺序传给 `setLifted`，`setSlideMs(150)`；离开 `select.translating` 0.15 秒后两个都清掉，让最后一次交换滑完。没有画布控制器（单元测试里）时什么都不做。
+Figma 编辑代码 `figma/editing/drag-style.ts` 的 `installDragStyle` 只是调用方：第一次检测到拖动自动布局里的图层时，把选中的图层连同子图层按原来的上下顺序传给 `setLifted`，`setSlideMs(150)`；离开 `select.translating` 0.15 秒后两个都清掉，让最后一次交换滑完；这 0.15 秒里又开始拖（`ending` 还是真），就取消清除、按新的选中重新抬起（2026-10-28 补上，原来会直接返回，定时器到点把新一次拖动的抬起也清掉）。没有画布控制器（单元测试里）时什么都不做。
 
 实测（2026-10-27，Playwright，`/canvas?case=page/mobile-login`，把 Sign in 按钮往上拖）：越过 "Options" 的中线后两者交换，"Options" 的画面偏移 −62 → −58.5 → −48.7 → −35.4 → −21.6 → −10.7 → −2.8 → 0，每 20 毫秒一个点，约 150 毫秒走完，先慢后快再慢；被拖的按钮压在密码输入框上面；松手后抬起清掉，⌘Z 一次恢复顺序。`scripts/bench.ts` 的自动布局拖动仍在 230fps 以上（verification.md §4）。
 
@@ -237,7 +259,7 @@ Figma 导出带背景模糊的矢量时，SVG 里先是一个 `<foreignObject>`�
 
 抓手工具（`tools/hand.ts`）：按下拖动平移相机。
 
-相机：屏幕坐标 = (页面坐标 + 相机) × 缩放，缩放范围 0.02～64，每页一个相机。`zoomToBounds` / `zoomToSelection` / `zoomToFit` / `zoomAt` / `pan`。
+相机：屏幕坐标 = (页面坐标 + 相机) × 缩放，缩放范围 0.02～64，每页一个相机。`setCurrentPage` 切页后除了 `change-page` 还发一次 `camera` 事件（新页的相机），`CameraLayer` 这类只听 `camera` 的地方才会跟着换（2026-10-28 补上）。`zoomToBounds` / `zoomToSelection` / `zoomToFit` / `zoomAt` / `pan`。
 
 ### 6.4 对齐线（`engine/snaps.ts`）
 
@@ -249,7 +271,7 @@ Figma 导出带背景模糊的矢量时，SVG 里先是一个 `<foreignObject>`�
 
 - 指针：只处理落在 `<canvas>` 上的事件（工具栏、面板、文字编辑框自己处理），按下时 `setPointerCapture`、让容器拿到焦点。双击和 tldraw 一样分两段发：第二次按下时发 `double_click`（`phase: 'down'`），松开且没拖动时再发一次（`phase: 'up'`）；选择工具的空闲状态只认 `up`——第二次按下时它已经进了 `pointing_shape`，松开后才回到空闲。原来只在按下时发一次，空闲状态收不到，双击进不了文字编辑（2026-10-27 交互脚本发现）。`setPointerCapture` 包在 try/catch 里：脚本派发的合成事件（`scripts/bench.ts`）没有真实的指针，捕获会抛 `NotFoundError`，不捕获照样能拖。按下时先问选框层有没有点到控制点（§5.6）。中键或按住空格拖动直接平移相机，不进状态机。悬停在控制点上时光标换成对应的缩放箭头。
 - 滚轮：按住 Ctrl / ⌘（触控板捏合也是 Ctrl + 滚轮）按指针位置缩放，系数 `exp(−Δy × 0.01)`，Δy 夹在 ±30；否则平移。行模式、页模式的 Δ 换算成像素（×16、×400）。
-- 键盘：挂在 `window` 上，焦点在输入框、可编辑区域里时不管；焦点在别的地方（例如侧栏）时也不管。先匹配动作快捷键，再匹配工具快捷键，都没命中才把按键发给状态机；Esc 额外发 `cancel`。
+- 键盘：挂在 `window` 上，焦点在输入框、可编辑区域里时不管；焦点在别的地方（例如侧栏）时也不管。焦点在 `body` 上（没有元素有焦点）时，只有最近一次在画布上按下指针的那个编辑器处理（模块里的 `keyboardEditor`，卸载时清掉）；还没有人按过就都处理。先匹配动作快捷键，再匹配工具快捷键，都没命中才把按键发给状态机；Esc 额外发 `cancel`。
 
 ### 6.6 动作、工具栏和覆盖（`engine/react/actions.ts`、`engine/react/ui.tsx`）（2026-10-27）
 
@@ -265,7 +287,8 @@ Figma 导出带背景模糊的矢量时，SVG 里先是一个 `<foreignObject>`�
 
 - 编辑时引擎在相机层里按图形的页面矩阵放一个 DOM 层，里面是 `ShapeUtil.editingComponent(shape)` 的内容（`react/skia-canvas.tsx` 的 `EditingLayer`）。
 - Figma 文字的编辑框 `FigmaTextEditor` 用 CSS 排版（字体、字号、行高、字间距、对齐、换行和 tldraw 版一样），所以和 Skia 画出来的字有细小差别；编辑中这个图形的 Skia 画面隐藏，只看 DOM。隐藏的做法：每帧开始时 `CanvasController` 看正在编辑的图形有没有 `editingComponent`，有就交给 `SceneRenderer.setHidden(id)`；换了隐藏对象时把新旧两个图形的范围标脏，瓦片只重画这一块。画的时候跳过它自己的图片（子图形照画）。
-- `setEditingShape` 和 tldraw 一样只记下正在编辑哪个图形、调 `onEditEnd`，不切换工具状态；新建文字（`figma/editing/tools.tsx`）就是这样直接进入编辑的。
+- `setEditingShape` 和 tldraw 一样只记下正在编辑哪个图形、调 `onEditEnd`，不切换工具状态。所以文字工具（`figma/editing/tools.tsx` 的 `startEditing`）新建文字、或者点到已有文字以后，除了 `setEditingShape`，还要 `setCurrentTool('select.editing_shape', …)`，和选择工具双击、回车进编辑一样。
+  > 2026-10-27 → 2026-10-28 修订：原来只调 `setEditingShape`，状态停在 `select.resizing`（拖出文字框）或 `figma-text.pointing`（点一下新建），编辑框里点别处、Esc 都不按编辑状态走。理由：code review 发现；Playwright 实测三种进入方式都到 `select.editing_shape`（verification.md §4）。
 - 每次输入用 `fromRichText` 写回 `node`；Esc 或失焦时 `editor.complete()`，`onEditEnd` 里空文字删掉。
 - `RichTextArea` 给 TipTap 生成的 `.ProseMirror` 元素直接写 `outline: none; white-space: inherit`（`editorProps.attributes`）：tldraw 版靠 `tldraw.css` 去掉聚焦时的浏览器描边，现在没有这个文件了。段落间距靠 `figma.css` 的 `.figma-text-editing .tl-rich-text p` 规则，所以 `figma-text-editing` 类要放在外层容器上，不能和 `tl-rich-text` 放在同一个元素上。
 
@@ -351,6 +374,21 @@ SVG 里 `fill`、`stroke`、`clip-path`、`mask`、`filter` 只认 `url(#id)`，
 
 理由：一个 Skia 段落带着整形结果和字形缓存的引用，在 wasm 堆里约几十 KB。`/demo` 有 4437 段文字，原来每段的排版都一直留着，加上 §5.2 说的字体克隆，堆涨满 2GB。现在算范围（`getRenderBounds`，视野裁剪每帧都要）只用 `extents`，不用留段落；真正要画的时候才排版，画完录成图片（§5 第 4 步）后段落就没用了，所以只留最近的 64 个，给编辑文字时反复重画用。（2026-10-28 实测：整面墙加载完 wasm 堆 161～193MB。）
 
+### 7.6 文字的投影（2026-10-28）
+
+文字图层上可见的 `DROP_SHADOW` 翻成 Skia 段落样式的 `shadows`（`figma/skia/text.ts` 的 `textShadows`），每一段文字的样式都带上；渐变文字的蒙版那一遍（`pass: 'mask'`）不带。
+
+| Figma    | Skia `TextShadow`                                                                       |
+| -------- | --------------------------------------------------------------------------------------- |
+| `color`  | `color`；没写按黑色 25%，和盒子的投影一样                                               |
+| `offset` | `offset: [x, y]`                                                                        |
+| `radius` | `blurRadius: radius / 2`。CanvasKit 把这个值当高斯模糊的 sigma 用，和盒子投影的换算一样 |
+| `spread` | 不支持（Figma 文字图层也不能设扩展）                                                    |
+
+绘制范围（`FigmaTextShapeUtil.getRenderBounds`）在字形范围的基础上按每个投影的偏移和 3 个 sigma（`radius × 1.5`）扩大（`withTextShadows`），否则视野裁剪和瓦片脏区会把投影切掉。下划线、删除线是另外画的（`drawDecorations`），不带投影。
+
+> 2026-10-28：tldraw 版用 CSS `text-shadow`（`figma/effects.ts` 的 `textShadowCss`），换成 Skia 时漏了，文字投影一直没画。用例里没有带投影的文字（2026-10-28 统计 175 个用例），所以对比分数看不出来。理由：code review 发现；Playwright 实测给文字加红色投影后画出来了（verification.md §4），`figma/skia/text-shadows.test.ts` 测范围。
+
 ## 8. 和现有代码的关系（2026-10-27）
 
 - `figma/editing/`、`figma/editor.ts`、`figma/to-shapes.ts`、`figma/components.ts` 等只换 import（`'tldraw'` → `'../engine'`）。用到 tldraw DOM 的地方要改：`drag-style.ts` 用 CSS 过渡做的拖动动画、`text-measure.tsx` 用 DOM 量文字（改成 §7.2 的排版）、`figma-text.tsx` 的 TipTap 编辑框（换成盖在画布上的可编辑 `div`）。
@@ -365,6 +403,8 @@ SVG 里 `fill`、`stroke`、`clip-path`、`mask`、`filter` 只认 `url(#id)`，
 | 渐变插值（预乘还是不预乘）、背景模糊的边缘取样（镜像还是夹边）和 Figma 不同                          | 用 `fill/gradient-alpha`、`effect/background-blur` 用例对比两种设置。2026-10-27：背景模糊改成两层 `saveLayer`（外层夹边复制、内层镜像模糊），`effect/background-blur` 0.00%（§7.1）；渐变用默认设置，两个用例都 < 1% |
 | 文字基线规则只在 Inter 和 Noto Sans SC 上验证过；Lato 等字体 typo 和 hhea 不一样，Figma 用哪组没验证 | 2026-10-27 已查清：typo 行距（lineGap）不为 0 的字体（Lato、Zilla Slab）Figma 用 hhea 上下沿，改了以后 33 个 Lato 用例全部变好（§7.2）                                                                               |
 | PIXELS 行高是小数时 Figma 每行怎么取整，未验证                                                       | 现在每行基线各自四舍五入；没有单独验证，`text/*` 用例全部 < 1%（2026-10-27）                                                                                                                                         |
+| 图片填充的 EXIF 方向：`MakeImageFromEncoded` 会不会按 EXIF 转，和 Figma 是否一致，未验证             | 用例里没有带 EXIF 方向的图片（2026-10-28 code review 提出），遇到再查                                                                                                                                                |
+| 图层混合模式 Linear Burn（`LINEAR_BURN` → CSS `plus-darker`）Skia 没有对应模式，按正常混合画         | 用例里没有；Linear Dodge 已对应 `Plus`（2026-10-28）                                                                                                                                                                 |
 | 没有填充的 frame 带投影时，Figma 用子图形的轮廓投影，现在按盒子画（11 个节点，2026-10-27 统计）      | 看对应用例的差异再决定要不要改成按子树轮廓投影。2026-10-27：涉及的用例都 < 1%，没改                                                                                                                                  |
 | 瓦片边缘的背景模糊取不到瓦片外的像素                                                                 | 截图模式不用瓦片；交互时接受，或者给含背景模糊的瓦片多画一圈                                                                                                                                                         |
 | WebGL 上下文丢失、GPU 内存（瓦片约 1MB 一块）                                                        | 瓦片总数设上限按最近使用淘汰；上下文丢失时重建表面、清空所有缓存                                                                                                                                                     |

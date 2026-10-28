@@ -192,3 +192,23 @@
     - 原因：Figma 的 SVG 只在图形上写 `opacity`，背景模糊的 `<foreignObject>` 上没有；我们照字面画成满强度，Figma 自己画时背景模糊也乘图层不透明度。
     - 改动：`render/svg.ts` 的 `backdropOpacity` 取所属图形的不透明度，背景模糊的 `saveLayer` 带上它（tech.md §5.9）。`svg.test.ts` 加 1 条。
     - 检查：All Cards 0.44%、Home 0.47% → 0.30%，其余 3 页不变；175 个用例里的 7 个 SVG 背景模糊都没有 `opacity`，结果不变。
+
+## 2026-10-28（code review 修正）
+
+起因：提交前用户跑了一遍 `/code-review`，让我"按自己的评估来自动修复"（用户拍板）。review 报了 15 条，下面是改了的和没改的。
+
+- [x] `editor.run()` 没传 `history` 也包一层 `record`，盖掉外面的 `ignore`：只在传了才切换（tech.md §3）
+- [x] `bailToMark` 找不到标记时退光整个撤销栈：找不到就什么也不做；`store.test.ts` 加 1 条（tech.md §3.2）
+- [x] 文字工具新建、点到已有文字后状态停在 `select.resizing` / `figma-text.pointing`：切到 `select.editing_shape`（tech.md §6.7）
+- [x] `setCurrentPage` 只发 `change-page`，只听 `camera` 的 `CameraLayer` 不跟着换：切页后补发 `camera`（tech.md §6）
+- [x] 抬起状态在 0.15 秒内再次拖动时，旧定时器把新的抬起清掉：加 `ending` 标记（tech.md §5.8）
+- [x] 收集依赖用数组 `includes` 去重，O(N²)：加 `Set`（tech.md §2）
+- [x] id 集合每次增删复制整个 `Set`，O(N²)：可变 `Set` + 版本号，读时按版本复制（tech.md §3.6）
+- [x] 总览只建一次，后来加到范围外的内容看不到：超出时按新范围重建，旧的留到新的画完；`render/tiles.test.ts` 加 2 条（tech.md §5.5）
+- [x] 卸载时没注销 CanvasKit 的 WebGL 上下文句柄：`releaseGl()` 里 `deleteContext`（tech.md §5）
+- [x] 图层混合模式 Linear Dodge（CSS `plus-lighter`）按正常画：对应 Skia `Plus`（tech.md §5.3）
+- [x] 焦点在 `body` 上时页面上每个画布都收键盘：只给最近按过的那个（tech.md §6.5）
+- [x] 文字投影换引擎时漏了：段落样式带 `shadows`，绘制范围按投影扩大；`figma/skia/text-shadows.test.ts` 加 2 条（tech.md §7.6）
+- [x] 两处注释写了理由（`PictureEntry.alt`、`STRIP_OVERLAP`）：改成只说是什么，理由本来就在文档里
+- [x] 没改：图片 EXIF 方向（没核实 Figma 怎么做，用例里没有，记进 tech.md §9 风险）；Linear Burn 没有对应的 Skia 模式（记进风险）；另外 3 条影响小的（文字 Title Case 按每段各自算、视野裁剪用的范围缓存偶尔过时、SVG 录制缓存不区分"不完整"）这次不动
+- [x] 检查：`pnpm lint`、`pnpm typecheck`、`pnpm test`（27 个文件、145 条）通过；Playwright 实测文字工具三种进入方式、撤销重做、文字投影、`/demo` 加载、`/import` 回归（第 38～42 条）、`/compare` 分数都正常（verification.md §4）

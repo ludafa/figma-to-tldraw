@@ -147,6 +147,10 @@ export class HistoryManager {
   }
 
   bailToMark(id: string) {
+    this.flushPending();
+    if (!this.undos.some((e) => e.type === 'mark' && e.id === id)) {
+      return;
+    }
     const { diff } = this.popToMark(id);
     if (!isDiffEmpty(diff)) {
       this.applyIgnored(reverseDiff(diff));

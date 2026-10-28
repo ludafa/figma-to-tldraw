@@ -160,6 +160,17 @@ describe('history', () => {
     expect(history.canRedo()).toBe(false);
   });
 
+  it('does nothing when bailing to a mark that is gone', () => {
+    const store = setup();
+    const history = new HistoryManager(store);
+    history.mark('m1');
+    store.update<TLShape>('shape:a', (s) => ({ ...s, x: 5 }));
+    history.bailToMark('missing');
+    expect(store.get<TLShape>('shape:a')!.x).toBe(5);
+    history.undo();
+    expect(store.get<TLShape>('shape:a')!.x).toBe(0);
+  });
+
   it('ignores changes made in ignore mode', () => {
     const store = setup();
     const history = new HistoryManager(store);

@@ -3,6 +3,7 @@ import type {
   CanvasKit,
   FontWeight,
   Paragraph,
+  TextShadow,
   TextStyle,
 } from 'canvaskit-wasm';
 
@@ -289,6 +290,43 @@ function solidColor(ck: CanvasKit, style: FigmaTypeStyle, node: FigmaNode) {
     : ck.TRANSPARENT;
 }
 
+function dropShadows(node: FigmaNode) {
+  return (node.effects ?? []).filter(
+    (e) => e.visible !== false && e.type === 'DROP_SHADOW',
+  );
+}
+
+// See apps/docs/skia-engine/tech.md §7.6.
+export function textShadows(ck: CanvasKit, node: FigmaNode): TextShadow[] {
+  return dropShadows(node).map((e) => ({
+    color: e.color ? color4f(ck, e.color) : ck.Color4f(0, 0, 0, 0.25),
+    offset: [e.offset?.x ?? 0, e.offset?.y ?? 0],
+    blurRadius: e.radius / 2,
+  }));
+}
+
+export interface Edges {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+
+/** Grows the box the glyphs cover so it also covers their drop shadows. */
+export function withTextShadows(node: FigmaNode, box: Edges): Edges {
+  const out = { ...box };
+  for (const e of dropShadows(node)) {
+    const blur = e.radius * 1.5;
+    const dx = e.offset?.x ?? 0;
+    const dy = e.offset?.y ?? 0;
+    out.l = Math.min(out.l, box.l + dx - blur);
+    out.t = Math.min(out.t, box.t + dy - blur);
+    out.r = Math.max(out.r, box.r + dx + blur);
+    out.b = Math.max(out.b, box.b + dy + blur);
+  }
+  return out;
+}
+
 interface BuildOptions {
   maxLines?: number;
   ellipsis?: boolean;
@@ -301,12 +339,14 @@ class TextBuilder {
   res: Resources;
   node: FigmaNode;
   complete = true;
+  private shadows: TextShadow[];
   private styleCache = new Map<string, { aliases: string[] }>();
 
   constructor(ck: CanvasKit, res: Resources, node: FigmaNode) {
     this.ck = ck;
     this.res = res;
     this.node = node;
+    this.shadows = textShadows(ck, node);
   }
 
   aliases(style: FigmaTypeStyle, text: string): string[] {
@@ -348,6 +388,7 @@ class TextBuilder {
       letterSpacing: style.letterSpacing ?? 0,
       fontFeatures:
         style.textCase === 'SMALL_CAPS' ? [{ name: 'smcp', value: 1 }] : [],
+      shadows: pass === 'mask' ? [] : this.shadows,
     });
   }
 

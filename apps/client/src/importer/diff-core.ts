@@ -10,7 +10,7 @@ import type { Snapshot } from '../figma/types';
 // See apps/docs/figma-to-tldraw/tech.md §19.3.
 
 export const SCALE = 2;
-/** Rows pixelmatch looks past a pixel (its anti-aliasing check). */
+/** Extra rows read above and below each strip. */
 export const STRIP_OVERLAP = 2;
 
 export interface DiffInput {

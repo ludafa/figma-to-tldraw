@@ -41,6 +41,9 @@ function isEditable(el: EventTarget | null) {
   );
 }
 
+// See apps/docs/skia-engine/tech.md §6.5.
+let keyboardEditor: Editor | null = null;
+
 const CURSORS: Record<string, string> = {
   default: 'default',
   cross: 'crosshair',
@@ -130,6 +133,7 @@ export function bindInput(
     if (e.target !== canvas) {
       return;
     }
+    keyboardEditor = editor;
     if (
       !isEditable(document.activeElement) ||
       !container.contains(document.activeElement)
@@ -216,12 +220,10 @@ export function bindInput(
       return false;
     }
     const active = document.activeElement;
-    return (
-      !active ||
-      active === document.body ||
-      active === container ||
-      container.contains(active)
-    );
+    if (!active || active === document.body) {
+      return keyboardEditor === null || keyboardEditor === editor;
+    }
+    return active === container || container.contains(active);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -344,5 +346,8 @@ export function bindInput(
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onBlur);
+    if (keyboardEditor === editor) {
+      keyboardEditor = null;
+    }
   };
 }

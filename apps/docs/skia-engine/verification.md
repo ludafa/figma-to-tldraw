@@ -4,20 +4,22 @@
 
 ## 1. 自动测试
 
-| 测试文件                                          | 测什么                                                                                                                                                                                                                                                                    | 日期       |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `apps/client/src/figma/**/*.test.ts`（沿用）      | 转换、组件、自动布局、实例、面板操作、富文本。原来跑在 tldraw 的 `Editor` 上，阶段 7 改成跑在本引擎的 `Editor` 上，断言不改。`paint.test.ts`（CSS 渐变图）随 `paint.tsx` 删掉，渐变矩阵的断言挪到 `paint-math.test.ts`（新），加了虚线和椭圆周长                          | 2026-10-27 |
-| `apps/client/src/engine/state.test.ts`（新）      | 信号：computed 只在依赖变了才重算、reaction 停止后不再跑、`transact` 合并通知、`isEqual`、`unsafe__withoutCapture` 不收集依赖                                                                                                                                             | 2026-10-27 |
-| `apps/client/src/engine/store.test.ts`（新）      | store：子图形按 index 排序和换父节点、`preserve` 保留旧 props、一次 `atomic` 只发一个合并的 diff、`beforeChange` / `beforeDelete` 副作用、同一条记录在一次操作里改几次只发一次 after 回调；历史：按 mark 撤销重做、`bailToMark` 不留重做、`ignore` 模式、新改动清空重做栈 | 2026-10-27 |
-| `apps/client/src/engine/indices.test.ts`（新）    | 分数索引：反复夹逼仍然有序、上下方向、批量生成、`sortByIndex`                                                                                                                                                                                                             | 2026-10-27 |
-| `apps/client/src/engine/render/svg.test.ts`（新） | SVG 解析：元素树、注释和 `<?xml?>`、实体解码、`parseColor`（十六进制、rgba、颜色名、none / url / transparent）、`parseTransform` 的组合顺序和 `matrix()`；`backdropOpacity` 取背景模糊所属图形的不透明度（tech.md §5.9，2026-10-28）                                      | 2026-10-27 |
+| 测试文件                                          | 测什么                                                                                                                                                                                                                                                                                            | 日期                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `apps/client/src/figma/**/*.test.ts`（沿用）      | 转换、组件、自动布局、实例、面板操作、富文本。原来跑在 tldraw 的 `Editor` 上，阶段 7 改成跑在本引擎的 `Editor` 上，断言不改。`paint.test.ts`（CSS 渐变图）随 `paint.tsx` 删掉，渐变矩阵的断言挪到 `paint-math.test.ts`（新），加了虚线和椭圆周长                                                  | 2026-10-27             |
+| `apps/client/src/engine/state.test.ts`（新）      | 信号：computed 只在依赖变了才重算、reaction 停止后不再跑、`transact` 合并通知、`isEqual`、`unsafe__withoutCapture` 不收集依赖                                                                                                                                                                     | 2026-10-27             |
+| `apps/client/src/engine/store.test.ts`（新）      | store：子图形按 index 排序和换父节点、`preserve` 保留旧 props、一次 `atomic` 只发一个合并的 diff、`beforeChange` / `beforeDelete` 副作用、同一条记录在一次操作里改几次只发一次 after 回调；历史：按 mark 撤销重做、`bailToMark` 不留重做、标记不在了就什么也不动、`ignore` 模式、新改动清空重做栈 | 2026-10-27，2026-10-28 |
+| `apps/client/src/engine/indices.test.ts`（新）    | 分数索引：反复夹逼仍然有序、上下方向、批量生成、`sortByIndex`                                                                                                                                                                                                                                     | 2026-10-27             |
+| `apps/client/src/engine/render/svg.test.ts`（新） | SVG 解析：元素树、注释和 `<?xml?>`、实体解码、`parseColor`（十六进制、rgba、颜色名、none / url / transparent）、`parseTransform` 的组合顺序和 `matrix()`；`backdropOpacity` 取背景模糊所属图形的不透明度（tech.md §5.9，2026-10-28）                                                              | 2026-10-27             |
 
 | `apps/client/src/engine/render/renderer.test.ts`（新） | `easeInOut` 和 CSS `ease-in-out` 一致：两端和中点、先慢后快再慢、对称、单调 | 2026-10-27 |
 | `apps/client/src/engine/render/overlay.test.ts`（新） | `parseCssColor`：空格写法加百分比透明度、逗号写法、十六进制和颜色名交给 CanvasKit | 2026-10-27 |
 | `apps/client/src/demo/layout.test.ts`（新） | `layoutWall`：每个用例放一次、尺寸不变、互不重叠；每块包住自己的板、空类别跳过；小用例换行排而不是排成一长条；`copies` 重复时 id 前缀不重复 | 2026-10-27 |
 | `apps/client/src/engine/render/image-size.test.ts`（新） | `encodedImageSize` 读 PNG、JPEG、GIF、WebP 文件头，其他格式返回 null；`imageLevel` 按缩放取档、最小 256px、小图不缩；`levelsToDrop` 不到上限时一档都不丢、超过时丢最久没用的 | 2026-10-28 |
+| `apps/client/src/engine/render/tiles.test.ts`（新） | `overviewCovers`：总览范围内（含一个总览像素的余量）算覆盖，伸出去的不算 | 2026-10-28 |
+| `apps/client/src/figma/skia/text-shadows.test.ts`（新） | `withTextShadows`：按偏移和 3 个 sigma 扩大文字的绘制范围，隐藏的投影和别的效果不算 | 2026-10-28 |
 
-画面本身没有单测（要 WebGL），靠 §2 的对比脚本和 §4 的交互脚本兜底。共 23 个测试文件、133 条（2026-10-28）。
+画面本身没有单测（要 WebGL），靠 §2 的对比脚本和 §4 的交互脚本兜底。整个 client 共 27 个测试文件、145 条（2026-10-28 code review 修正后）。
 
 ## 2. 端到端检查
 
@@ -51,6 +53,8 @@
 8. `/demo` 点面板里的"填充" → 相机对准这一块，块上方有类别名"填充"，每个用例上方有用例名，都不压在一起，也不被面板挡住；长用例名截断成"…"。点"看全部"回到整面墙。（2026-10-28）
 9. `/demo` 在任一用例上单击、拖动 → 和 `/canvas` 一样能选中、拖动、⌘Z 撤销。（2026-10-28）
 10. `/demo?copies=2` → 图形 44,200，面板写着 "175 / 175 × 2"。（2026-10-28）
+11. `/canvas` 按 T（文字工具）在空白处点一下 → 直接出现编辑框；打字后按 Esc，字留下、回到选择工具，⌘Z 一次删掉这段字。用文字工具拖出一个框、或者点到已有的文字，也直接进编辑。（2026-10-28）
+12. `/canvas` 选一段文字，右侧"效果"里加一个投影 → 字下面出现投影，改偏移和模糊跟着变。（2026-10-28）
 
 ## 4. 各次实际结果
 
@@ -135,3 +139,13 @@
 - 截图检查（会话临时目录 `scratchpad/shots/`）：整面墙（面板不挡墙、类别名不重叠）、放大到"填充"（类别名和 9 个用例名都在）、放大到"Golio 落地页"（长用例名截断成"…"）。
 - 没做：Safari、Firefox 上没测（`createImageBitmap` 的缩小解码参数各浏览器支持不同，tech.md §9）；生产构建下的帧率没测（上面都是 `pnpm dev`）。
 - SVG 背景模糊的不透明度（tech.md §5.9，`/import` 回归检查时发现）：Free Banking（不在 175 个用例里，用的是商业字体）在 `/compare` 里 All Cards 8.25% → 0.44%、Home 0.47% → 0.30%，History 0.19%、Statistics 0.10%、Onboarding-2 0.24% 不变。175 个用例里 7 个 SVG 背景模糊的图形都没有 `opacity`，走的还是原来的代码，没有重跑全量对比。
+
+### 2026-10-28（code review 修正）
+
+plan.md "2026-10-28（code review 修正）"那一节的改动。本机同上。
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 27 个测试文件、145 条全部通过（新增 `store.test.ts` 1 条、`tiles.test.ts` 2 条、`text-shadows.test.ts` 2 条）。
+- Playwright 交互脚本（`/canvas`，有界面的 Chromium）：文字工具点一下新建、拖出框新建、点到已有文字，三种都进 `select.editing_shape`；打字后 Esc 回到 `select.idle`、字留下；撤销一次删掉、重做回来；给文字加红色投影（偏移 0, 12）后，导出这块区域，红色像素从 0 变成 111。页面错误 0 个。
+- `/demo` 加载到 `__figmaReady` 8.9 秒，页面错误 0 个。
+- `/import` 回归（手动验收第 38～42 条的脚本，tldraw 版 verification.md）：全部通过，E-Learning 4 个画板 0.01%，Free Banking 显示商业字体提醒，`/compare` 能看到同一批导入。`/compare` 导入 Free Banking：All Cards 0.44%、History 0.19%、Home 0.30%、Statistics 0.10%、Onboarding-2 0.24%，和改之前一样。
+- 没测：总览扩大（§5.5）只有单测，没在页面上专门构造"往总览外加图形"的场景看；两个画布同时在一个页面上的键盘分配（§6.5）没有现成的页面，没实测。

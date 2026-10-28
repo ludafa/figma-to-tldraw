@@ -237,10 +237,18 @@ export class Store {
   readonly sideEffects = new StoreSideEffects();
   private records = new Map<string, TLRecord>();
   private atoms = new Map<string, Atom<TLRecord | undefined>>();
-  private idSets = {
-    shape: atom('store shape ids', new Set<TLShapeId>()),
-    page: atom('store page ids', new Set<TLPage['id']>()),
+  private ids: Record<TypeName, Set<string>> = {
+    shape: new Set(),
+    page: new Set(),
   };
+  private idVersions: Record<TypeName, Atom<number>> = {
+    shape: atom('store shape ids', 0),
+    page: atom('store page ids', 0),
+  };
+  private idSnapshots = new Map<
+    TypeName,
+    { version: number; ids: Set<string> }
+  >();
   private children = new Map<TLParentId, Set<TLShapeId>>();
   private childVersions = new Map<TLParentId, Atom<number>>();
   private sortedChildren = new Map<TLParentId, TLShapeId[]>();
@@ -256,7 +264,7 @@ export class Store {
   readonly query = {
     records: <T extends TypeName>(type: T) => ({
       get: (): RecordOf<T>[] => {
-        const ids = this.idSets[type].get() as Set<string>;
+        const ids = this.idsOf(type);
         const out: RecordOf<T>[] = [];
         for (const id of ids) {
           const rec = this.get(id);
@@ -306,11 +314,23 @@ export class Store {
   }
 
   shapeIds(): Set<TLShapeId> {
-    return this.idSets.shape.get();
+    return this.idsOf('shape') as Set<TLShapeId>;
   }
 
   pageIds(): Set<TLPage['id']> {
-    return this.idSets.page.get();
+    return this.idsOf('page') as Set<TLPage['id']>;
+  }
+
+  // See apps/docs/skia-engine/tech.md §3.6.
+  private idsOf(type: TypeName): Set<string> {
+    const version = this.idVersions[type].get();
+    const hit = this.idSnapshots.get(type);
+    if (hit?.version === version) {
+      return hit.ids;
+    }
+    const ids = new Set(this.ids[type]);
+    this.idSnapshots.set(type, { version, ids });
+    return ids;
   }
 
   /** Children of `parentId` sorted by index (reactive). */
@@ -364,10 +384,8 @@ export class Store {
   }
 
   private setIds(type: TypeName, fn: (set: Set<string>) => void) {
-    const a = this.idSets[type] as Atom<Set<string>>;
-    const next = new Set(a.__unsafe__getWithoutCapture());
-    fn(next);
-    a.set(next);
+    fn(this.ids[type]);
+    this.idVersions[type].update((v) => v + 1);
   }
 
   private apply(prev: TLRecord | undefined, next: TLRecord | undefined) {

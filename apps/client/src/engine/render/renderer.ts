@@ -26,7 +26,7 @@ interface PictureEntry {
   version: number;
   /** `floor(log2(scale))` the drawing picked image sizes for; null when it didn't. */
   bucket: number | null;
-  /** The drawing for another scale bucket, kept so two views don't take turns re-recording. */
+  /** The drawing for another scale bucket. */
   alt?: PictureEntry;
 }
 

@@ -89,10 +89,7 @@ export class CanvasController {
     const restored = () => {
       this.scene.clearPictures();
       this.tiles.clear();
-      this.surface?.delete();
-      this.surface = null;
-      this.gl?.delete();
-      this.gl = null;
+      this.releaseGl();
       this.initGl();
       this.requestFrame();
     };
@@ -131,6 +128,17 @@ export class CanvasController {
     this.gl = ck.MakeWebGLContext(this.glHandle);
   }
 
+  private releaseGl() {
+    this.surface?.delete();
+    this.surface = null;
+    this.gl?.delete();
+    this.gl = null;
+    if (this.glHandle > 0) {
+      this.ck.deleteContext(this.glHandle);
+    }
+    this.glHandle = 0;
+  }
+
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
@@ -140,8 +148,7 @@ export class CanvasController {
     this.tiles.dispose();
     this.scene.dispose();
     this.overlay.dispose();
-    this.surface?.delete();
-    this.gl?.delete();
+    this.releaseGl();
     controllers.delete(this.editor);
     for (const w of this.idleWaiters) {
       w();

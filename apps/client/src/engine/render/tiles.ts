@@ -89,6 +89,20 @@ function addDirty(dirty: Box[], r: Box, cell: number) {
   }
 }
 
+/** Whether page-space `area` lies inside the overview, give or take one overview pixel. */
+export function overviewCovers(
+  o: Pick<Overview, 'scale' | 'x' | 'y' | 'w' | 'h'>,
+  area: Box,
+): boolean {
+  const slack = 1 / o.scale;
+  return (
+    area.x >= o.x - slack &&
+    area.y >= o.y - slack &&
+    area.x + area.w <= o.x + o.w / o.scale + slack &&
+    area.y + area.h <= o.y + o.h / o.scale + slack
+  );
+}
+
 function quantize(scale: number) {
   return 2 ** (Math.round(Math.log2(scale) * 4) / 4);
 }
@@ -100,6 +114,10 @@ export class TileCache {
   background: Float32Array;
   private levels = new Map<number, Level>();
   private overview: Overview | null = null;
+  /** The overview being replaced; drawn until the new one is complete. */
+  private overviewPrev: Overview | null = null;
+  /** Something changed outside the overview's bounds. */
+  private overviewGrow = false;
   private pageId: TLPageId | null = null;
   private lastScale = 0;
   private lastScaleChange = 0;
@@ -128,16 +146,21 @@ export class TileCache {
       }
     }
     this.levels.clear();
-    if (this.overview) {
-      this.overview.image?.delete();
-      this.overview.surface.delete();
-      this.overview = null;
-    }
+    this.dropOverview(this.overview);
+    this.dropOverview(this.overviewPrev);
+    this.overview = null;
+    this.overviewPrev = null;
+    this.overviewGrow = false;
   }
 
   private dropTile(t: Tile) {
     t.image?.delete();
     t.surface.delete();
+  }
+
+  private dropOverview(o: Overview | null) {
+    o?.image?.delete();
+    o?.surface.delete();
   }
 
   /** Marks page-space areas as changed. */
@@ -186,6 +209,9 @@ export class TileCache {
     if (o) {
       const bounds = new Box(0, 0, o.w, o.h);
       for (const area of areas) {
+        if (!overviewCovers(o, area)) {
+          this.overviewGrow = true;
+        }
         const r = Box.Intersect(
           bounds,
           new Box(
@@ -287,12 +313,23 @@ export class TileCache {
     });
   }
 
+  // See apps/docs/skia-engine/tech.md §5.5.
   private ensureOverview(main: Surface) {
-    if (this.overview || !this.pageId) {
+    const o = this.overview;
+    if (
+      !this.pageId ||
+      (o && (!this.overviewGrow || !o.image || this.overviewPrev))
+    ) {
       return;
     }
+    this.overviewGrow = false;
     const content = this.renderer.getPageContentBounds(this.pageId);
-    if (!content || content.w <= 0 || content.h <= 0) {
+    if (
+      !content ||
+      content.w <= 0 ||
+      content.h <= 0 ||
+      (o && overviewCovers(o, content))
+    ) {
       return;
     }
     const scale = Math.min(1, OVERVIEW_PX / Math.max(content.w, content.h));
@@ -304,6 +341,7 @@ export class TileCache {
     }
     const dirty: Box[] = [];
     addDirty(dirty, new Box(0, 0, w, h), OVERVIEW_PIECE);
+    this.overviewPrev = o;
     this.overview = {
       scale,
       x: content.x,
@@ -341,6 +379,8 @@ export class TileCache {
     if (!o.dirty.length) {
       o.image?.delete();
       o.image = o.surface.makeImageSnapshot();
+      this.dropOverview(this.overviewPrev);
+      this.overviewPrev = null;
     }
   }
 
@@ -385,7 +425,7 @@ export class TileCache {
     this.ensureOverview(main);
     if (this.overview?.dirty.length && (!this.overview.image || settled)) {
       this.renderOverview(deadline);
-      pending ||= this.overview.dirty.length > 0;
+      pending ||= this.overview.dirty.length > 0 || this.overviewGrow;
     }
 
     const visible: Tile[] = [];
@@ -430,7 +470,7 @@ export class TileCache {
 
     const canvas = main.getCanvas();
     canvas.clear(this.background);
-    const o = this.overview;
+    const o = this.overview?.image ? this.overview : this.overviewPrev;
     if (o?.image) {
       canvas.save();
       canvas.translate(ox, oy);
@@ -545,6 +585,6 @@ export class TileCache {
 
   /** Whether the overview still has stale areas to redraw. */
   hasIdleWork() {
-    return !!this.overview?.dirty.length;
+    return !!this.overview?.dirty.length || this.overviewGrow;
   }
 }

@@ -2,7 +2,7 @@
 name: skia-engine
 title: 自研 Skia 画面引擎
 description: 用自己写的 CanvasKit（Skia 编译成 WebAssembly，跑在 WebGL 上）画面引擎替换 tldraw：apps/client/src/engine/ 里和 tldraw 同名同用法的 API（Editor、ShapeUtil、createShapeId、getIndices、StateNode、react / computed / atom、useEditor / useValue、<SkiaCanvas> 对应 <Tldraw>）；自己的信号、store、撤销历史、分数索引、几何；渲染层（canvaskit.ts 加载、fonts.ts 按 @font-face 懒加载字体和共用的 FontCollection、resources.ts 图片（浏览器 createImageBitmap 解码、按内容去重、按缩放取 1/2^k 的档位，image-size.ts）和 SVG 缓存、svg.ts 把 Figma 导出的 SVG 翻成 Skia 绘制、瓦片缓存、选框层）；Figma 图形的 Skia 画法（figma/skia/：填充、渐变、图片、描边、虚线、阴影、背景模糊、文字按 Figma 规则逐行放基线、font-metrics.json 和生成它的 scripts/font-metrics.ts）；还原度目标（每个用例差异 < 1%）和 4 项操作 ≥ 60fps 的性能目标与测法（scripts/bench.ts，也能测 /demo）；总览 Demo 页 /demo（全部 175 个用例、22100 个图形铺在一张画布上，?copies=N 重复，demo/layout.ts、demo/load.ts、标签层）。改画面引擎、查渲染和 Figma 不一致、查卡顿或内存（wasm 堆涨满）、改 /demo 时来读。
-changes: [2026-10-27]
+changes: [2026-10-27, 2026-10-28]
 status: 已上线
 code:
   - apps/client/src/engine/
@@ -21,6 +21,8 @@ code:
 结果（2026-10-27，实测）：175 个用例全部小于 1%（[verification.md §4](verification.md#4-各次实际结果)）；4 项操作在最大的几页稿子上平均都在 220fps 以上，只有刚开始缩放或拖动的第一两帧偶尔超过 33ms；`tldraw`、`modern-screenshot` 依赖已经删掉，`/canvas`、`/showcase`、`/how-it-works`、`/report`、`/import` 都跑在本引擎上。施工记录看 [plan.md](plan.md)。
 
 2026-10-28 加了总览 Demo 页 `/demo`（用户追加）：175 个用例、22100 个图形放在一张画布上，约 12 秒加载完，wasm 堆 161～193MB；4 项操作在整面墙和放大到单个用例时都是 60fps（显示器 60Hz）；为它改了引擎的图片解码、字体集合、瓦片补画和按节点 id 找图层，全量对比仍是 175 / 175 小于 1%，平均 0.155%（[verification.md §4](verification.md#4-各次实际结果)）。
+
+2026-10-28 提交前按 code review 修了 14 处：撤销历史（`run` 的历史模式、`bailToMark`）、文字工具进编辑状态、切页时的镜头、拖动抬起的定时器、信号和 store 的 O(N²)、总览跟着内容扩大、WebGL 句柄、Linear Dodge 混合、多画布的键盘、漏掉的文字投影等（[plan.md](plan.md) 最后一节）。
 
 ## 关键决定
 
