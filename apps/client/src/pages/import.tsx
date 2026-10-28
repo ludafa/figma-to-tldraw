@@ -3,10 +3,8 @@ import '../figma/figma.css';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
-  useRef,
   useState,
   type DragEvent,
 } from 'react';
@@ -29,38 +27,28 @@ import {
   withoutFigmaEffects,
 } from '../figma/editing';
 import { putSnapshot } from '../figma/editor';
-import { closedFonts } from '../figma/fonts';
 import { type RenderArea, renderArea } from '../figma/render-area';
 import { figmaShapeUtils } from '../figma/shapes';
 import { shapeIdFor } from '../figma/to-shapes';
 import {
   CaseReport,
-  closedFontsOf,
   type DownloadKind,
-  fontWarning,
   ImportButton,
   ImportList,
   type OverlayMode,
   PanelHeader,
-  type Progress,
   ProgressBar,
 } from '../importer/import-panel';
 import { InspectorPortal } from '../importer/inspector';
-import { type ShotStage, ShotStageHost } from '../importer/shot-stage';
+import { ShotStageHost } from '../importer/shot-stage';
 import {
-  addImport,
   type CaseOutputs,
-  deleteImport,
   getOutputs,
   getZip,
-  type ImportedCase,
   type ImportRecord,
-  isPersistent,
-  listImports,
-  saveImport,
-  saveOutputs,
 } from '../importer/store';
-import { readZipCase, readZipIndex, withBlobUrls } from '../importer/zip';
+import { jobKey, message, useImports } from '../importer/use-imports';
+import { readZipCase, withBlobUrls } from '../importer/zip';
 
 // See apps/docs/figma-to-tldraw/tech.md §19.
 
@@ -142,24 +130,6 @@ interface Loaded {
   area: RenderArea;
 }
 
-interface Notice {
-  text: string;
-  error?: boolean;
-}
-
-interface Job {
-  id: string;
-  dir: string;
-}
-
-const keyOf = (job: Job) => `${job.id}\n${job.dir}`;
-
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-function newId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 function safeName(name: string): string {
   return (
     name.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'case'
@@ -221,12 +191,18 @@ export function ImportPage() {
   const search = route.useSearch();
   const navigate = useNavigate({ from: '/import' });
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [records, setRecords] = useState<ImportRecord[] | null>(null);
-  const recordsRef = useRef<ImportRecord[]>([]);
-  const [persistent, setPersistent] = useState(true);
-  const [progress, setProgress] = useState<Progress | null>(null);
-  const [analyzing, setAnalyzing] = useState<string | null>(null);
-  const [notices, setNotices] = useState<Notice[]>([]);
+  const {
+    records,
+    persistent,
+    progress,
+    analyzing,
+    notices,
+    setNotices,
+    onStageReady,
+    enqueue,
+    importFiles: importZips,
+    remove,
+  } = useImports();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState<{
     key: string;
@@ -240,30 +216,8 @@ export function ImportPage() {
   const [inspector, setInspector] = useState<HTMLElement | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  const stage = useRef<ShotStage | null>(null);
-  const stageWaiters = useRef<((stage: ShotStage) => void)[]>([]);
-  const queue = useRef(Promise.resolve());
-  const counts = useRef({ done: 0, total: 0 });
-
   const record = records?.find((r) => r.id === search.id);
   const selected = record?.cases.find((c) => c.dir === search.case);
-
-  const setAll = useCallback((next: ImportRecord[]) => {
-    recordsRef.current = next;
-    setRecords(next);
-  }, []);
-
-  useEffect(() => {
-    listImports()
-      .then(setAll)
-      .catch((e: unknown) => {
-        setAll([]);
-        setNotices([
-          { text: `读不出浏览器里存的导入记录：${message(e)}`, error: true },
-        ]);
-      });
-    void isPersistent().then(setPersistent);
-  }, [setAll]);
 
   // See apps/docs/figma-to-tldraw/tech.md §19.1.
   useEffect(() => {
@@ -277,168 +231,8 @@ export function ImportPage() {
     });
   }, [records, record, search.id, navigate]);
 
-  const onStageReady = useCallback((s: ShotStage | null) => {
-    stage.current = s;
-    if (s) {
-      for (const resolve of stageWaiters.current) {
-        resolve(s);
-      }
-      stageWaiters.current = [];
-    }
-  }, []);
-
-  const getStage = () =>
-    stage.current
-      ? Promise.resolve(stage.current)
-      : new Promise<ShotStage>((resolve) => stageWaiters.current.push(resolve));
-
-  function updateCase(id: string, dir: string, patch: Partial<ImportedCase>) {
-    const next = recordsRef.current.map((r) =>
-      r.id === id
-        ? {
-            ...r,
-            cases: r.cases.map((c) => (c.dir === dir ? { ...c, ...patch } : c)),
-          }
-        : r,
-    );
-    setAll(next);
-    const changed = next.find((r) => r.id === id);
-    if (changed) {
-      saveImport(changed).catch((e: unknown) => console.warn(e));
-    }
-  }
-
-  async function analyzeOne(job: Job) {
-    const rec = recordsRef.current.find((r) => r.id === job.id);
-    const c = rec?.cases.find((x) => x.dir === job.dir);
-    if (!rec || !c) {
-      return;
-    }
-    setProgress({
-      text: `截图对比：${c.name}`,
-      done: counts.current.done,
-      total: counts.current.total,
-    });
-    setAnalyzing(keyOf(job));
-    const analyzedAt = new Date().toISOString();
-    const base = {
-      dir: c.dir,
-      width: c.width,
-      height: c.height,
-      sizeMismatch: false,
-      analyzedAt,
-    };
-    try {
-      const zip = await getZip(job.id);
-      if (!zip) {
-        throw new Error('浏览器里找不到这次导入的 zip');
-      }
-      const files = await readZipCase(zip, job.dir);
-      const assets = withBlobUrls(files);
-      try {
-        const shot = await (
-          await getStage()
-        ).analyze({
-          idPrefix: job.dir,
-          snapshot: assets.snapshot,
-          expected: files.expected,
-        });
-        await saveOutputs(job.id, job.dir, {
-          actual: shot.actual,
-          diff: shot.diffImage,
-        });
-        updateCase(job.id, job.dir, {
-          result: {
-            ...base,
-            diff: shot.diff,
-            diffPixels: shot.diffPixels,
-            warnings: shot.warnings,
-            breakdown: shot.breakdown,
-            ms: shot.ms,
-          },
-        });
-      } finally {
-        assets.revoke();
-      }
-    } catch (e) {
-      console.error(e);
-      updateCase(job.id, job.dir, {
-        result: {
-          ...base,
-          diff: 100,
-          diffPixels: 0,
-          warnings: [],
-          error: message(e),
-          ms: 0,
-        },
-      });
-    }
-  }
-
-  function enqueue(jobs: Job[]) {
-    counts.current.total += jobs.length;
-    for (const job of jobs) {
-      queue.current = queue.current
-        .then(() => analyzeOne(job))
-        .catch((e: unknown) => console.error(e))
-        .finally(() => {
-          counts.current.done++;
-          if (counts.current.done >= counts.current.total) {
-            counts.current = { done: 0, total: 0 };
-            setProgress(null);
-            setAnalyzing(null);
-          }
-        });
-    }
-  }
-
   async function importFiles(files: File[]) {
-    const fresh: Notice[] = [];
-    let first: ImportRecord | null = null;
-    for (const file of files) {
-      if (!/\.zip$/i.test(file.name)) {
-        fresh.push({ text: `${file.name} 不是 zip，跳过了`, error: true });
-        continue;
-      }
-      try {
-        const index = await readZipIndex(file);
-        const rec: ImportRecord = {
-          id: newId(),
-          fileName: file.name,
-          size: file.size,
-          importedAt: new Date().toISOString(),
-          figmaFile: index.figmaFile ?? '',
-          page: (index.page ?? '').trim(),
-          exportedAt: index.exportedAt ?? '',
-          cases: (index.cases ?? []).map((c) => ({
-            dir: c.dir,
-            name: c.name,
-            width: c.width,
-            height: c.height,
-            fonts: c.fonts ?? [],
-            closedFonts: closedFonts(c.fonts ?? []),
-          })),
-          errors: index.errors ?? [],
-        };
-        if (!rec.cases.length) {
-          throw new Error('zip 里一个画板都没有');
-        }
-        await addImport(rec, file);
-        setAll([rec, ...recordsRef.current]);
-        first ??= rec;
-        fresh.push({
-          text: `导入了 ${file.name}：${rec.cases.length} 个画板`,
-        });
-        const fonts = closedFontsOf(rec);
-        if (fonts.length) {
-          fresh.push({ text: fontWarning(fonts), error: true });
-        }
-        enqueue(rec.cases.map((c) => ({ id: rec.id, dir: c.dir })));
-      } catch (e) {
-        fresh.push({ text: `${file.name}：${message(e)}`, error: true });
-      }
-    }
-    setNotices(fresh);
+    const first = await importZips(files);
     if (first) {
       void navigate({ search: { id: first.id, case: first.cases[0].dir } });
     }
@@ -480,7 +274,7 @@ export function ImportPage() {
       setLoaded({ id, dir, expectedUrl: assets.expectedUrl, area });
     })().catch((e: unknown) => {
       if (!cancelled) {
-        setLoadError({ key: keyOf({ id, dir }), text: message(e) });
+        setLoadError({ key: jobKey({ id, dir }), text: message(e) });
       }
     });
     return () => {
@@ -504,7 +298,7 @@ export function ImportPage() {
           return;
         }
         url = URL.createObjectURL(o.diff);
-        setOutputs({ ...o, diffUrl: url, key: keyOf({ id, dir }) });
+        setOutputs({ ...o, diffUrl: url, key: jobKey({ id, dir }) });
       })
       .catch((e: unknown) => console.warn(e));
     return () => {
@@ -517,15 +311,9 @@ export function ImportPage() {
   }, [search, analyzedAt]);
 
   async function onDelete(rec: ImportRecord) {
-    if (
-      !window.confirm(
-        `删除「${rec.figmaFile || rec.fileName}」这次导入？浏览器里存的 zip 和对比结果都会删掉。`,
-      )
-    ) {
+    if (!(await remove(rec))) {
       return;
     }
-    await deleteImport(rec).catch((e: unknown) => console.warn(e));
-    setAll(recordsRef.current.filter((r) => r.id !== rec.id));
     if (rec.id === search.id) {
       setLoaded(null);
       if (editor) {
@@ -596,7 +384,7 @@ export function ImportPage() {
       : null;
 
   const selectedKey =
-    search.id && search.case ? keyOf({ id: search.id, dir: search.case }) : '';
+    search.id && search.case ? jobKey({ id: search.id, dir: search.case }) : '';
 
   return (
     <div

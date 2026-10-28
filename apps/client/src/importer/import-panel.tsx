@@ -277,8 +277,12 @@ export function ImportList({
   );
 }
 
-const NOTE =
+export const BROWSER_NOTE =
   '分数是在浏览器里算的：把画布按 2 倍直接导出像素，和 Figma 导出的 2 倍图逐像素比。用的是和画布同一套 Skia 画法，和本地对比脚本（Playwright 截图）的分数基本一致。';
+
+export function diffMethod(ms: number): string {
+  return `Figma 导出的 2 倍图和画布导出的 2 倍图逐像素比，pixelmatch 阈值 0.1，用时 ${(ms / 1000).toFixed(1)} 秒`;
+}
 
 export function CaseReport({
   c,
@@ -303,7 +307,7 @@ export function CaseReport({
 }) {
   const notes = [
     ...(c.closedFonts.length ? [fontWarning(c.closedFonts)] : []),
-    NOTE,
+    BROWSER_NOTE,
   ];
   return (
     <section className="space-y-3">
@@ -366,7 +370,7 @@ export function CaseReport({
           totalPixels={Math.round(c.width * 2) * Math.round(c.height * 2)}
           notes={notes}
           hint="差异最多的节点（鼠标移上去，画布上会框出它；点一下选中它）"
-          method={`Figma 导出的 2 倍图和画布导出的 2 倍图逐像素比，pixelmatch 阈值 0.1，用时 ${(c.result.ms / 1000).toFixed(1)} 秒`}
+          method={diffMethod(c.result.ms)}
           onHighlight={onHighlight}
           onPick={onPick}
         />

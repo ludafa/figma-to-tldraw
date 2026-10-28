@@ -123,6 +123,12 @@ export function CaseList({
           >
             导入自己的设计稿 →
           </Link>
+          <Link
+            to="/compare"
+            className="font-medium underline-offset-4 hover:underline"
+          >
+            导入对比 →
+          </Link>
           <a
             href="/reports/fidelity/latest/index.html"
             target="_blank"

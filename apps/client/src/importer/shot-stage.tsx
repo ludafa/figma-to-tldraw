@@ -14,13 +14,14 @@ import { waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
 import { figmaShapeUtils } from '../figma/shapes';
 import type { Snapshot } from '../figma/types';
-import { compareInWorker } from './diff';
-import { SCALE } from './diff-core';
+import { startCompare } from './diff';
+import { SCALE, STRIP_OVERLAP } from './diff-core';
 
 // See apps/docs/figma-to-tldraw/tech.md §19.2.
 
 const STRIP_PIXELS = 16_000_000;
-const MAX_PIXELS = 80_000_000;
+const MAX_SIDE = 32_767;
+const MAX_PIXELS = 160_000_000;
 
 const options = {
   createTextOnCanvasDoubleClick: false,
@@ -76,7 +77,9 @@ async function analyze(editor: Editor, job: ShotJob): Promise<ShotResult> {
     colorSpaceConversion: 'none',
   });
   const { width, height } = bitmap;
-  if (width * height > MAX_PIXELS) {
+  // See apps/docs/figma-to-tldraw/tech.md §20.3.
+  if (width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_PIXELS) {
+    bitmap.close();
     throw new Error(
       `这张图太大了（${width}×${height}），浏览器里比不动，请用本地对比脚本`,
     );
@@ -121,28 +124,45 @@ async function analyze(editor: Editor, job: ShotJob): Promise<ShotResult> {
     ),
   );
 
-  const expected = canvasOf(width, height);
-  expected.ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  const out = await compareInWorker({
-    expected: expected.ctx.getImageData(0, 0, width, height).data,
-    actual: actual.ctx.getImageData(0, 0, width, height).data,
-    width,
-    height,
-    snapshot: job.snapshot,
-  });
-  expected.canvas.width = 0;
+  // See apps/docs/figma-to-tldraw/tech.md §20.3.
+  const diff = canvasOf(width, height);
+  const band = canvasOf(width, Math.min(height, strip + STRIP_OVERLAP * 2));
+  const session = await startCompare(job.snapshot);
+  let diffPixels = 0;
+  let breakdown: DiffBreakdown;
+  try {
+    for (let y = 0; y < height; y += strip) {
+      const rows = Math.min(strip, height - y);
+      const y0 = Math.max(0, y - STRIP_OVERLAP);
+      const y1 = Math.min(height, y + rows + STRIP_OVERLAP);
+      band.ctx.fillRect(0, 0, width, y1 - y0);
+      band.ctx.drawImage(bitmap, 0, y0, width, y1 - y0, 0, 0, width, y1 - y0);
+      const out = await session.strip({
+        expected: band.ctx.getImageData(0, 0, width, y1 - y0).data,
+        actual: actual.ctx.getImageData(0, y0, width, y1 - y0).data,
+        width,
+        y,
+        top: y - y0,
+        rows,
+      });
+      diffPixels += out.diffPixels;
+      diff.ctx.putImageData(new ImageData(out.diff, width, rows), 0, y);
+    }
+    breakdown = await session.finish();
+  } finally {
+    session.close();
+    bitmap.close();
+    band.canvas.width = 0;
+  }
   const actualPng = await toPng(actual.canvas);
   actual.canvas.width = 0;
-  const diff = canvasOf(width, height);
-  diff.ctx.putImageData(new ImageData(out.diff, width, height), 0, 0);
   const diffPng = await toPng(diff.canvas);
   diff.canvas.width = 0;
 
   return {
-    diff: (out.diffPixels / (width * height)) * 100,
-    diffPixels: out.diffPixels,
-    breakdown: out.breakdown,
+    diff: (diffPixels / (width * height)) * 100,
+    diffPixels,
+    breakdown,
     warnings: [...warnings, ...missing],
     actual: actualPng,
     diffImage: diffPng,
