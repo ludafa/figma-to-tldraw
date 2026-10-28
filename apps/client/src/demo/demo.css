@@ -1,0 +1,42 @@
+/* See apps/docs/skia-engine/tech.md §10.5. */
+.demo-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.demo-label {
+  position: absolute;
+  overflow: hidden;
+  max-width: calc(var(--label-w) * var(--tl-zoom, 1) * 1px);
+  padding: 0 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: scale(calc(1 / var(--tl-zoom, 1))) translateY(-100%);
+  transform-origin: 0 0;
+}
+
+.demo-label:hover {
+  color: #0d99ff;
+}
+
+.demo-section-label {
+  transform: scale(calc(1 / var(--tl-zoom, 1)))
+    translateY(
+      calc(-100% - min(24px, var(--label-gap) * var(--tl-zoom, 1) * 1px))
+    );
+  color: #1e1e1e;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.demo-board-label {
+  color: #757575;
+  font-size: 12px;
+}

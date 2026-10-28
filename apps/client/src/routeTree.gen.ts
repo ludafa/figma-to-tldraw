@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as CanvasRouteImport } from './routes/canvas'
+import { Route as DemoRouteImport } from './routes/demo'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as ReportRouteImport } from './routes/report'
@@ -31,6 +32,11 @@ const AuthRoute = AuthRouteImport.update({
 const CanvasRoute = CanvasRouteImport.update({
   id: '/canvas',
   path: '/canvas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HowItWorksRoute = HowItWorksRouteImport.update({
@@ -72,6 +78,7 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/canvas': typeof CanvasRoute
+  '/demo': typeof DemoRoute
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/canvas': typeof CanvasRoute
+  '/demo': typeof DemoRoute
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/canvas': typeof CanvasRoute
+  '/demo': typeof DemoRoute
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/canvas'
+    | '/demo'
     | '/how-it-works'
     | '/import'
     | '/report'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/canvas'
+    | '/demo'
     | '/how-it-works'
     | '/import'
     | '/report'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_auth'
     | '/canvas'
+    | '/demo'
     | '/how-it-works'
     | '/import'
     | '/report'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   CanvasRoute: typeof CanvasRoute
+  DemoRoute: typeof DemoRoute
   HowItWorksRoute: typeof HowItWorksRoute
   ImportRoute: typeof ImportRoute
   ReportRoute: typeof ReportRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/canvas'
       fullPath: '/canvas'
       preLoaderRoute: typeof CanvasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/how-it-works': {
@@ -248,6 +268,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   CanvasRoute: CanvasRoute,
+  DemoRoute: DemoRoute,
   HowItWorksRoute: HowItWorksRoute,
   ImportRoute: ImportRoute,
   ReportRoute: ReportRoute,

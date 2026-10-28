@@ -7,6 +7,8 @@ status: 已上线
 code:
   - apps/client/src/engine/
   - apps/client/src/figma/skia/
+  - apps/client/src/demo/
+  - apps/client/src/pages/demo.tsx
   - apps/client/scripts/bench.ts
   - apps/client/src/figma/font-metrics.json
   - apps/client/scripts/font-metrics.ts
