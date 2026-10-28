@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseColor, parseTransform, parseXml } from './svg';
+import { backdropOpacity, parseColor, parseTransform, parseXml } from './svg';
 
 describe('parseXml', () => {
   it('builds the element tree and decodes entities', () => {
@@ -44,5 +44,16 @@ describe('parseTransform', () => {
     expect(parseTransform('matrix(1 2 3 4 5 6)')).toEqual([
       1, 3, 5, 2, 4, 6, 0, 0, 1,
     ]);
+  });
+});
+
+describe('backdropOpacity', () => {
+  it('takes the opacity of the layer the background blur belongs to', () => {
+    const root = parseXml(
+      '<svg><foreignObject><div style="backdrop-filter:blur(25px)"/></foreignObject><ellipse opacity="0.2" data-figma-bg-blur-radius="50"/><foreignObject/><rect data-figma-bg-blur-radius="8"/><foreignObject/><rect opacity="0.5"/></svg>',
+    )!;
+    expect(backdropOpacity(root.children, 0)).toBe(0.2);
+    expect(backdropOpacity(root.children, 2)).toBe(1);
+    expect(backdropOpacity(root.children, 4)).toBe(1);
   });
 });

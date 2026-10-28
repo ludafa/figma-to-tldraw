@@ -145,7 +145,7 @@ CanvasKit 不能用浏览器的字体，要自己把字体文件交给它。`Fon
 | `mask`                                                               | 亮度蒙版：内容先画进一层，蒙版内容再画进一层，用 `ColorFilter.MakeLuma()` 把亮度变成透明度、`DstIn` 叠回去；`maskUnits="userSpaceOnUse"` 时在蒙版层里按区域裁剪                           |
 | `clipPath`                                                           | 子元素路径（各自的 `transform` 和 `clip-rule`）求并集后 `clipPath`                                                                                                                        |
 | `foreignObject` 里 `background: conic-gradient(…)` 的 `div`          | Figma 导出角度渐变的方式。翻成扫描渐变（`Shader.MakeSweepGradient`），CSS 的 `from 90deg` 正好是 Skia 的 0°                                                                               |
-| `foreignObject` 里 `backdrop-filter: blur(…)` + `clip-path` 的 `div` | Figma 导出背景模糊的方式。按 `div` 的 `clip-path` 裁剪后 `saveLayer(…, backdrop = 模糊)`                                                                                                  |
+| `foreignObject` 里 `backdrop-filter: blur(…)` + `clip-path` 的 `div` | Figma 导出背景模糊的方式。按 `div` 的 `clip-path` 裁剪后 `saveLayer(…, backdrop = 模糊)`，按所属图层的不透明度混合（§5.9）                                                                |
 
 `data-figma-skip-parse` 的 `g` 照常画（它就是上面那个角度渐变），后面带 `data-figma-gradient-fill` 的元素本身透明，不用特殊处理。
 
@@ -216,6 +216,16 @@ tldraw 版在自动布局里拖动排序时，用一段 CSS 做两件事（tldra
 Figma 编辑代码 `figma/editing/drag-style.ts` 的 `installDragStyle` 只是调用方：第一次检测到拖动自动布局里的图层时，把选中的图层连同子图层按原来的上下顺序传给 `setLifted`，`setSlideMs(150)`；离开 `select.translating` 0.15 秒后两个都清掉，让最后一次交换滑完。没有画布控制器（单元测试里）时什么都不做。
 
 实测（2026-10-27，Playwright，`/canvas?case=page/mobile-login`，把 Sign in 按钮往上拖）：越过 "Options" 的中线后两者交换，"Options" 的画面偏移 −62 → −58.5 → −48.7 → −35.4 → −21.6 → −10.7 → −2.8 → 0，每 20 毫秒一个点，约 150 毫秒走完，先慢后快再慢；被拖的按钮压在密码输入框上面；松手后抬起清掉，⌘Z 一次恢复顺序。`scripts/bench.ts` 的自动布局拖动仍在 230fps 以上（verification.md §4）。
+
+### 5.9 SVG 里的背景模糊跟着图层不透明度（2026-10-28）
+
+Figma 导出带背景模糊的矢量时，SVG 里先是一个 `<foreignObject>`（里面的 `div` 写 `backdrop-filter: blur(…)` 和 `clip-path`），紧跟着是图形本身，带 `data-figma-bg-blur-radius`。图层不透明度只写在图形上（`<ellipse opacity="0.2" data-figma-bg-blur-radius="50" …>`），`<foreignObject>` 上没有。照 SVG 的字面意思画，模糊是满强度的；但 Figma 自己画的时候，背景模糊也乘图层不透明度：20% 的图层，是 20% 模糊后的背景加 80% 原来的背景，下面的字还是清楚的。
+
+做法：`render/svg.ts` 的 `paintChildren` 碰到 `<foreignObject>` 时，用 `backdropOpacity` 取下一个兄弟（带 `data-figma-bg-blur-radius` 的那个）的 `opacity`；画背景模糊的 `saveLayer` 带上这个不透明度，恢复图层时按它和原来的背景混合。不是这种结构，或者图形没写 `opacity`，按 1 处理，和原来一样。
+
+发现经过：Free Banking 的 All Cards（`/import` 回归检查时，figma-to-tldraw verification.md §4）卡片上有一个 20% 不透明的渐变椭圆，带 50 的背景模糊。我们画出满强度的模糊：卡片和卡片之间的白缝被模糊成一条条亮带，卡片上的字也糊了，8.25%（换引擎前 DOM 版 0.086%）。改了以后 0.44%，剩下的主要是商业字体 SF Pro Display 换成 Inter 的差别；Home 0.47% → 0.30%。175 个用例里有 7 个这样的背景模糊，图形上都没有 `opacity`，结果不变。
+
+没验证的：`<g opacity>` 包着这一对时（背景滤镜在不透明度图层里读到的是空白），和 `paintBox` 画的盒子图层不透明度小于 1 时（同样的原因）背景模糊对不对。现有用例里没有。
 
 ## 6. 工具和交互（`engine/tools/`、`engine/editor.ts`）（2026-10-27）
 

@@ -10,7 +10,7 @@
 | `apps/client/src/engine/state.test.ts`（新）      | 信号：computed 只在依赖变了才重算、reaction 停止后不再跑、`transact` 合并通知、`isEqual`、`unsafe__withoutCapture` 不收集依赖                                                                                                                                             | 2026-10-27 |
 | `apps/client/src/engine/store.test.ts`（新）      | store：子图形按 index 排序和换父节点、`preserve` 保留旧 props、一次 `atomic` 只发一个合并的 diff、`beforeChange` / `beforeDelete` 副作用、同一条记录在一次操作里改几次只发一次 after 回调；历史：按 mark 撤销重做、`bailToMark` 不留重做、`ignore` 模式、新改动清空重做栈 | 2026-10-27 |
 | `apps/client/src/engine/indices.test.ts`（新）    | 分数索引：反复夹逼仍然有序、上下方向、批量生成、`sortByIndex`                                                                                                                                                                                                             | 2026-10-27 |
-| `apps/client/src/engine/render/svg.test.ts`（新） | SVG 解析：元素树、注释和 `<?xml?>`、实体解码、`parseColor`（十六进制、rgba、颜色名、none / url / transparent）、`parseTransform` 的组合顺序和 `matrix()`                                                                                                                  | 2026-10-27 |
+| `apps/client/src/engine/render/svg.test.ts`（新） | SVG 解析：元素树、注释和 `<?xml?>`、实体解码、`parseColor`（十六进制、rgba、颜色名、none / url / transparent）、`parseTransform` 的组合顺序和 `matrix()`；`backdropOpacity` 取背景模糊所属图形的不透明度（tech.md §5.9，2026-10-28）                                      | 2026-10-27 |
 
 | `apps/client/src/engine/render/renderer.test.ts`（新） | `easeInOut` 和 CSS `ease-in-out` 一致：两端和中点、先慢后快再慢、对称、单调 | 2026-10-27 |
 | `apps/client/src/engine/render/overlay.test.ts`（新） | `parseCssColor`：空格写法加百分比透明度、逗号写法、十六进制和颜色名交给 CanvasKit | 2026-10-27 |
@@ -134,3 +134,4 @@
 
 - 截图检查（会话临时目录 `scratchpad/shots/`）：整面墙（面板不挡墙、类别名不重叠）、放大到"填充"（类别名和 9 个用例名都在）、放大到"Golio 落地页"（长用例名截断成"…"）。
 - 没做：Safari、Firefox 上没测（`createImageBitmap` 的缩小解码参数各浏览器支持不同，tech.md §9）；生产构建下的帧率没测（上面都是 `pnpm dev`）。
+- SVG 背景模糊的不透明度（tech.md §5.9，`/import` 回归检查时发现）：Free Banking（不在 175 个用例里，用的是商业字体）在 `/compare` 里 All Cards 8.25% → 0.44%、Home 0.47% → 0.30%，History 0.19%、Statistics 0.10%、Onboarding-2 0.24% 不变。175 个用例里 7 个 SVG 背景模糊的图形都没有 `opacity`，走的还是原来的代码，没有重跑全量对比。

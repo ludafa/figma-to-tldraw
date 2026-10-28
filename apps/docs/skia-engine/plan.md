@@ -187,3 +187,8 @@
    - 原因：类别名离块的距离是页面单位（标题带的 1/5），放大后变成几百像素；画布容器是 `overflow: hidden`，浏览器为了让焦点元素露出来会滚动它。
    - 改动：类别名的距离改成 `min(24px, 页面距离 × 缩放)`；画布容器改成 `overflow: clip`（tech.md §10.5）。
    - 检查：截图（整面墙、"填充"、"Golio 落地页"）类别名和用例名都在、不重叠；对 `.skia-canvas` 里的标签 `focus()` + `scrollIntoView()` 后 `scrollTop` 仍是 0；`fill/*`、`text/*`、`effect/*` 和 `designs-30` 共 28 个用例对比结果和改之前完全一样。
+10. **半透明图形的背景模糊画成满强度。**
+    - 现象：Free Banking 的 All Cards 8.25%（换引擎前 0.086%），卡片上一个 20% 不透明的椭圆下面，字和白缝被模糊成一条条亮带（2026-10-28，`/import` 回归检查时发现）。
+    - 原因：Figma 的 SVG 只在图形上写 `opacity`，背景模糊的 `<foreignObject>` 上没有；我们照字面画成满强度，Figma 自己画时背景模糊也乘图层不透明度。
+    - 改动：`render/svg.ts` 的 `backdropOpacity` 取所属图形的不透明度，背景模糊的 `saveLayer` 带上它（tech.md §5.9）。`svg.test.ts` 加 1 条。
+    - 检查：All Cards 0.44%、Home 0.47% → 0.30%，其余 3 页不变；175 个用例里的 7 个 SVG 背景模糊都没有 `opacity`，结果不变。

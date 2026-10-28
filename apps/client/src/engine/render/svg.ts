@@ -221,6 +221,14 @@ function styleMap(node: XmlNode): Record<string, string> {
   return out;
 }
 
+/** Opacity of the layer a Figma background-blur `<foreignObject>` (at `i`) belongs to. */
+export function backdropOpacity(siblings: XmlNode[], i: number): number {
+  const owner = siblings[i + 1];
+  return owner?.attrs['data-figma-bg-blur-radius'] === undefined
+    ? 1
+    : num(attr(owner, 'opacity'), 1);
+}
+
 function attr(node: XmlNode, name: string): string | undefined {
   return styleMap(node)[name] ?? node.attrs[name];
 }
@@ -377,9 +385,12 @@ class SvgPainter {
   }
 
   paintChildren(node: XmlNode, inh: Inherited) {
-    for (const child of node.children) {
+    node.children.forEach((child, i) => {
+      this.backdropAlpha =
+        child.tag === 'foreignObject' ? backdropOpacity(node.children, i) : 1;
       this.paintNode(child, inh);
-    }
+    });
+    this.backdropAlpha = 1;
   }
 
   paintNode(node: XmlNode, parent: Inherited) {
@@ -486,6 +497,7 @@ class SvgPainter {
   }
 
   private opacityFold = 1;
+  private backdropAlpha = 1;
 
   private hasFillAndStroke(inh: Inherited) {
     return inh.fill !== 'none' && inh.stroke !== 'none' && inh.strokeWidth > 0;
@@ -736,7 +748,10 @@ class SvgPainter {
       const blur = this.keep(
         ck.ImageFilter.MakeBlur(sigma, sigma, ck.TileMode.Clamp, null),
       );
-      c.saveLayer(undefined, null, blur, 0, ck.TileMode.Clamp);
+      // See apps/docs/skia-engine/tech.md §5.9.
+      const p = this.backdropAlpha < 1 ? this.paint() : undefined;
+      p?.setAlphaf(this.backdropAlpha);
+      c.saveLayer(p, null, blur, 0, ck.TileMode.Clamp);
       c.restore();
       c.restore();
       return;
