@@ -1,5 +1,4 @@
-import { type Editor, PageRecordType, type TLPageId } from 'tldraw';
-
+import { type Editor, PageRecordType, type TLPageId } from '../engine';
 import { withoutFigmaEffects } from './editing/engine';
 import type { FigmaShape } from './shape-types';
 import { snapshotToShapes } from './to-shapes';

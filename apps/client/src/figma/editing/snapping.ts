@@ -4,10 +4,8 @@ import {
   type StateNode,
   type TLParentId,
   type TLShapeId,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+} from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import { type Axis, axisSizing, inFlow, isAutoLayout } from './auto-layout';
 import { isGroup } from './engine';
 import { figmaChildren, figmaParent } from './host';

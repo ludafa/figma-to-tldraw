@@ -1,13 +1,17 @@
-import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
 import { getRouteApi, Link } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { type Editor, type TLComponents, Tldraw } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
+import {
+  type Editor,
+  getCanvasController,
+  SkiaCanvas,
+  type TLComponents,
+} from '../engine';
 import {
   figmaShapeVisibility,
   FigmaStylePanel,
@@ -42,7 +46,6 @@ declare global {
 const route = getRouteApi('/canvas');
 
 const SHOT_OFFSET = 40;
-const TLDRAW_LAYER_OFFSET = 0.125;
 
 type OverlayMode = 'off' | 'half' | 'diff';
 
@@ -116,8 +119,8 @@ function showSnapshot(
   const area = renderArea(snapshot);
   const showFrom = (y: number) => {
     editor.setCamera({
-      x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
-      y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y - y,
+      x: SHOT_OFFSET - area.x,
+      y: SHOT_OFFSET - area.y - y,
       z: 1,
     });
   };
@@ -265,6 +268,7 @@ export function CanvasPage() {
         setSnapshot(snap);
         setWarnings(list);
         const missing = await waitForAssets(snap, assetBase);
+        await getCanvasController(editor)?.whenIdle();
         if (!cancelled) {
           for (const w of missing) {
             console.warn(w);
@@ -326,7 +330,7 @@ export function CanvasPage() {
       )}
       <div className={cn('relative flex-1', shot && 'figma-shot')}>
         <OverlayContext.Provider value={overlay}>
-          <Tldraw
+          <SkiaCanvas
             shapeUtils={figmaShapeUtils}
             components={components}
             tools={figmaTools}
@@ -335,6 +339,8 @@ export function CanvasPage() {
             getShapeVisibility={figmaShapeVisibility}
             textOptions={figmaTextOptions}
             hideUi={shot}
+            renderMode={shot ? 'direct' : 'tiles'}
+            background={shot ? '#ffffff' : '#f5f5f5'}
             onMount={handleMount}
           />
         </OverlayContext.Provider>

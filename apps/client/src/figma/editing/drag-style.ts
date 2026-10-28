@@ -1,6 +1,7 @@
-import { type Editor, react } from 'tldraw';
+import { type Editor, getCanvasController, react } from '../../engine';
 
 // See apps/docs/figma-to-tldraw/tech.md §13.6.
+// See apps/docs/skia-engine/tech.md §5.8.
 
 const SLIDE_MS = 150;
 
@@ -11,44 +12,46 @@ export interface DragStyle {
 }
 
 export function installDragStyle(editor: Editor): DragStyle {
-  let style: HTMLStyleElement | undefined;
+  let active = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const remove = () => {
-    style?.remove();
-    style = undefined;
+    active = false;
+    const scene = getCanvasController(editor)?.scene;
+    scene?.setLifted([]);
+    scene?.setSlideMs(0);
+    getCanvasController(editor)?.requestFrame();
   };
   const stop = react('figma drag style', () => {
-    if (!editor.isIn('select.translating') && style) {
+    if (!editor.isIn('select.translating') && active) {
       clearTimeout(timer);
       timer = setTimeout(remove, SLIDE_MS);
     }
   });
   return {
     show() {
-      if (style) {
+      if (active) {
         return;
       }
       clearTimeout(timer);
+      active = true;
       const lifted = editor.getShapeAndDescendantIds(
         editor.getSelectedShapeIds(),
       );
-      const order = editor
-        .getCurrentPageShapesSorted()
-        .filter((s) => lifted.has(s.id));
-      style = document.createElement('style');
-      style.textContent = [
-        `.tl-shape { transition: transform ${SLIDE_MS}ms ease-in-out; }`,
-        ...order.map(
-          (s, i) =>
-            `.tl-shape[data-shape-id="${s.id}"] { transition: none; z-index: ${1_000_000 + i} !important; }`,
-        ),
-      ].join('\n');
-      editor.getContainer().append(style);
+      const scene = getCanvasController(editor)?.scene;
+      scene?.setLifted(
+        editor
+          .getCurrentPageShapesSorted()
+          .filter((s) => lifted.has(s.id))
+          .map((s) => s.id),
+      );
+      scene?.setSlideMs(SLIDE_MS);
     },
     dispose() {
       stop();
       clearTimeout(timer);
-      remove();
+      if (active) {
+        remove();
+      }
     },
   };
 }

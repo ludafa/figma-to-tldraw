@@ -278,7 +278,7 @@ export function ImportList({
 }
 
 const NOTE =
-  '分数是在浏览器里截图算的：把 tldraw 画布截成 2 倍图，和 Figma 导出的 2 倍图逐像素比。和本地对比脚本（Playwright 截图）的分数一般只差零点几个百分点；背景模糊（background blur）截图截不出来，用了它的地方会多算差异。';
+  '分数是在浏览器里算的：把画布按 2 倍直接导出像素，和 Figma 导出的 2 倍图逐像素比。用的是和画布同一套 Skia 画法，和本地对比脚本（Playwright 截图）的分数基本一致。';
 
 export function CaseReport({
   c,
@@ -366,7 +366,7 @@ export function CaseReport({
           totalPixels={Math.round(c.width * 2) * Math.round(c.height * 2)}
           notes={notes}
           hint="差异最多的节点（鼠标移上去，画布上会框出它；点一下选中它）"
-          method={`Figma 导出的 2 倍图和浏览器里截的 tldraw 2 倍图逐像素比，pixelmatch 阈值 0.1，用时 ${(c.result.ms / 1000).toFixed(1)} 秒`}
+          method={`Figma 导出的 2 倍图和画布导出的 2 倍图逐像素比，pixelmatch 阈值 0.1，用时 ${(c.result.ms / 1000).toFixed(1)} 秒`}
           onHighlight={onHighlight}
           onPick={onPick}
         />

@@ -1,4 +1,3 @@
-import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -11,13 +10,13 @@ import {
   useState,
   type DragEvent,
 } from 'react';
+
 import {
   type Editor,
   serializeTldrawJson,
   type TLComponents,
   Tldraw,
-} from 'tldraw';
-
+} from '../engine';
 import type { DiffNode } from '../figma/diff-attribution';
 import {
   figmaShapeVisibility,

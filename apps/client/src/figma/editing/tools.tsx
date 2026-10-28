@@ -11,9 +11,8 @@ import {
   type TLStateNodeConstructor,
   type TLUiOverrides,
   ToolbarItem,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
+} from '../../engine';
+import { isFigmaShape } from '../shape-types';
 import {
   createLayer,
   DEFAULT_SIZE,

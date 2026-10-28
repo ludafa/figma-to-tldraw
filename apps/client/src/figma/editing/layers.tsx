@@ -33,6 +33,9 @@ import {
   useRef,
   useState,
 } from 'react';
+
+import { cn } from '@/lib/utils';
+
 import {
   computed,
   type Editor,
@@ -41,12 +44,8 @@ import {
   type TLShape,
   type TLShapeId,
   useValue,
-} from 'tldraw';
-
-import { cn } from '@/lib/utils';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+} from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import { isAutoLayout } from './auto-layout';
 import { isComponentLike } from './instances';
 

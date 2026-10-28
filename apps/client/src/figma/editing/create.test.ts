@@ -1,6 +1,6 @@
-import type { Editor } from 'tldraw';
 import { describe, expect, it } from 'vitest';
 
+import type { Editor } from '../../engine';
 import { newNode } from './create';
 
 function editorWith(names: string[]): Editor {

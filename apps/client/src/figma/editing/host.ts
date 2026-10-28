@@ -1,7 +1,5 @@
-import type { Editor, TLShapeId, TLShapePartial } from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+import type { Editor, TLShapeId, TLShapePartial } from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import { svgSize } from '../to-shapes';
 import type { Box, LayoutHost } from './auto-layout';
 

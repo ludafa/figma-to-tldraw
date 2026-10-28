@@ -8,10 +8,8 @@ import {
   type TLShape,
   type TLShapeId,
   type TLShapePartial,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+} from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type { FigmaLayoutSizing, FigmaNode } from '../types';
 import {
   type Axis,

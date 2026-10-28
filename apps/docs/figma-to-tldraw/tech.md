@@ -54,6 +54,8 @@ cases/
 
 ## 2. tldraw 3.x 的限制（2026-10-24）
 
+> 2026-10-24 → 2026-10-27 修订：画布换成自研的 Skia 引擎，下面这些 tldraw 3.x 的限制都不在了（任何图形都能裁剪子图形，透明度、混合模式作用在整棵子树上）。见 [skia-engine tech.md](../skia-engine/tech.md) §1、§7.4。
+
 在 3.15.6 的源码里查到的，决定了后面的做法：
 
 - **图形在网页里是平铺的。** 每个图形是 `.tl-shapes` 下面一个兄弟 `div.tl-shape`，父子关系只在数据里（`parentId`）。没法靠嵌套 `div` 加 `overflow: hidden` 裁剪。
@@ -63,6 +65,8 @@ cases/
 - 没有 license key 时画布右下角有 "MADE WITH TLDRAW" 水印，截图时要避开（见 §7）。
 
 ## 3. 自定义图形（2026-10-24）
+
+> 2026-10-24 → 2026-10-27 修订：四种图形还在（`figma/shapes/`），但不再返回 React / SVG，而是实现 `paint()`，把填充、描边、阴影、文字直接画成 Skia 命令。见 [skia-engine tech.md](../skia-engine/tech.md) §4、§7。
 
 | tldraw 图形    | 对应的 Figma 节点                                         | 怎么画                                         |
 | -------------- | --------------------------------------------------------- | ---------------------------------------------- |
@@ -87,6 +91,8 @@ cases/
 5. 位置见 §4.2。
 
 ### 4.1 透明度
+
+> 2026-10-24 → 2026-10-27 修订：自研引擎的组透明度用 `saveLayer` 作用在整棵子树上，和 Figma 一样；下面为了绕开"透明度逐个图形乘"做的 `clip.ts` / `isOpaqueBox` 已经删掉。见 [skia-engine tech.md](../skia-engine/tech.md) §7.4。
 
 图形的 `opacity` = 节点的 `opacity`（REST 里没有就是 1）。tldraw 会自己乘上祖先的透明度（§2），所以不要再手动乘。
 
@@ -130,6 +136,8 @@ x, y = 局部矩阵的平移；rotation = atan2(b, a)
 
 ## 5. 裁剪和蒙版（2026-10-24）
 
+> 2026-10-24 → 2026-10-27 修订：裁剪和蒙版改由 `ShapeUtil.getClip` / `getSubtreeClip` 在 Skia 里做，`figma/clip.ts` 删掉了。见 [skia-engine tech.md](../skia-engine/tech.md) §5.4。
+
 tldraw 3.x 不让自定义图形裁剪子图形（§2），所以反过来：**子图形自己裁**。
 
 ### 5.1 frame 裁剪
@@ -151,6 +159,8 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 蒙版形状的来源：插件导出的 `meta.masks[id]`（`fillGeometry` 的路径，节点自己的坐标系）。
 
 ## 6. 样式怎么画（2026-10-24）
+
+> 2026-10-24 → 2026-10-27 修订：本章的 HTML / CSS / SVG 画法（`paint.tsx`、`effects.ts`、`figma.css` 里的混合模式规则）已经删掉，换成 `figma/skia/` 的 Skia 画法；规则（渐变矩阵、描边位置、阴影扩展、文字基线等）照搬并在 175 个用例上调到每个 < 1%。见 [skia-engine tech.md](../skia-engine/tech.md) §7。
 
 代码在 `apps/client/src/figma/paint.tsx`（填充、描边）、`effects.ts`（阴影、模糊）、`shapes/figma-text.tsx`（文字）。
 
@@ -307,6 +317,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 **有字间距时保留连字**（2026-10-26 补，§15.1）：Chrome 在 `letter-spacing` 不为 0 时自动关掉连字（`liga`、`clig`），Figma 不关。所以字间距不为 0 的文字 `fontFeatureSettings` 写成 `"liga" 1, "clig" 1`，其他照旧 `normal`。实测 Lato Black 56px、字间距 0.56px 的 "beautiful"：不加时 t 和 i 分开画，加了以后是 Figma 截图里的 ti 连字。
 
 ## 7. 对比脚本（2026-10-24）
+
+> 2026-10-24 → 2026-10-27 修订：截图模式改成 `<SkiaCanvas renderMode="direct" background="#ffffff">` 直接画，`TLDRAW_LAYER_OFFSET` 去掉了；脚本本身（Playwright 截图 + pixelmatch）不变。见 [skia-engine tech.md](../skia-engine/tech.md) §5、§8。
 
 `apps/client/scripts/compare.ts`，命令 `pnpm --filter @figma-to-tldraw/client compare [用例…]`：
 
@@ -693,6 +705,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 ### 13.3 文字：重新量尺寸和编辑
 
+> 2026-10-25 → 2026-10-27 修订：量尺寸改用 Skia 排版（`text-measure.tsx`）；编辑时画布上不画这个文字，换成 `figma/editing/text-editor.tsx` 的 DOM 编辑框（仍是 TipTap，由 `engine/react/rich-text.tsx` 的 `RichTextArea` 包一层）。见 [skia-engine tech.md](../skia-engine/tech.md) §6.7。
+
 **量尺寸（`text-measure.tsx`）。** `figma-text.tsx` 把画文字的代码拆成 `textLayout`（算样式）和 `textBody`（生成每段每个片段），导出的 `TextInner` 只画文字块本身。`measureText` 用 `renderToStaticMarkup` 把 `TextInner` 渲染进编辑器容器里一个隐藏的 div 量尺寸，画法和量法是同一份代码，换行一定一致。自动宽度用 `width: max-content`，自动高度用固定宽度。调研时实测 2812 段文字里 2811 段量出来的行数和 Figma 一样（[probe-editing.md §3.5](probe-editing.md#35-文字编辑)）。
 
 **什么时候量（`fitText`）。** 文字内容或样式（不算颜色）变了，或者自动高度的文字宽度变了，就重新量。自动宽度的文字变宽时按对齐方式决定往哪边长：居中两边长，右对齐往左长，和 Figma 一样。尺寸变了会接着触发父图层重排。
@@ -818,6 +832,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 4. 兄弟的位置在数据里是一下子改到位的，所以撤销、点选、吸附都按最终位置算。整个拖动是一个撤销步骤；拖到一半按 Esc，tldraw 撤回到拖动开始前，顺序和位置都恢复。
 
 鼠标不动时顺序不会自己来回变。往上越过兄弟的条件是被拖图层上边 < 兄弟原来的中线；兄弟移到空位下面以后，要换回来得让被拖图层下边越过兄弟的新中线，折算下来是上边 > 兄弟原来的中线 + 间距。两个点相差一个间距，间距为 0 时正好重合。间距是负数时中间有一段两边条件都满足，每动一下鼠标都会换一次（未验证）。
+
+> 2026-10-25 → 2026-10-27 修订：画布换成自研的 Skia 引擎后没有 `.tl-shape` 元素可加样式，抬起和滑动改由场景渲染器来画（`setLifted`、`setSlideMs`），效果和时间不变，见 [skia-engine tech.md §5.8](../skia-engine/tech.md#58-拖动时的抬起和滑动2026-10-27)。下面是原来的 CSS 做法。
 
 **动画（`drag-style.ts`（新）的 `installDragStyle`）。** tldraw 每个图形是一个 `.tl-shape` 元素，用 CSS `transform` 摆在画布上，带 `data-shape-id` 属性。第一次检测到拖动自动布局里的图层时，往编辑器容器里加一个 `<style>`：
 
@@ -1259,6 +1275,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 - 删除一次导入要确认，会删掉 zip、记录和截图。
 
 ### 19.2 在浏览器里截 tldraw 的图
+
+> 2026-10-26 → 2026-10-27 修订：不再用 `modern-screenshot` 截 DOM，改成 `CanvasController.exportArea` 直接从 Skia 导出像素，分条拼成整张图；背景模糊也能导出了。`importer/capture.ts` 删掉。见 [skia-engine tech.md](../skia-engine/tech.md) §5.7。
 
 本地对比脚本用 Playwright 截浏览器的屏幕（§7），网页里没有这个能力，只能把 DOM 画成图片。试了三种（2026-10-26，同一批用例和 Playwright 的分数比）：
 

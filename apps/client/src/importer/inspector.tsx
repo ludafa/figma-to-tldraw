@@ -1,14 +1,13 @@
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useEditor, useValue } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
-import { isFigmaShape } from '../figma/clip';
+import { useEditor, useValue } from '../engine';
 import type { DiffNode } from '../figma/diff-attribution';
 import { FigmaInspector } from '../figma/editing';
-import type { FigmaShape } from '../figma/shape-types';
+import { isFigmaShape, type FigmaShape } from '../figma/shape-types';
 
 // See apps/docs/figma-to-tldraw/tech.md §19.1.
 

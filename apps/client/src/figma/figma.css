@@ -43,28 +43,7 @@
 @import '@fontsource/space-mono/400.css';
 @import '@fontsource/space-mono/700.css';
 
-.figma-vector > svg {
-  display: block;
-  overflow: visible;
-  /* See apps/docs/figma-to-tldraw/tech.md §13.1. */
-  width: 100%;
-  height: 100%;
-}
-
 /* See apps/docs/figma-to-tldraw/tech.md §13.3. */
-.figma-text-editing .tl-text-input {
-  position: static;
-  display: block;
-  width: 100%;
-  height: auto;
-  font-kerning: inherit;
-  font-feature-settings: inherit;
-  font-variation-settings: inherit;
-  text-rendering: inherit;
-  text-transform: inherit;
-  white-space: inherit;
-  overflow-wrap: inherit;
-}
 .figma-text-editing .tl-rich-text .ProseMirror {
   white-space: inherit;
   overflow-wrap: inherit;
@@ -79,57 +58,6 @@
   max-width: 252px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
-}
-
-.tl-shape:has([data-figma-blend='darken']) {
-  mix-blend-mode: darken;
-}
-.tl-shape:has([data-figma-blend='multiply']) {
-  mix-blend-mode: multiply;
-}
-.tl-shape:has([data-figma-blend='color_burn']) {
-  mix-blend-mode: color-burn;
-}
-.tl-shape:has([data-figma-blend='lighten']) {
-  mix-blend-mode: lighten;
-}
-.tl-shape:has([data-figma-blend='screen']) {
-  mix-blend-mode: screen;
-}
-.tl-shape:has([data-figma-blend='color_dodge']) {
-  mix-blend-mode: color-dodge;
-}
-.tl-shape:has([data-figma-blend='overlay']) {
-  mix-blend-mode: overlay;
-}
-.tl-shape:has([data-figma-blend='soft_light']) {
-  mix-blend-mode: soft-light;
-}
-.tl-shape:has([data-figma-blend='hard_light']) {
-  mix-blend-mode: hard-light;
-}
-.tl-shape:has([data-figma-blend='difference']) {
-  mix-blend-mode: difference;
-}
-.tl-shape:has([data-figma-blend='exclusion']) {
-  mix-blend-mode: exclusion;
-}
-.tl-shape:has([data-figma-blend='hue']) {
-  mix-blend-mode: hue;
-}
-.tl-shape:has([data-figma-blend='saturation']) {
-  mix-blend-mode: saturation;
-}
-.tl-shape:has([data-figma-blend='color']) {
-  mix-blend-mode: color;
-}
-.tl-shape:has([data-figma-blend='luminosity']) {
-  mix-blend-mode: luminosity;
-}
-
-/* See apps/docs/figma-to-tldraw/tech.md §7. */
-.figma-shot .tl-background {
-  background-color: #fff;
 }
 
 /* See apps/docs/figma-to-tldraw/tech.md §16.4. */

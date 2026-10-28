@@ -1,7 +1,5 @@
-import type { Editor, TLShape, TLShapeId, TLShapePartial } from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+import type { Editor, TLShape, TLShapeId, TLShapePartial } from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import { isFigmaEditing } from './engine';
 import { figmaChildren, figmaParent } from './host';
 

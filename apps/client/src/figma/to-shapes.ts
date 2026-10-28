@@ -4,8 +4,7 @@ import {
   type TLParentId,
   type TLShapeId,
   type TLShapePartial,
-} from 'tldraw';
-
+} from '../engine';
 import { indexMains, rebuildTree } from './components';
 import { filteredImageKey } from './image-filters';
 import {

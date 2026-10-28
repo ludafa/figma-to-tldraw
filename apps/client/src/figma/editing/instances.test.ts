@@ -1,11 +1,11 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+
 import {
   createTLStore,
   defaultBindingUtils,
   defaultShapeUtils,
   Editor,
-} from 'tldraw';
-import { beforeEach, describe, expect, it } from 'vitest';
-
+} from '../../engine';
 import { COMPONENTS_PAGE, putSnapshot } from '../editor';
 import type { FigmaShape } from '../shape-types';
 import { figmaShapeUtils } from '../shapes';

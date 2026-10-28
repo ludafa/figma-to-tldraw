@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { type Editor, Tldraw } from 'tldraw';
+import { useEffect } from 'react';
 
+import { type Editor, getCanvasController, Tldraw } from '../engine';
 import type { DiffBreakdown } from '../figma/diff-attribution';
 import {
   figmaShapeVisibility,
@@ -14,17 +14,12 @@ import { waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
 import { figmaShapeUtils } from '../figma/shapes';
 import type { Snapshot } from '../figma/types';
-import { captureElement } from './capture';
 import { compareInWorker } from './diff';
 import { SCALE } from './diff-core';
 
 // See apps/docs/figma-to-tldraw/tech.md §19.2.
 
-const SHOT_OFFSET = 40;
-const TLDRAW_LAYER_OFFSET = 0.125;
-const MARGIN = { right: 200, bottom: 100 };
-const STRIP_HEIGHT = 2000;
-const STRIP_PIXELS = 4_000_000;
+const STRIP_PIXELS = 16_000_000;
 const MAX_PIXELS = 80_000_000;
 
 const options = {
@@ -52,15 +47,6 @@ export interface ShotStage {
   analyze: (job: ShotJob) => Promise<ShotResult>;
 }
 
-const nextFrame = () =>
-  new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-async function frames(n: number) {
-  for (let i = 0; i < n; i++) {
-    await nextFrame();
-  }
-}
-
 function canvasOf(width: number, height: number) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -83,11 +69,7 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-async function analyze(
-  editor: Editor,
-  wrap: HTMLElement,
-  job: ShotJob,
-): Promise<ShotResult> {
+async function analyze(editor: Editor, job: ShotJob): Promise<ShotResult> {
   const started = performance.now();
   const area = renderArea(job.snapshot);
   const bitmap = await createImageBitmap(job.expected, {
@@ -99,54 +81,38 @@ async function analyze(
       `这张图太大了（${width}×${height}），浏览器里比不动，请用本地对比脚本`,
     );
   }
-  const strip = Math.max(
-    400,
-    Math.min(
-      STRIP_HEIGHT,
-      Math.floor(STRIP_PIXELS / (area.width + SHOT_OFFSET * 2 + MARGIN.right)),
-    ),
-  );
-  wrap.style.width = `${Math.ceil(area.width) + SHOT_OFFSET * 2 + MARGIN.right}px`;
-  wrap.style.height = `${Math.min(Math.ceil(area.height), strip) + SHOT_OFFSET * 2 + MARGIN.bottom}px`;
-  await frames(1);
-  editor.updateViewportScreenBounds(editor.getContainer());
-  const showFrom = (top: number) =>
-    editor.setCamera({
-      x: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.x,
-      y: SHOT_OFFSET - TLDRAW_LAYER_OFFSET - area.y - top,
-      z: 1,
-    });
-
   const warnings = putSnapshot(editor, job.snapshot, job.idPrefix, '', {
     mains: false,
   });
-  showFrom(0);
-  await frames(2);
   const missing = await waitForAssets(job.snapshot, '');
+  const controller = getCanvasController(editor);
+  if (!controller) {
+    throw new Error('截图用的画布还没准备好');
+  }
+  await controller.whenIdle();
 
+  // See apps/docs/skia-engine/tech.md §5.7.
   const actual = canvasOf(width, height);
-  const root = editor.getContainer();
-  for (let top = 0; top < area.height; top += strip) {
-    const y = Math.round(top * SCALE);
-    const rows = Math.min(Math.round(strip * SCALE), height - y);
-    if (rows <= 0) {
-      break;
+  const strip = Math.max(1, Math.floor(STRIP_PIXELS / width));
+  for (let y = 0; y < height; y += strip) {
+    const rows = Math.min(strip, height - y);
+    const pixels = await controller.exportArea(
+      {
+        x: area.x,
+        y: area.y + y / SCALE,
+        w: width / SCALE,
+        h: rows / SCALE,
+      },
+      SCALE,
+    );
+    if (!pixels) {
+      throw new Error('读不出画面的像素');
     }
-    showFrom(top);
-    await frames(3);
-    const shot = await captureElement(root, SCALE);
-    actual.ctx.drawImage(
-      shot,
-      SHOT_OFFSET * SCALE,
-      SHOT_OFFSET * SCALE,
-      width,
-      rows,
+    actual.ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(pixels), width, rows),
       0,
       y,
-      width,
-      rows,
     );
-    shot.width = 0;
   }
   withoutFigmaEffects(editor, () =>
     editor.run(
@@ -184,32 +150,22 @@ async function analyze(
   };
 }
 
-/** A hidden tldraw that renders one case at a time in screenshot mode. */
+/** A hidden canvas that renders one case at a time in screenshot mode. */
 export function ShotStageHost({
   onReady,
 }: {
   onReady: (stage: ShotStage | null) => void;
 }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => () => onReady(null), [onReady]);
 
   function handleMount(editor: Editor) {
     const stop = startFigmaEditing(editor);
-    onReady({
-      analyze: (job) => {
-        const wrap = wrapRef.current;
-        if (!wrap) {
-          return Promise.reject(new Error('截图用的画布还没准备好'));
-        }
-        return analyze(editor, wrap, job);
-      },
-    });
+    onReady({ analyze: (job) => analyze(editor, job) });
     return stop;
   }
 
   return (
     <div
-      ref={wrapRef}
       aria-hidden
       className="figma-shot"
       style={{
@@ -228,6 +184,8 @@ export function ShotStageHost({
         getShapeVisibility={figmaShapeVisibility}
         textOptions={figmaTextOptions}
         hideUi
+        renderMode="direct"
+        background="#ffffff"
         onMount={handleMount}
       />
     </div>

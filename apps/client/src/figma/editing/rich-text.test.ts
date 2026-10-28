@@ -4,9 +4,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { getSchema } from '@tiptap/core';
-import type { TLRichText } from 'tldraw';
 import { describe, expect, it } from 'vitest';
 
+import type { TLRichText } from '../../engine';
 import type { CaseIndex, FigmaNode, Snapshot } from '../types';
 import { figmaTextOptions, fromRichText, toRichText } from './rich-text';
 

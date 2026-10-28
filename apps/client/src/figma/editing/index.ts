@@ -1,6 +1,5 @@
-import type { Editor, TLShape } from 'tldraw';
-
-import { isFigmaShape } from '../clip';
+import type { Editor, TLShape } from '../../engine';
+import { isFigmaShape } from '../shape-types';
 import { enableFigmaEditing } from './engine';
 import { installComponentColors } from './instances';
 import { installFigmaSelection } from './selection';
