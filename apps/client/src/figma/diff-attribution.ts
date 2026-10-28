@@ -130,11 +130,27 @@ function fontOf(node: FigmaNode): string | undefined {
   return s?.fontFamily ? `${s.fontFamily} ${s.fontWeight ?? 400}` : undefined;
 }
 
+/** Blames diff pixels on nodes, a band of rows at a time. */
+export interface Attribution {
+  /** `diff` holds rows `top` to `top + diff.height` of the whole diff image. */
+  add: (diff: DiffImage, top: number) => void;
+  result: () => DiffBreakdown;
+}
+
 export function attributeDiff(
   snapshot: Snapshot,
   diff: DiffImage,
   scale: number,
 ): DiffBreakdown {
+  const attribution = createAttribution(snapshot, scale);
+  attribution.add(diff, 0);
+  return attribution.result();
+}
+
+export function createAttribution(
+  snapshot: Snapshot,
+  scale: number,
+): Attribution {
   const root = snapshot.rest.document;
   const area = renderArea(snapshot);
   const origin = root.absoluteBoundingBox ?? { x: 0, y: 0 };
@@ -210,24 +226,32 @@ export function attributeDiff(
   paint(root, null);
 
   const counts = Array.from({ length: painted.length }, () => 0);
-  for (let py = 0; py < diff.height; py++) {
-    const row = Math.min(rows - 1, Math.floor(py / scale)) * cols;
-    for (let px = 0; px < diff.width; px++) {
-      const i = (py * diff.width + px) * 4;
-      if (
-        diff.data[i] !== 255 ||
-        diff.data[i + 1] !== 0 ||
-        diff.data[i + 2] !== 0
-      ) {
-        continue;
-      }
-      const index = owner[row + Math.min(cols - 1, Math.floor(px / scale))];
-      if (index >= 0) {
-        counts[index]++;
+  const add = (diff: DiffImage, top: number) => {
+    for (let py = 0; py < diff.height; py++) {
+      const row = Math.min(rows - 1, Math.floor((top + py) / scale)) * cols;
+      for (let px = 0; px < diff.width; px++) {
+        const i = (py * diff.width + px) * 4;
+        if (
+          diff.data[i] !== 255 ||
+          diff.data[i + 1] !== 0 ||
+          diff.data[i + 2] !== 0
+        ) {
+          continue;
+        }
+        const index = owner[row + Math.min(cols - 1, Math.floor(px / scale))];
+        if (index >= 0) {
+          counts[index]++;
+        }
       }
     }
-  }
+  };
+  return { add, result: () => breakdownOf(painted, counts) };
+}
 
+function breakdownOf(
+  painted: { node: FigmaNode; box: RenderArea }[],
+  counts: number[],
+): DiffBreakdown {
   const byKind: Record<DiffKind, number> = {
     text: 0,
     image: 0,

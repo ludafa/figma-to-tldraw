@@ -1,5 +1,4 @@
-import type { TLBaseShape } from 'tldraw';
-
+import type { TLBaseShape, TLShape } from '../engine';
 import type { FigmaNode } from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §3.
@@ -26,3 +25,7 @@ export type FigmaShape<T extends FigmaShapeType = FigmaShapeType> = TLBaseShape<
   T,
   FigmaShapeProps
 >;
+
+export function isFigmaShape(shape: TLShape | undefined): shape is FigmaShape {
+  return !!shape && shape.type.startsWith('figma-');
+}

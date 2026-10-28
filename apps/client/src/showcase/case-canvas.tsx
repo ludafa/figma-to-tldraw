@@ -1,9 +1,8 @@
-import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
 import { useEffect, useState } from 'react';
-import { type Editor, Tldraw } from 'tldraw';
 
+import { type Editor, Tldraw } from '../engine';
 import { putSnapshot } from '../figma/editor';
 import { caseUrl } from '../figma/load';
 import type { RenderArea } from '../figma/render-area';

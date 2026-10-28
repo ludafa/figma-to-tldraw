@@ -1,0 +1,121 @@
+{
+  "Inter": {
+    "upem": 2816,
+    "typo": [2728, 680, 0],
+    "hhea": [2728, 680, 0],
+    "win": [2728, 680],
+    "useTypo": true
+  },
+  "InterVariable": {
+    "upem": 2816,
+    "typo": [2728, 680, 0],
+    "hhea": [2728, 680, 0],
+    "win": [2728, 680],
+    "useTypo": true
+  },
+  "Noto Sans SC": {
+    "upem": 1000,
+    "typo": [880, 120, 0],
+    "hhea": [1160, 288, 0],
+    "win": [1160, 288],
+    "useTypo": false
+  },
+  "Red Hat Display": {
+    "upem": 1000,
+    "typo": [1018, 305, 0],
+    "hhea": [1018, 305, 0],
+    "win": [1018, 305],
+    "useTypo": true
+  },
+  "Google Sans Flex Variable": {
+    "upem": 2000,
+    "typo": [1932, 572, 0],
+    "hhea": [1932, 572, 0],
+    "win": [2452, 999],
+    "useTypo": true
+  },
+  "Poppins": {
+    "upem": 1000,
+    "typo": [1050, 350, 100],
+    "hhea": [1050, 350, 100],
+    "win": [1135, 627],
+    "useTypo": true
+  },
+  "Montserrat": {
+    "upem": 1000,
+    "typo": [968, 251, 0],
+    "hhea": [968, 251, 0],
+    "win": [1109, 453],
+    "useTypo": true
+  },
+  "Lato": {
+    "upem": 2000,
+    "typo": [1610, 390, 400],
+    "hhea": [1974, 426, 0],
+    "win": [1974, 426],
+    "useTypo": true
+  },
+  "DM Sans": {
+    "upem": 1000,
+    "typo": [992, 310, 0],
+    "hhea": [992, 310, 0],
+    "win": [992, 310],
+    "useTypo": false
+  },
+  "Urbanist": {
+    "upem": 2000,
+    "typo": [1900, 500, 0],
+    "hhea": [1900, 500, 0],
+    "win": [2120, 500],
+    "useTypo": true
+  },
+  "Lexend": {
+    "upem": 1000,
+    "typo": [1000, 250, 0],
+    "hhea": [1000, 250, 0],
+    "win": [1200, 390],
+    "useTypo": true
+  },
+  "Nunito": {
+    "upem": 1000,
+    "typo": [1011, 353, 0],
+    "hhea": [1011, 353, 0],
+    "win": [1077, 300],
+    "useTypo": true
+  },
+  "Work Sans": {
+    "upem": 1000,
+    "typo": [930, 243, 0],
+    "hhea": [930, 243, 0],
+    "win": [1105, 343],
+    "useTypo": true
+  },
+  "Zilla Slab": {
+    "upem": 1000,
+    "typo": [787, 213, 200],
+    "hhea": [944, 256, 0],
+    "win": [944, 256],
+    "useTypo": false
+  },
+  "Roboto Mono": {
+    "upem": 2048,
+    "typo": [2146, 555, 0],
+    "hhea": [2146, 555, 0],
+    "win": [2146, 555],
+    "useTypo": false
+  },
+  "Bitter": {
+    "upem": 1000,
+    "typo": [935, 265, 0],
+    "hhea": [935, 265, 0],
+    "win": [1255, 376],
+    "useTypo": true
+  },
+  "Space Mono": {
+    "upem": 1000,
+    "typo": [1120, 361, 0],
+    "hhea": [1120, 361, 0],
+    "win": [1120, 361],
+    "useTypo": true
+  }
+}

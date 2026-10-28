@@ -11,9 +11,8 @@ import {
   type TLStateNodeConstructor,
   type TLUiOverrides,
   ToolbarItem,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
+} from '../../engine';
+import { isFigmaShape } from '../shape-types';
 import {
   createLayer,
   DEFAULT_SIZE,
@@ -68,6 +67,13 @@ function kindOf(state: StateNode): NewLayerKind {
   return FIGMA_TOOLS.find((t) => t.id === state.id)!.kind;
 }
 
+function startEditing(editor: Editor, id: TLShapeId) {
+  const shape = editor.getShape(id);
+  editor.select(id);
+  editor.setEditingShape(id);
+  editor.setCurrentTool('select.editing_shape', { target: 'shape', shape });
+}
+
 /** Selects the new layer; a text layer goes straight into editing. */
 function done(editor: Editor, id: TLShapeId, kind: NewLayerKind) {
   finishLayer(editor, id);
@@ -75,10 +81,10 @@ function done(editor: Editor, id: TLShapeId, kind: NewLayerKind) {
     editor.setCurrentTool('select');
     return;
   }
-  editor.select(id);
   if (kind === 'TEXT') {
-    editor.setEditingShape(id);
+    startEditing(editor, id);
   } else {
+    editor.select(id);
     editor.setCurrentTool('select.idle');
   }
 }
@@ -136,8 +142,7 @@ class Pointing extends StateNode {
         renderingOnly: true,
       });
       if (hit?.type === 'figma-text') {
-        editor.select(hit.id);
-        editor.setEditingShape(hit.id);
+        startEditing(editor, hit.id);
         return;
       }
     }

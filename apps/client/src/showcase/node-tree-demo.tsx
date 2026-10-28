@@ -1,11 +1,10 @@
-import 'tldraw/tldraw.css';
 import '../figma/figma.css';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Editor, Tldraw, useValue } from 'tldraw';
 
 import { cn } from '@/lib/utils';
 
+import { type Editor, Tldraw, useValue } from '../engine';
 import { putSnapshot } from '../figma/editor';
 import { caseUrl, loadCase } from '../figma/load';
 import { renderArea } from '../figma/render-area';

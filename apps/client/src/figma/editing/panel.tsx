@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from 'react';
+
 import {
   DefaultStylePanel,
   type Editor,
@@ -6,10 +7,8 @@ import {
   type TLUiStylePanelProps,
   useEditor,
   useValue,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape } from '../shape-types';
+} from '../../engine';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type {
   FigmaColor,
   FigmaEffect,
@@ -41,7 +40,7 @@ import {
   propertyDefinitions,
   resetInstance,
   setProperty,
-  shapesByNodeId,
+  shapeByNodeId,
 } from './instances';
 import {
   setFills,
@@ -1372,7 +1371,7 @@ function InstanceSection({ shape }: { shape: FigmaShape }) {
         }
         const swapTo =
           prop.type === 'INSTANCE_SWAP'
-            ? shapesByNodeId(editor).get(String(prop.value))
+            ? shapeByNodeId(editor, String(prop.value), shape)
             : undefined;
         return (
           <div key={key} className="flex h-6 items-center gap-1 text-black/60">

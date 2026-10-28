@@ -1,4 +1,6 @@
 import {
+  atom,
+  type Atom,
   createShapeId,
   type Editor,
   react,
@@ -6,9 +8,7 @@ import {
   type TLShape,
   type TLShapeId,
   type TLShapePartial,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
+} from '../../engine';
 import {
   copyId,
   nodeFieldsFor,
@@ -18,7 +18,7 @@ import {
   SWAP_FIELDS,
   templateIdOf,
 } from '../components';
-import type { FigmaShape } from '../shape-types';
+import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type {
   FigmaComponentProperty,
   FigmaComponentPropertyDefinition,
@@ -105,13 +105,111 @@ export function shapesByNodeId(editor: Editor): Map<string, FigmaShape> {
   return out;
 }
 
+interface NodeIndex {
+  ids: Map<string, Set<TLShapeId>>;
+  /** Bumps when a node id appears or disappears, not on every edit. */
+  version: Atom<number>;
+}
+
+const nodeIndexes = new WeakMap<Editor, NodeIndex>();
+
+// See apps/docs/skia-engine/tech.md §10.6.
+function nodeIndex(editor: Editor): NodeIndex {
+  const hit = nodeIndexes.get(editor);
+  if (hit) {
+    return hit;
+  }
+  const index: NodeIndex = {
+    ids: new Map(),
+    version: atom('figma node index', 0),
+  };
+  const add = (s: TLShape) => {
+    if (isFigmaShape(s)) {
+      const key = s.props.node.id;
+      const set = index.ids.get(key) ?? new Set();
+      set.add(s.id);
+      index.ids.set(key, set);
+    }
+  };
+  const remove = (s: TLShape) => {
+    if (isFigmaShape(s)) {
+      const set = index.ids.get(s.props.node.id);
+      set?.delete(s.id);
+      if (set && !set.size) {
+        index.ids.delete(s.props.node.id);
+      }
+    }
+  };
+  const bump = () => index.version.update((v) => v + 1);
+  for (const r of editor.store.allRecords()) {
+    if (r.typeName === 'shape') {
+      add(r);
+    }
+  }
+  editor.sideEffects.registerAfterCreateHandler('shape', (s) => {
+    add(s);
+    bump();
+  });
+  editor.sideEffects.registerAfterDeleteHandler('shape', (s) => {
+    remove(s);
+    bump();
+  });
+  editor.sideEffects.registerAfterChangeHandler('shape', (prev, next) => {
+    if (
+      isFigmaShape(prev) !== isFigmaShape(next) ||
+      (isFigmaShape(prev) &&
+        isFigmaShape(next) &&
+        prev.props.node.id !== next.props.node.id)
+    ) {
+      remove(prev);
+      add(next);
+      bump();
+    }
+  });
+  nodeIndexes.set(editor, index);
+  return index;
+}
+
+/**
+ * The layer for a Figma node id: the one in the same case as `near` when there
+ * is one (several cases can share node ids), else the first one created.
+ */
+export function shapeByNodeId(
+  editor: Editor,
+  nodeId: string,
+  near?: TLShape,
+): FigmaShape | undefined {
+  if (isFigmaShape(near)) {
+    const own = `:${near.props.node.id}`;
+    if (near.id.endsWith(own)) {
+      const prefix = near.id.slice(0, -own.length);
+      const same = editor.getShape(`${prefix}:${nodeId}` as TLShapeId);
+      if (isFigmaShape(same) && same.props.node.id === nodeId) {
+        return same;
+      }
+    }
+  }
+  const index = nodeIndex(editor);
+  index.version.get();
+  for (const id of index.ids.get(nodeId) ?? []) {
+    const shape = editor.getShape(id);
+    if (isFigmaShape(shape)) {
+      return shape;
+    }
+  }
+  return undefined;
+}
+
 export function mainOf(
   editor: Editor,
   instance: FigmaShape,
-  byNode = shapesByNodeId(editor),
+  byNode?: Map<string, FigmaShape>,
 ): FigmaShape | undefined {
   const id = instance.props.node.componentId;
-  const main = id ? byNode.get(id) : undefined;
+  if (!id) {
+    return undefined;
+  }
+  const main = byNode ? byNode.get(id) : shapeByNodeId(editor, id, instance);
   return isMain(main) ? main : undefined;
 }
 

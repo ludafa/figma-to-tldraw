@@ -1,10 +1,10 @@
 import { Extension, Mark } from '@tiptap/core';
+
 import {
   type TLRichText,
   type TLTextOptions,
   tipTapDefaultExtensions,
-} from 'tldraw';
-
+} from '../../engine';
 import type { FigmaNode, FigmaTypeStyle } from '../types';
 
 // See apps/docs/figma-to-tldraw/tech.md §13.3.

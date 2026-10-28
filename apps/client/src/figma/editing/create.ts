@@ -3,10 +3,12 @@ import {
   type Editor,
   type TLShapeId,
   type VecLike,
-} from 'tldraw';
-
-import { isFigmaShape } from '../clip';
-import type { FigmaShape, FigmaShapeType } from '../shape-types';
+} from '../../engine';
+import {
+  isFigmaShape,
+  type FigmaShape,
+  type FigmaShapeType,
+} from '../shape-types';
 import type { FigmaNode, FigmaPaint } from '../types';
 import { isAutoLayout } from './auto-layout';
 import { flowIndex, isGroup } from './engine';

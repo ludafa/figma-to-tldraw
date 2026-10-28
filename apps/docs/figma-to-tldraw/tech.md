@@ -54,6 +54,8 @@ cases/
 
 ## 2. tldraw 3.x 的限制（2026-10-24）
 
+> 2026-10-24 → 2026-10-27 修订：画布换成自研的 Skia 引擎，下面这些 tldraw 3.x 的限制都不在了（任何图形都能裁剪子图形，透明度、混合模式作用在整棵子树上）。见 [skia-engine tech.md](../skia-engine/tech.md) §1、§7.4。
+
 在 3.15.6 的源码里查到的，决定了后面的做法：
 
 - **图形在网页里是平铺的。** 每个图形是 `.tl-shapes` 下面一个兄弟 `div.tl-shape`，父子关系只在数据里（`parentId`）。没法靠嵌套 `div` 加 `overflow: hidden` 裁剪。
@@ -63,6 +65,8 @@ cases/
 - 没有 license key 时画布右下角有 "MADE WITH TLDRAW" 水印，截图时要避开（见 §7）。
 
 ## 3. 自定义图形（2026-10-24）
+
+> 2026-10-24 → 2026-10-27 修订：四种图形还在（`figma/shapes/`），但不再返回 React / SVG，而是实现 `paint()`，把填充、描边、阴影、文字直接画成 Skia 命令。见 [skia-engine tech.md](../skia-engine/tech.md) §4、§7。
 
 | tldraw 图形    | 对应的 Figma 节点                                         | 怎么画                                         |
 | -------------- | --------------------------------------------------------- | ---------------------------------------------- |
@@ -87,6 +91,8 @@ cases/
 5. 位置见 §4.2。
 
 ### 4.1 透明度
+
+> 2026-10-24 → 2026-10-27 修订：自研引擎的组透明度用 `saveLayer` 作用在整棵子树上，和 Figma 一样；下面为了绕开"透明度逐个图形乘"做的 `clip.ts` / `isOpaqueBox` 已经删掉。见 [skia-engine tech.md](../skia-engine/tech.md) §7.4。
 
 图形的 `opacity` = 节点的 `opacity`（REST 里没有就是 1）。tldraw 会自己乘上祖先的透明度（§2），所以不要再手动乘。
 
@@ -130,6 +136,8 @@ x, y = 局部矩阵的平移；rotation = atan2(b, a)
 
 ## 5. 裁剪和蒙版（2026-10-24）
 
+> 2026-10-24 → 2026-10-27 修订：裁剪和蒙版改由 `ShapeUtil.getClip` / `getSubtreeClip` 在 Skia 里做，`figma/clip.ts` 删掉了。见 [skia-engine tech.md](../skia-engine/tech.md) §5.4。
+
 tldraw 3.x 不让自定义图形裁剪子图形（§2），所以反过来：**子图形自己裁**。
 
 ### 5.1 frame 裁剪
@@ -151,6 +159,8 @@ Figma 的蒙版图层（`isMask: true`）遮住同一个父节点里排在它上
 蒙版形状的来源：插件导出的 `meta.masks[id]`（`fillGeometry` 的路径，节点自己的坐标系）。
 
 ## 6. 样式怎么画（2026-10-24）
+
+> 2026-10-24 → 2026-10-27 修订：本章的 HTML / CSS / SVG 画法（`paint.tsx`、`effects.ts`、`figma.css` 里的混合模式规则）已经删掉，换成 `figma/skia/` 的 Skia 画法；规则（渐变矩阵、描边位置、阴影扩展、文字基线等）照搬并在 175 个用例上调到每个 < 1%。见 [skia-engine tech.md](../skia-engine/tech.md) §7。
 
 代码在 `apps/client/src/figma/paint.tsx`（填充、描边）、`effects.ts`（阴影、模糊）、`shapes/figma-text.tsx`（文字）。
 
@@ -308,6 +318,8 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 
 ## 7. 对比脚本（2026-10-24）
 
+> 2026-10-24 → 2026-10-27 修订：截图模式改成 `<SkiaCanvas renderMode="direct" background="#ffffff">` 直接画，`TLDRAW_LAYER_OFFSET` 去掉了；脚本本身（Playwright 截图 + pixelmatch）不变。见 [skia-engine tech.md](../skia-engine/tech.md) §5、§8。
+
 `apps/client/scripts/compare.ts`，命令 `pnpm --filter @figma-to-tldraw/client compare [用例…]`：
 
 1. 读 `cases/index.json`，可以只跑一部分（`compare fill/solid text/*`）。
@@ -417,6 +429,23 @@ Figma `exportAsync` 导出的 PNG 盖住的是根节点的 `absoluteRenderBounds
 `load.ts` 的 `waitForAssets` 加载完字体后，返回缺了哪些字体，`/canvas` 把它们放进警告（工具条和 `window.__figmaWarnings`，报告里会显示）：`缺字体：Product Sans 400（没有对应的网页字体）`。
 
 判断办法：用 `fonts.ts` 的 `primaryFontShorthand()` 只拿第一个字体名去 `document.fonts.load`，返回空列表就是缺。不能用带后备字体的完整写法，因为那样会返回后备字体 Inter，看起来像加载成功了。
+
+### 9.7 Section 导出的图四周多 40px（2026-10-28，用 /compare 试真实 section 时发现）
+
+Figma 导出 section 的 PNG（`exportAsync`）时，在渲染范围外面四周各加 40px 透明的边，frame 不会。REST 数据里没有这个边：`absoluteRenderBounds` 还是 section 自己的范围。§9.4 原来按渲染范围对齐，所以整张图错开 40px，Section 1 在 `/compare` 里是 22.55%。
+
+实测两次（2026-10-28，Figma 桌面版，新建的草稿文件，从 E-Learning 复制 3 个 frame 进来包成 section）：
+
+| section                                       | 框        | 渲染范围  | 导出的图（换算成 1 倍） |
+| --------------------------------------------- | --------- | --------- | ----------------------- |
+| Section 1                                     | 1389×1012 | 1389×1012 | 1469×1092               |
+| Section 2（缩小到 500×400，子图层露在框外面） | 500×400   | 1289×912  | 1369×992                |
+
+两次都是渲染范围每边加 40；2 倍图上面和左边各 80 行全透明，section 的白底从 (80, 80) 开始。
+
+做法：`render-area.ts` 的 `renderArea()` 在根节点是 `SECTION` 时，把渲染范围四周各扩 40（`SECTION_EXPORT_PADDING`）。截图、差异归因、画布上的叠图和框都用它，一起对上了：Section 1 22.55% → 0.21%，Section 2 0.25%。现有 175 个用例没有 section 根节点，分数不变。
+
+没验证的：section 套 section、导出倍数不是 2 时是不是还是 40。
 
 ## 10. 展示页 /showcase（2026-10-24，用户追加）
 
@@ -603,6 +632,14 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 效果：designs-29 1.17% → 0.36%；其他带背景模糊的用例分数不变。
 
+### 12.7 文字里的 `\r`（2026-10-28，用 /compare 看 Golio 时发现）
+
+Figma 不在 `\r`（回车）处换行，把它画成一个空格。Golio 的 "Selected\rprojects" 在 Figma 里是一行（文字框高度只有一行），我们原来照原样交给 Skia，画出了一个多余的字形。
+
+做法：`skia/text.ts` 的 `paragraphs()` 先把 `\r` 换成空格，再按 `\n` 分段（U+2028 还是段内换行，§12.5）。`skia/text.test.ts`（新）测这两件事。
+
+效果（对比脚本 `reports/fidelity/20261028-093043/`）：175 个用例里只有 Golio 的 3 页有 `\r`：company-website 0.583% → 0.509%，dribbble-shot 0.173% → 0.112%，consulting-company-website 0.173% → 0.112%。
+
 ## 13. 在 tldraw 里编辑（2026-10-25，用户追加）
 
 方向按 [probe-editing.md](probe-editing.md) 的结论定（用户拍板）：图形和画法不动，Figma 节点数据 `props.node` 仍然是唯一的数据来源，编辑就是改它。这次做了调研里建议的前 4 步（用户确认范围，自动布局算在内，组件实例当普通 frame）：缩放和选择、自动布局、文字编辑、属性面板。矢量改颜色（第 5 步）和图层面板等（第 6 步）没做。
@@ -692,6 +729,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 - Gemini 一段文字重新量出来差 0.81 像素，它所在的 "Prompt Cards" 跟着动。
 
 ### 13.3 文字：重新量尺寸和编辑
+
+> 2026-10-25 → 2026-10-27 修订：量尺寸改用 Skia 排版（`text-measure.tsx`）；编辑时画布上不画这个文字，换成 `figma/editing/text-editor.tsx` 的 DOM 编辑框（仍是 TipTap，由 `engine/react/rich-text.tsx` 的 `RichTextArea` 包一层）。见 [skia-engine tech.md](../skia-engine/tech.md) §6.7。
 
 **量尺寸（`text-measure.tsx`）。** `figma-text.tsx` 把画文字的代码拆成 `textLayout`（算样式）和 `textBody`（生成每段每个片段），导出的 `TextInner` 只画文字块本身。`measureText` 用 `renderToStaticMarkup` 把 `TextInner` 渲染进编辑器容器里一个隐藏的 div 量尺寸，画法和量法是同一份代码，换行一定一致。自动宽度用 `width: max-content`，自动高度用固定宽度。调研时实测 2812 段文字里 2811 段量出来的行数和 Figma 一样（[probe-editing.md §3.5](probe-editing.md#35-文字编辑)）。
 
@@ -818,6 +857,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 4. 兄弟的位置在数据里是一下子改到位的，所以撤销、点选、吸附都按最终位置算。整个拖动是一个撤销步骤；拖到一半按 Esc，tldraw 撤回到拖动开始前，顺序和位置都恢复。
 
 鼠标不动时顺序不会自己来回变。往上越过兄弟的条件是被拖图层上边 < 兄弟原来的中线；兄弟移到空位下面以后，要换回来得让被拖图层下边越过兄弟的新中线，折算下来是上边 > 兄弟原来的中线 + 间距。两个点相差一个间距，间距为 0 时正好重合。间距是负数时中间有一段两边条件都满足，每动一下鼠标都会换一次（未验证）。
+
+> 2026-10-25 → 2026-10-27 修订：画布换成自研的 Skia 引擎后没有 `.tl-shape` 元素可加样式，抬起和滑动改由场景渲染器来画（`setLifted`、`setSlideMs`），效果和时间不变，见 [skia-engine tech.md §5.8](../skia-engine/tech.md#58-拖动时的抬起和滑动2026-10-27)。下面是原来的 CSS 做法。
 
 **动画（`drag-style.ts`（新）的 `installDragStyle`）。** tldraw 每个图形是一个 `.tl-shape` 元素，用 CSS `transform` 摆在画布上，带 `data-shape-id` 属性。第一次检测到拖动自动布局里的图层时，往编辑器容器里加一个 `<style>`：
 
@@ -1260,6 +1301,8 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 
 ### 19.2 在浏览器里截 tldraw 的图
 
+> 2026-10-26 → 2026-10-27 修订：不再用 `modern-screenshot` 截 DOM，改成 `CanvasController.exportArea` 直接从 Skia 导出像素，分条拼成整张图；背景模糊也能导出了。`importer/capture.ts` 删掉。见 [skia-engine tech.md](../skia-engine/tech.md) §5.7。
+
 本地对比脚本用 Playwright 截浏览器的屏幕（§7），网页里没有这个能力，只能把 DOM 画成图片。试了三种（2026-10-26，同一批用例和 Playwright 的分数比）：
 
 | 方案                                                                           | 结论                                                                                                                                                                                     |
@@ -1288,7 +1331,11 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 - Figma 图用 `createImageBitmap(..., { colorSpaceConversion: 'none' })` 解码（和 pngjs 一样拿原始数值，不做色彩管理），画在白底上（同对比脚本的 `onWhite`）。
 - 2 倍图超过 8000 万像素的直接报错，请用本地对比脚本。
 
+> 2026-10-26 → 2026-10-28 修订：上限改成每边 32767 像素、总共 1.6 亿像素，差异一条一条算，见 §20.3。
+
 ### 19.3 算差异
+
+> 2026-10-26 → 2026-10-28 修订：`compareInWorker` 换成 `startCompare`，图一条一条传给 Worker，差异归因也一条一条累加（`createAttribution`），不再整张图一次传过去，见 §20.3。导入、排队、删除抽成 `importer/use-imports.ts` 的 `useImports()`，`/import` 和 `/compare` 共用（§20.1）。
 
 - `apps/client/src/importer/diff-core.ts`（新）的 `compareImages`：pixelmatch 阈值 0.1，再用 `attributeDiff`（§10.2）把不同的像素归到节点，和对比脚本完全一样。放在 Web Worker 里算（`diff.worker.ts`、`diff.ts` 的 `compareInWorker`，新），大页面不卡界面；像素数组转交给 worker，不复制。
 - 结果（`FidelityResult` 加 `analyzedAt`、`ms`）写回导入记录；tldraw 截图和差异图存进 `outputs` 表，给下载和"差异图"叠加用。
@@ -1330,3 +1377,68 @@ Figma 只在图层**有可见填充**的地方画背景模糊：填充全部隐�
 `.tldr` 里是我们的自定义图形（`figma-frame` 等），tldraw.com 打不开，要用装了这些图形的编辑器读。前两个按钮要等这个画板比完才能点。
 
 **上线**（2026-10-26，实测）：https://figma-to-tldraw.vercel.app/import 。线上导入 E-Learning 和 Free Banking 两份 zip（9 个画板）13.6 秒比完，分数和本机一样。
+
+## 20. 导入对比 Demo 页 /compare（2026-10-28，用户追加）
+
+用户要一个 demo（用户追加）：导入插件导出的 zip（一个 Figma section），把它画到新画布上，旁边放 Figma 截图，下面是两者的差异。`/import`（§19）是编辑用的页面，有图层树、inspector、叠加；这个页面只管"对着看"：四块一样大，镜头一起动。下面没标"用户"的做法都是我定的。
+
+### 20.1 页面和数据流
+
+- 地址 `/compare?id=<导入 id>&case=<画板目录>`，不用登录。页面在 `apps/client/src/pages/compare.tsx`（新），路由 `routes/compare.tsx`（新）。地址里没有 `id` 时打开最新一次导入（同 §19.1）。展示页顶上有入口"导入对比 →"。
+- **布局**：顶栏是返回展示页、导入记录和画板两个下拉框、尺寸、分数、"重新对比"、"在编辑页打开"、删除、"导入 zip"。下面 2×2：左上我们的画布、右上 Figma 截图、左下差异（"差异图"和"相减"两种）、右下差异分析（复用 `DiffAnalysis`）。一次导入都没有时显示三步说明；zip 拖到页面任何地方都能导入。
+- **和 `/import` 共用数据**：导入、排队、进度、删除抽成 `importer/use-imports.ts`（新）的 `useImports()`，两个页面都用它，用的是同一个 IndexedDB（§19.1）。在一个页面导入的 zip，另一个页面也看得到；"在编辑页打开"跳到 `/import` 的同一个画板。
+- **自动对比**：打开的画板还没有结果时（例如在 `/import` 导入后没比完就刷新了），自动排进队列，不用点"重新对比"。`useImports()` 记着哪些已经在队列里（`isQueued`），不会重复排。
+- 画板文件从 zip 里解（同 §19.1）；tldraw 截图和差异图从 `outputs` 表读，比完一个画板就有。
+
+### 20.2 四块一起动
+
+- **只有左上是真画布**：`importer/compare-view.tsx`（新）的 `CompareCanvas`，只读，用手型工具，`putSnapshot(..., { mains: false })`。打开时、点"复位"时、窗口大小变了但镜头还没被动过时，缩放到整个渲染范围（四周留 24px，最多放大 2 倍）。
+- **另外两块是"镜子"**（`MirrorPane`）：不是画布，是一个 `<canvas>`，画布的镜头一变就按同样的镜头重画图片（§20.4）。在镜子上滚轮、拖动，都转给画布：滚轮造一个一样的 `WheelEvent`，坐标换算到画布上同一个位置，发给画布的 `<canvas>`；拖动直接调 `editor.pan`。所以四块看的永远是同一块地方，缩放、平移的手感也和画布一样。
+- **图片放在渲染范围上**：图片左上角对齐渲染范围的左上角（§9.4、§9.7），1 个图片像素 = 0.5 个页面单位（2 倍图）。
+- **框**：每块上面盖一层 HTML（`PageLayer`，`transform` 是镜头的 `scale(z) translate(x, y)`），画渲染范围的细框和鼠标所在节点的红框；线宽写成 `calc(1px / var(--zoom))`，放大了也是 1px。
+- **差异分析里的节点**：鼠标移上去，三块图上都框出它；点一下，四块一起缩放到它（四周留 48px，最多放大 4 倍）。
+- **放大到能看见像素**：图片的一个像素在屏幕上比一个设备像素大时（镜头缩放 ≥ 2），关掉图片平滑，一格一格地画，方便看清差在哪个像素。
+- **相减**：tldraw 截图和 Figma 截图用 `difference` 叠在一起，再用 CSS `brightness(4)` 提亮 4 倍。一样的地方是黑的，越亮差得越多。
+
+### 20.3 大图一条一条算差异
+
+Golio 的 Personal Portfolio 长页面，2 倍图是 3840×30640（1.17 亿像素），超过原来 8000 万像素的上限（§19.2）。而且一张图的 RGBA 数组就有 470 MB，Figma 图、tldraw 图、差异图三份再加上传给 Worker 的副本，内存不够。
+
+做法：截图本来就是一条一条截的（§19.2），差异也改成一条一条算。
+
+1. 主线程开一个 Worker 会话（`diff.ts` 的 `startCompare(snapshot)`，返回 `strip` / `finish` / `close`）。Worker 收到快照，先建好 `createAttribution(snapshot, 2)`（`diff-attribution.ts`，把节点按行排好）。
+2. 每条约 1600 万像素（`STRIP_PIXELS / 宽` 行，最多 8192 行）：从 Figma 图（画在白底上）和 tldraw 图各取这几行，上下各多取 2 行，交给 Worker（数组转交，不复制）。
+3. Worker 的 `compareStrip`（`diff-core.ts`）对这一条跑 pixelmatch（阈值 0.1），只取中间那些行：数红点，用 `attribution.add` 把红点按行归到节点，把这几行的差异图传回去。主线程贴进整张差异图。
+4. 全部比完调 `finish`，拿到差异归因的汇总；最后关掉 Worker。
+
+**为什么上下多取 2 行**：pixelmatch 判断一个点是不是抗锯齿，要看它周围 3×3 的点，再看其中最亮、最暗那个点周围 3×3 的点，最远看到上下 2 行。多带 2 行，条带边上的点判断出来就和整张图一样。`diff-core.test.ts` 有一条测试：3 行一条和整张图结果完全一样；不多带这 2 行时，红点数是 13 对 7。
+
+**上限**改成每边 32767 像素（Chrome 里 canvas 单边的上限）、总共 1.6 亿像素，超过的提示"这张图太大了，请用本地对比脚本"。宽还不能超过 16384 像素（`MAX_WIDTH`）。
+
+**条带的大小也受 GPU 限制**：tldraw 图每一条是 Skia 画进一张离屏 GPU 表面再读回来（skia-engine tech.md §5.7），表面的宽和高都不能超过 WebGL 的纹理上限（常见 16384，未逐台验证）。所以一条最多 8192 行（`MAX_STRIP_ROWS`），宽最多 16384。
+
+| 情况                         | 原来                                                       | 现在                            |
+| ---------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| 手机长页面，2 倍图 750 宽    | 一条 `16000000 / 750` = 21333 行，超过纹理上限，读不出像素 | 一条 8192 行                    |
+| 2 倍图 20000 宽（< 32767）   | 放行，读像素时失败                                         | 直接提示"太大了"                |
+| 截图中途出错（读不出像素等） | 画布上的图形没删、Figma 图没关，下一个画板叠在上面画       | `finally` 里删图形、关 Figma 图 |
+
+`shot-stage.tsx` 的 `renderActual` 负责摆图形、按条导出、最后删图形；`analyze` 在外面用 `try/finally` 关掉 `createImageBitmap` 解出来的图。
+
+> 2026-10-28 修订（同一天）：原来条带只按 1600 万像素算行数，宽度上限跟着 32767，出错时不清场。理由：code review 发现。改完 Free Banking 5 个画板的分数和改之前一样（All Cards 0.44%、Home 0.30%），E-Learning 4 个画板都是 0.01%（2026-10-28 实测）；超长的窄图没有现成的 zip，没实测。
+
+**结果**（2026-10-28，实测）：Golio Personal Portfolio 浏览器里 0.17%，Playwright 0.173%；Golio 两个画板一起导入，11 秒比完。
+
+### 20.4 分块的图片金字塔
+
+最早三张图直接放成 `<img>`，用 CSS `transform` 跟着镜头动。小图没问题；Golio 长图放大以后再拖动，只有 5fps。主线程是空闲的，CPU profile 看出来是 Chrome 每帧都在重新解码这张大图：放大以后它只解码看得见的那一块，挪一下就重解。
+
+做法：`importer/tiled-image.ts`（新）的 `ImagePyramid`，像地图那样分层分块：
+
+- **分层**：第 k 层是原图缩小到 1/2^k，每层切成 1024×1024 的块。最粗一层（长边不超过 2048）一开始就全部生成，一直留着，所以任何时候都有东西可画。
+- **画**（`compare-view.tsx` 的 `drawLayers`）：先画最粗一层，再画和当前缩放相配的那层（这一层的一个像素刚好不比一个设备像素大）里看得见的块。还没好的块先空着，好了再重画。块的位置按设备像素取整，块和块之间没有缝。
+- **块从哪来**：图片不超过 3200 万像素时，整张解码后留着，切一块大约 1 毫秒。更大的图不留（3840×30640 解码出来 470 MB），每块从原 PNG 文件裁（`createImageBitmap(blob, x, y, w, h)`），一块大约 330 毫秒，和整张解码一样慢（实测，Chrome 会把整张 PNG 解一遍）。所以同时最多解 4 块；细的块最多留 48 块（每块 4 MB），最久没用的先扔。
+- 块先画在白底上，和 Figma 图在对比里一样（§19.2），透明的地方是白的，不是棋盘格。
+- 相减模式里 Figma 截图同时在两块里用，两块共用一个金字塔，所以"块好了"的通知是一组监听（`onLoad` 返回取消函数），不是一个回调。
+
+**结果**（2026-10-28，实测，240Hz 屏幕）：E-Learning 和 Golio 放大、拖动、缩放都是 240fps；Golio 放大后拖动从 5fps 到 240fps。
