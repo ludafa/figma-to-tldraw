@@ -291,7 +291,8 @@
   - 把 zip 拖到页面上：出现"松开鼠标导入 zip"，松开后多了一条导入，画布上没有多出别的图形。
   - Free Banking（SF Pro Display）3.7 秒比完，商业字体提示和 ⚠ 都在；打开 `/compare` 能看到同样的 3 条导入；删掉一条要确认，删完剩 2 条。
 - **发现并修了一个 Skia 引擎的问题**：Free Banking 的 All Cards 是 8.25%（换 Skia 引擎前对比脚本是 0.086%，`reports/fidelity/20261025-210043/`）。卡片上有一个 20% 不透明的渐变椭圆，带 50 的背景模糊；Figma 的 SVG 只在椭圆上写了 `opacity`，我们把背景模糊画成满强度，卡片上的字和卡片间的白缝糊成一条条亮带，Figma 是 20% 模糊加 80% 原样。改成按图层不透明度混合以后（[skia-engine tech.md §5.9](../skia-engine/tech.md)）All Cards 0.44%、Home 0.47% → 0.30%，另外 3 页不变。175 个用例里 7 个 SVG 背景模糊都没有 `opacity`，不受影响。
-- `pnpm test` 25 个文件 140 条通过（这次新增 7 条：`render-area.test.ts` 3、`skia/text.test.ts` 2、`diff-core.test.ts` 1、`svg.test.ts` 1）；`pnpm lint`（含 `docs:check`）、`pnpm typecheck` 通过。
+- 提交前的 code review 修正（[skia-engine plan.md](../skia-engine/plan.md) 的"2026-10-28（code review 修正）"）里，和这一页有关的是截图条带（tech.md §20.3）：一条最多 8192 行、宽不超过 16384、出错时清场。改完重跑上面第 38～42 条的脚本，全部通过、页面没有报错，E-Learning 4 张都是 0.01%；`/compare` 导入 Free Banking，5 页分数和改之前一样（All Cards 0.44%、Home 0.30%）。
+- `pnpm test` 27 个文件 145 条通过（这次新增 7 条：`render-area.test.ts` 3、`skia/text.test.ts` 2、`diff-core.test.ts` 1、`svg.test.ts` 1；code review 修正又加了 5 条，见 skia-engine verification.md）；`pnpm lint`（含 `docs:check`）、`pnpm typecheck` 通过。
 
 ## 5. Demo 结论（2026-10-24）
 

@@ -210,5 +210,6 @@
 - [x] 焦点在 `body` 上时页面上每个画布都收键盘：只给最近按过的那个（tech.md §6.5）
 - [x] 文字投影换引擎时漏了：段落样式带 `shadows`，绘制范围按投影扩大；`figma/skia/text-shadows.test.ts` 加 2 条（tech.md §7.6）
 - [x] 两处注释写了理由（`PictureEntry.alt`、`STRIP_OVERLAP`）：改成只说是什么，理由本来就在文档里
+- [x] `/compare` 截图条带超过 GPU 纹理上限、出错不清场：在 tldraw 版文档里记（[figma-to-tldraw tech.md §20.3](../figma-to-tldraw/tech.md#203-大图一条一条算差异)）
 - [x] 没改：图片 EXIF 方向（没核实 Figma 怎么做，用例里没有，记进 tech.md §9 风险）；Linear Burn 没有对应的 Skia 模式（记进风险）；另外 3 条影响小的（文字 Title Case 按每段各自算、视野裁剪用的范围缓存偶尔过时、SVG 录制缓存不区分"不完整"）这次不动
 - [x] 检查：`pnpm lint`、`pnpm typecheck`、`pnpm test`（27 个文件、145 条）通过；Playwright 实测文字工具三种进入方式、撤销重做、文字投影、`/demo` 加载、`/import` 回归（第 38～42 条）、`/compare` 分数都正常（verification.md §4）
