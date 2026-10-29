@@ -20,3 +20,6 @@ archive/
 # Static site + data for Vercel, written by apps/client/scripts/export-static.ts
 .deploy/
 .vercel/
+
+# Scratch files (zips exported from Figma before import-cases)
+tmp/

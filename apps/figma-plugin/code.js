@@ -1,5 +1,5 @@
 // Figma → tldraw 还原度测试用例
-// 功能 1：在新页面里自动生成测试用例（一个顶层 frame = 一个用例）
+// 功能 1：在 Test Cases 页面里自动生成测试用例（一个顶层 frame = 一个用例）
 // 功能 2：把当前页面上的顶层 frame 批量导出成测试数据（由 ui.html 打包成 zip）
 
 figma.showUI(__html__, { width: 380, height: 460 });
@@ -1268,6 +1268,273 @@ add('misc/subpixel', function (f) {
   text(f, 'Tiny 10px text for rounding checks', { x: 20, y: 240, size: 10 });
 });
 
+// ---- 变量 ----
+// See apps/docs/figma-to-tldraw/tech.md §21.1.
+var THEME_VARS = [
+  // 名字、类型、FT Theme 的值、FT Theme Dark 的值
+  ['bg', 'COLOR', '@gray/50', '@gray/900'],
+  ['surface', 'COLOR', '#FFFFFF', '#1F2937'],
+  ['text', 'COLOR', '@gray/900', '@gray/50'],
+  ['muted', 'COLOR', '#6B7280', '#9CA3AF'],
+  ['accent', 'COLOR', '@blue/500', '@orange/500'],
+  ['button', 'COLOR', '@accent', '@accent'],
+  ['border', 'COLOR', '@gray/200', '@gray/700'],
+  ['shadow', 'COLOR', rgba('#111827', 0.16), rgba('#000000', 0.6)],
+  ['label', 'STRING', 'Light theme', 'Dark theme'],
+  ['show-badge', 'BOOLEAN', true, false],
+];
+
+var SPACING_VARS = [
+  // 名字、类型、FT Spacing 的值、FT Spacing Comfortable 的值
+  ['pad', 'FLOAT', 8, 20],
+  ['gap', 'FLOAT', 4, 12],
+  ['radius', 'FLOAT', 4, 16],
+  ['bar-width', 'FLOAT', 120, 220],
+  ['stroke', 'FLOAT', 1, 3],
+  ['font-size', 'FLOAT', 14, 20],
+  ['line-height', 'FLOAT', 20, 30],
+  ['opacity', 'FLOAT', 100, 50],
+  ['count', 'FLOAT', 3, 12.5],
+];
+
+function varColumn(vars, k) {
+  return vars.map(function (v) {
+    return [v[0], v[1], [v[k]]];
+  });
+}
+
+var VAR_SPECS = [
+  {
+    name: 'FT Palette',
+    modes: ['Value'],
+    vars: [
+      ['blue/500', 'COLOR', ['#3B82F6']],
+      ['blue/600', 'COLOR', ['#2563EB']],
+      ['orange/400', 'COLOR', ['#FB923C']],
+      ['orange/500', 'COLOR', ['#F97316']],
+      ['gray/50', 'COLOR', ['#F9FAFB']],
+      ['gray/200', 'COLOR', ['#E5E7EB']],
+      ['gray/700', 'COLOR', ['#374151']],
+      ['gray/900', 'COLOR', ['#111827']],
+    ],
+  },
+  { name: 'FT Theme', modes: ['Light'], vars: varColumn(THEME_VARS, 2) },
+  { name: 'FT Theme Dark', modes: ['Dark'], vars: varColumn(THEME_VARS, 3) },
+  { name: 'FT Spacing', modes: ['Compact'], vars: varColumn(SPACING_VARS, 2) },
+  { name: 'FT Spacing Comfortable', modes: ['Comfortable'], vars: varColumn(SPACING_VARS, 3) },
+];
+
+// See apps/docs/figma-to-tldraw/tech.md §21.1.
+async function ensureVariables() {
+  var cols = await figma.variables.getLocalVariableCollectionsAsync();
+  var locals = await figma.variables.getLocalVariablesAsync();
+  var out = {};
+  function find(name, own) {
+    if (own[name]) return own[name];
+    for (var k in out) if (out[k][name]) return out[k][name];
+    throw new Error('找不到别名指向的变量 ' + name);
+  }
+  for (var i = 0; i < VAR_SPECS.length; i++) {
+    var spec = VAR_SPECS[i];
+    var col = cols.filter(function (c) {
+      return c.name === spec.name;
+    })[0];
+    if (!col) col = figma.variables.createVariableCollection(spec.name);
+    if (spec.modes.length === 1 && col.modes.length === 1) col.renameMode(col.modes[0].modeId, spec.modes[0]);
+    var modes = {};
+    spec.modes.forEach(function (name) {
+      var found = col.modes.filter(function (m) {
+        return m.name === name;
+      })[0];
+      if (found) {
+        modes[name] = found.modeId;
+        return;
+      }
+      try {
+        modes[name] = col.addMode(name);
+      } catch (e) {
+        throw new Error(
+          '集合 “' + spec.name + '” 加不了模式 “' + name + '”（' + errText(e) + '）。' +
+            '多半是测试文件在 Figma 免费版（Starter）团队里：免费版每个集合只能有 1 个模式。',
+        );
+      }
+    });
+    var own = (out[spec.name] = {});
+    for (var j = 0; j < spec.vars.length; j++) {
+      var name = spec.vars[j][0];
+      var type = spec.vars[j][1];
+      var v = locals.filter(function (x) {
+        return x.variableCollectionId === col.id && x.name === name;
+      })[0];
+      if (!v) v = figma.variables.createVariable(name, col, type);
+      own[name] = v;
+      spec.vars[j][2].forEach(function (value, k) {
+        var modeId = modes[spec.modes[k]];
+        if (typeof value === 'string' && value.charAt(0) === '@') {
+          v.setValueForMode(modeId, figma.variables.createVariableAlias(find(value.slice(1), own)));
+        } else if (typeof value === 'string' && type === 'COLOR') {
+          v.setValueForMode(modeId, hex(value));
+        } else {
+          v.setValueForMode(modeId, value);
+        }
+      });
+    }
+  }
+  return out;
+}
+
+function boundSolid(variable) {
+  return figma.variables.setBoundVariableForPaint(solid('#000000'), 'color', variable);
+}
+
+function bindAll(node, fields, variable) {
+  fields.forEach(function (k) {
+    node.setBoundVariable(k, variable);
+  });
+}
+
+var PADDINGS = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
+
+function themeCard(f, v, s) {
+  f.fills = [boundSolid(v.bg)];
+  var card = frame(f, 40, 40, 320, 220, null, 0);
+  card.name = 'Card';
+  card.fills = [boundSolid(v.surface)];
+  card.strokes = [boundSolid(v.border)];
+  card.strokeWeight = 1;
+  card.strokeAlign = 'INSIDE';
+  card.setBoundVariable('cornerRadius', s.radius);
+  setEffects(card, [figma.variables.setBoundVariableForEffect(shadow('DROP_SHADOW', '#000000', 0.2, 0, 8, 24, 0), 'color', v.shadow)]);
+  var title = text(card, 'Title', { x: 24, y: 24, size: 20, font: F.semibold, name: 'Label' });
+  title.fills = [boundSolid(v.text)];
+  title.setBoundVariable('characters', v.label);
+  var body = text(card, 'Colors, text and visibility come from variables.', { x: 24, y: 60, width: 220, size: 14 });
+  body.fills = [boundSolid(v.muted)];
+  rect(card, 24, 108, 272, 1, [boundSolid(v.border)], { name: 'Divider' });
+  var bar = rect(card, 24, 124, 272, 12, [], { name: 'Gradient', cornerRadius: 6 });
+  var failed = [];
+  try {
+    bar.fills = [
+      gradient('GRADIENT_LINEAR', [
+        { position: 0, color: rgba('#000000'), boundVariables: { color: figma.variables.createVariableAlias(v.accent) } },
+        { position: 1, color: rgba('#FFFFFF'), boundVariables: { color: figma.variables.createVariableAlias(v.bg) } },
+      ]),
+    ];
+  } catch (e) {
+    failed.push('gradient stop variables');
+  }
+  markUnsupported(bar, failed);
+  var button = rect(card, 24, 156, 132, 40, [boundSolid(v.button)], { name: 'Button', cornerRadius: 8 });
+  button.setBoundVariable('cornerRadius', s.radius);
+  var badge = ellipse(card, 268, 24, 28, 28, [boundSolid(v.accent)], { name: 'Badge' });
+  badge.setBoundVariable('visible', v['show-badge']);
+}
+
+add('variables/theme-light', function (f, ctx) {
+  themeCard(f, ctx.vars['FT Theme'], ctx.vars['FT Spacing']);
+});
+add('variables/theme-dark', function (f, ctx) {
+  themeCard(f, ctx.vars['FT Theme Dark'], ctx.vars['FT Spacing']);
+});
+
+function spacingStack(f, v) {
+  var col = al('V', { parent: f, name: 'Stack', fill: '#F3F4F6' });
+  col.x = 40;
+  col.y = 30;
+  bindAll(col, PADDINGS, v.pad);
+  col.setBoundVariable('itemSpacing', v.gap);
+  col.setBoundVariable('cornerRadius', v.radius);
+  var bar = rect(col, 0, 0, 100, 16, [solid('#3B82F6')], { name: 'Bar' });
+  bar.setBoundVariable('width', v['bar-width']);
+  bar.setBoundVariable('cornerRadius', v.radius);
+  var box = rect(col, 0, 0, 80, 40, [solid('#FFFFFF')], { strokes: [solid('#111827')], strokeWeight: 1, name: 'Stroked' });
+  box.setBoundVariable('strokeWeight', v.stroke);
+  var faded = rect(col, 0, 0, 80, 24, [solid('#8B5CF6')], { name: 'Faded' });
+  faded.setBoundVariable('opacity', v.opacity);
+  var sized = text(col, 'Sized text', { font: F.medium, name: 'Sized' });
+  sized.setBoundVariable('fontSize', v['font-size']);
+  sized.setBoundVariable('lineHeight', v['line-height']);
+  var count = text(col, '0', { name: 'Count' });
+  try {
+    count.setBoundVariable('characters', v.count);
+  } catch (e) {
+    markUnsupported(count, ['number variable on characters']);
+  }
+  var row = al('H', { parent: col, name: 'Row' });
+  row.setBoundVariable('itemSpacing', v.gap);
+  ['A', 'B', 'C'].forEach(function (label) {
+    var chip = al('H', { parent: row, fill: '#DBEAFE', name: 'Chip ' + label });
+    bindAll(chip, PADDINGS, v.gap);
+    text(chip, label, { size: 12, color: '#1D4ED8' });
+  });
+}
+
+add('variables/spacing-compact', function (f, ctx) {
+  spacingStack(f, ctx.vars['FT Spacing']);
+});
+add('variables/spacing-comfortable', function (f, ctx) {
+  spacingStack(f, ctx.vars['FT Spacing Comfortable']);
+});
+
+add('variables/instance', function (f, ctx) {
+  var v = ctx.vars['FT Theme'];
+  var dark = ctx.vars['FT Theme Dark'];
+  var s = ctx.vars['FT Spacing'];
+  f.fills = [boundSolid(v.bg)];
+  var comp = figma.createComponent();
+  f.appendChild(comp);
+  comp.name = 'Theme button';
+  comp.layoutMode = 'HORIZONTAL';
+  comp.primaryAxisSizingMode = 'AUTO';
+  comp.counterAxisSizingMode = 'AUTO';
+  bindAll(comp, PADDINGS, s.pad);
+  comp.fills = [boundSolid(v.button)];
+  comp.setBoundVariable('cornerRadius', s.radius);
+  var label = text(comp, 'Button', { font: F.semibold, size: 14, name: 'Label' });
+  label.fills = [boundSolid(v.surface)];
+  label.setBoundVariable('characters', v.label);
+  comp.x = 24;
+  comp.y = 24;
+  // See apps/docs/figma-to-tldraw/tech.md §21.1.
+  var i1 = comp.createInstance();
+  f.appendChild(i1);
+  i1.x = 24;
+  i1.y = 100;
+  var i2 = comp.createInstance();
+  f.appendChild(i2);
+  i2.x = 24;
+  i2.y = 170;
+  i2.name = 'Rebound to dark';
+  i2.fills = [boundSolid(dark.button)];
+  var l2 = i2.findOne(function (n) {
+    return n.type === 'TEXT';
+  });
+  l2.fills = [boundSolid(dark.surface)];
+  l2.setBoundVariable('characters', dark.label);
+  var i3 = comp.createInstance();
+  f.appendChild(i3);
+  i3.x = 220;
+  i3.y = 100;
+  i3.name = 'Radius detached';
+  i3.setBoundVariable('cornerRadius', null);
+  i3.cornerRadius = 0;
+});
+
+add('variables/text-ranges', function (f, ctx) {
+  var v = ctx.vars['FT Theme Dark'];
+  var s = ctx.vars['FT Spacing Comfortable'];
+  f.fills = [boundSolid(v.bg)];
+  var t = text(f, 'Plain words, an accent word, and a big word at the end.', { x: 30, y: 40, width: 340, size: 18, name: 'Ranges' });
+  t.fills = [boundSolid(v.text)];
+  var a = range(t, 'accent');
+  t.setRangeFills(a[0], a[1], [boundSolid(v.accent)]);
+  var b = range(t, 'big');
+  t.setRangeBoundVariable(b[0], b[1], 'fontSize', s['font-size']);
+  var lh = text(f, 'Line height from a variable, wrapping onto a few lines to show it.', { x: 30, y: 160, width: 340, size: 16, name: 'Line height' });
+  lh.fills = [boundSolid(v.muted)];
+  lh.setBoundVariable('lineHeight', s['line-height']);
+});
+
 // ---------------------------------------------------------------------------
 // 真实页面
 // ---------------------------------------------------------------------------
@@ -1434,14 +1701,14 @@ function post(msg) {
   figma.ui.postMessage(msg);
 }
 
-function uniquePageName(base) {
-  var names = figma.root.children.map(function (p) {
-    return p.name;
-  });
-  if (names.indexOf(base) < 0) return base;
-  var i = 2;
-  while (names.indexOf(base + ' ' + i) >= 0) i++;
-  return base + ' ' + i;
+function errText(e) {
+  return e && e.message ? e.message : String(e);
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.8.
+function casesPageName(only) {
+  var group = (only || '').split('/')[0];
+  return group ? 'Test Cases · ' + group : 'Test Cases';
 }
 
 function startsWith(prefix) {
@@ -1462,16 +1729,59 @@ async function generate(images, only) {
   }
   var ctx = { img: hashes };
 
-  var page = figma.createPage();
-  page.name = uniquePageName('Test Cases');
-  await figma.setCurrentPageAsync(page);
-
   var failed = [];
   var ok = 0;
   var cases = CASES.filter(startsWith(only));
+  var total = cases.length + PAGES.filter(startsWith(only)).length;
+  // See apps/docs/figma-to-tldraw/tech.md §21.1.
+  if (cases.some(startsWith('variables/'))) {
+    try {
+      ctx.vars = await ensureVariables();
+    } catch (e) {
+      post({ type: 'log', text: '建变量失败，跳过 variables/ 用例：' + errText(e), error: true });
+      cases.filter(startsWith('variables/')).forEach(function (c) {
+        failed.push(c.name + '：没建成变量，跳过');
+      });
+      cases = cases.filter(function (c) {
+        return !startsWith('variables/')(c);
+      });
+    }
+  }
   var all = cases.concat(PAGES.filter(startsWith(only)));
-  var rows = Math.ceil(cases.length / COLS);
+  if (!all.length) {
+    post({ type: 'generate-done', ok: 0, total: total, failed: failed, page: null });
+    return;
+  }
+
+  // See apps/docs/figma-to-tldraw/tech.md §21.8.
+  var before = figma.currentPage;
+  var pageName = casesPageName(only);
+  var page = figma.root.children.filter(function (p) {
+    return p.name === pageName;
+  })[0];
+  var created = !page;
+  if (created) {
+    page = figma.createPage();
+    page.name = pageName;
+  }
+  await figma.setCurrentPageAsync(page);
+
+  var hasOld = function (c) {
+    return page.children.some(function (n) {
+      return n.name === c.name;
+    });
+  };
+  var rows = Math.ceil(cases.filter(function (c) {
+    return !hasOld(c);
+  }).length / COLS);
   var pageX = 0;
+  var baseY = 0;
+  if (!created) {
+    page.children.forEach(function (n) {
+      baseY = Math.max(baseY, n.y + n.height + GAP);
+    });
+  }
+  var slot = 0;
 
   for (var i = 0; i < all.length; i++) {
     var c = all[i];
@@ -1485,18 +1795,28 @@ async function generate(images, only) {
       f.resize(c.w, c.h);
       f.fills = [solid('#FFFFFF')];
       f.clipsContent = true;
-      if (isPage) {
+      var old = page.children.filter(function (n) {
+        return n !== f && n.name === c.name;
+      })[0];
+      if (old) {
+        f.x = old.x;
+        f.y = old.y;
+      } else if (isPage) {
         f.x = pageX;
-        f.y = rows * (FRAME_H + GAP) + 200;
+        f.y = baseY + rows * (FRAME_H + GAP) + 200;
         pageX += c.w + 120;
       } else {
-        f.x = (i % COLS) * (FRAME_W + GAP);
-        f.y = Math.floor(i / COLS) * (FRAME_H + GAP);
+        f.x = (slot % COLS) * (FRAME_W + GAP);
+        f.y = baseY + Math.floor(slot / COLS) * (FRAME_H + GAP);
+        slot++;
       }
       await c.build(f, ctx);
+      page.children.forEach(function (old) {
+        if (old !== f && old.name === c.name) old.remove();
+      });
       ok++;
     } catch (e) {
-      failed.push(c.name + '：' + (e && e.message ? e.message : String(e)));
+      failed.push(c.name + '：' + errText(e));
       if (f) {
         try {
           f.remove();
@@ -1505,8 +1825,14 @@ async function generate(images, only) {
     }
   }
 
-  figma.viewport.scrollAndZoomIntoView(page.children);
-  post({ type: 'generate-done', ok: ok, total: all.length, failed: failed, page: page.name });
+  if (!ok && created) {
+    await figma.setCurrentPageAsync(before);
+    page.remove();
+    page = null;
+  } else {
+    figma.viewport.scrollAndZoomIntoView(page.children);
+  }
+  post({ type: 'generate-done', ok: ok, total: total, failed: failed, page: page && page.name });
 }
 
 // ---------------------------------------------------------------------------
@@ -1629,13 +1955,44 @@ function textSegments(node) {
   });
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.9.
+async function exportHiddenSvg(node, out) {
+  var copy = null;
+  try {
+    copy = node.clone();
+    var parent = copy.parent;
+    if (parent && 'layoutMode' in parent && parent.layoutMode !== 'NONE') copy.layoutPositioning = 'ABSOLUTE';
+    copy.setBoundVariable('visible', null);
+    copy.visible = true;
+    var svg = await copy.exportAsync({ format: 'SVG_STRING' });
+    out.svgs[node.id] = typeof svg === 'string' ? svg : utf8Decode(svg);
+    var rb = copy.absoluteRenderBounds;
+    var bb = copy.absoluteBoundingBox;
+    var own = node.absoluteBoundingBox;
+    if (rb && bb && own) {
+      out.hiddenRenderBounds[node.id] = { x: own.x + rb.x - bb.x, y: own.y + rb.y - bb.y, width: rb.width, height: rb.height };
+    }
+  } catch (e) {
+    out.warnings.push('导出隐藏矢量的 SVG 失败：' + node.name + '（' + node.id + '）：' + errText(e));
+  } finally {
+    if (copy) copy.remove();
+  }
+}
+
 async function collect(node, out, hidden) {
   // 节点本身的宽高和绝对变换：REST 格式里没有，旋转的节点要靠它摆放
   if ('absoluteTransform' in node) {
     out.transforms[node.id] = { m: node.absoluteTransform, w: node.width, h: node.height };
   }
+  // See apps/docs/figma-to-tldraw/tech.md §21.2.
+  var explicitModes = node.explicitVariableModes;
+  if (explicitModes && Object.keys(explicitModes).length) out.variableModes[node.id] = explicitModes;
   // See apps/docs/figma-to-tldraw/tech.md §16.1.
   if (hidden || node.visible === false) {
+    // See apps/docs/figma-to-tldraw/tech.md §21.9.
+    if (!hidden && SVG_TYPES[node.type] && !node.isMask && node.boundVariables && node.boundVariables.visible) {
+      await exportHiddenSvg(node, out);
+    }
     if ('fills' in node && node.fills !== figma.mixed && Array.isArray(node.fills)) {
       node.fills.forEach(function (p) {
         if (p.type === 'IMAGE' && p.imageHash) out.images[p.imageHash] = true;
@@ -1773,6 +2130,7 @@ async function exportMains(root, rest, out) {
         var res = await top.exportAsync({ format: 'JSON_REST_V1' });
         mains[top.id] = res.document;
         mergeMaps(rest, res);
+        out.tops.push(top);
         await collect(top, out);
       } else {
         // 变体太多的组件集只导用到的变体
@@ -1783,6 +2141,7 @@ async function exportMains(root, rest, out) {
           var part = await v.exportAsync({ format: 'JSON_REST_V1' });
           children.push(part.document);
           mergeMaps(rest, part);
+          out.tops.push(v);
           await collect(v, out);
         }
         mains[top.id] = {
@@ -1802,12 +2161,118 @@ async function exportMains(root, rest, out) {
   return mains;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.2.
+function scanAliases(value, ids) {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach(function (x) {
+      scanAliases(x, ids);
+    });
+    return;
+  }
+  if (value.type === 'VARIABLE_ALIAS' && typeof value.id === 'string') ids[value.id] = true;
+  for (var k in value) scanAliases(value[k], ids);
+}
+
+function inheritedModes(node) {
+  var chain = [];
+  for (var p = node.parent; p; p = p.parent) chain.push(p);
+  var modes = {};
+  for (var i = chain.length - 1; i >= 0; i--) {
+    var m = chain[i].explicitVariableModes;
+    if (m) for (var k in m) modes[k] = m[k];
+  }
+  return modes;
+}
+
+async function exportVariables(tops, rest, mains, out) {
+  var ids = {};
+  scanAliases(rest.document, ids);
+  scanAliases(mains, ids);
+  var locals = await figma.variables.getLocalVariablesAsync();
+  var known = {};
+  locals.forEach(function (v) {
+    ids[v.id] = true;
+    known[v.id] = v;
+  });
+  var knownCols = {};
+  (await figma.variables.getLocalVariableCollectionsAsync()).forEach(function (c) {
+    knownCols[c.id] = c;
+  });
+  var variables = {};
+  var collections = {};
+  var missing = [];
+  var queue = Object.keys(ids);
+  while (queue.length) {
+    var id = queue.shift();
+    if (variables[id] || missing.indexOf(id) >= 0) continue;
+    var v = known[id] || null;
+    if (!v) {
+      try {
+        v = await figma.variables.getVariableByIdAsync(id);
+      } catch (e) {}
+    }
+    if (!v) {
+      missing.push(id);
+      continue;
+    }
+    var more = {};
+    scanAliases(v.valuesByMode, more);
+    queue = queue.concat(Object.keys(more));
+    variables[id] = {
+      id: v.id,
+      name: v.name,
+      key: v.key,
+      remote: v.remote,
+      description: v.description,
+      variableCollectionId: v.variableCollectionId,
+      resolvedType: v.resolvedType,
+      valuesByMode: v.valuesByMode,
+      scopes: v.scopes,
+      codeSyntax: v.codeSyntax,
+      hiddenFromPublishing: v.hiddenFromPublishing,
+    };
+    if (!collections[v.variableCollectionId]) {
+      var c = knownCols[v.variableCollectionId] || null;
+      if (!c) {
+        try {
+          c = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+        } catch (e) {}
+      }
+      if (c) {
+        collections[c.id] = {
+          id: c.id,
+          name: c.name,
+          key: c.key,
+          remote: c.remote,
+          modes: c.modes.map(function (m) {
+            return { modeId: m.modeId, name: m.name };
+          }),
+          defaultModeId: c.defaultModeId,
+          hiddenFromPublishing: c.hiddenFromPublishing,
+          isExtension: !!c.isExtension,
+        };
+      }
+    }
+  }
+  var inherited = {};
+  tops.forEach(function (top) {
+    var m = inheritedModes(top);
+    if (Object.keys(m).length) inherited[top.id] = m;
+  });
+  if (!Object.keys(variables).length && !missing.length && !Object.keys(out.variableModes).length && !Object.keys(inherited).length) {
+    return undefined;
+  }
+  return { collections: collections, variables: variables, modes: out.variableModes, inherited: inherited, missing: missing };
+}
+
 async function exportOne(node, dir) {
   var rest = await node.exportAsync({ format: 'JSON_REST_V1' });
-  var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {}, textSegments: {} };
+  var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {}, textSegments: {}, variableModes: {}, hiddenRenderBounds: {}, tops: [node] };
   await collect(node, out);
   var pageFonts = Object.keys(out.fonts);
   var mains = await exportMains(node, rest, out);
+  var variables = await exportVariables(out.tops, rest, mains, out);
 
   var files = [];
   var imageFiles = {};
@@ -1872,6 +2337,8 @@ async function exportOne(node, dir) {
     warnings: out.warnings,
   };
   var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms, textSegments: out.textSegments, mains: mains };
+  if (variables) snapshot.variables = variables;
+  if (Object.keys(out.hiddenRenderBounds).length) snapshot.hiddenRenderBounds = out.hiddenRenderBounds;
   files.push({ path: dir + '/snapshot.json', text: JSON.stringify(snapshot, null, 2) });
 
   return {

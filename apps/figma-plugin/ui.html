@@ -56,7 +56,7 @@
 
   <div class="step">
     <b>1. 生成测试用例</b>
-    <span>新建一个 “Test Cases” 页面，自动画出所有用例。下面填了前缀（如 text-mixed/）时只画名字以它开头的用例。</span>
+    <span>在 “Test Cases” 页面上画出所有用例。下面填了前缀（如 text-mixed/）时只画名字以它开头的用例，画在 “Test Cases · text-mixed” 页面上（取前缀的第一段）。页面已经有了就接着用，同名的用例换成新画的。</span>
     <input id="only" placeholder="只生成的前缀，空着就全部生成" style="width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace">
     <button id="gen">生成测试用例</button>
   </div>
@@ -377,12 +377,14 @@ onmessage = function (event) {
   if (!msg) return;
 
   if (msg.type === 'log') {
-    log(msg.text);
+    log(msg.text, msg.error);
   } else if (msg.type === 'progress') {
     $status.textContent = '处理中 ' + (msg.done + 1) + ' / ' + msg.total;
     log(msg.text);
   } else if (msg.type === 'generate-done') {
-    $status.textContent = '生成完成：' + msg.ok + ' / ' + msg.total + ' 个用例，页面 “' + msg.page + '”';
+    $status.textContent = msg.page
+      ? '生成完成：' + msg.ok + ' / ' + msg.total + ' 个用例，页面 “' + msg.page + '”'
+      : '一个用例都没生成成功，没有新建页面，原因看下面';
     if (msg.failed.length) {
       log('以下用例生成失败（其他用例不受影响）：', true);
       msg.failed.forEach(function (t) { log('  ' + t, true); });
