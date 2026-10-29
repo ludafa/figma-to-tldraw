@@ -17,7 +17,13 @@ import {
   translation,
 } from './matrix';
 import type { FigmaShape, FigmaShapeType } from './shape-types';
-import type { FigmaNode, FigmaPaint, Matrix2x3, Snapshot } from './types';
+import type {
+  FigmaNode,
+  FigmaPaint,
+  FigmaTextSegment,
+  Matrix2x3,
+  Snapshot,
+} from './types';
 
 // See apps/docs/figma-to-tldraw/tech.md §4.
 
@@ -84,6 +90,14 @@ export function svgSize(svg: string): { w: number; h: number } | undefined {
 function stripChildren(node: FigmaNode): FigmaNode {
   const { children: _children, ...rest } = node;
   return rest;
+}
+
+// See apps/docs/skia-engine/tech.md §11.4.
+function withTextSegments(
+  node: FigmaNode,
+  segments: FigmaTextSegment[] | undefined,
+): FigmaNode {
+  return segments ? { ...node, textSegments: segments } : node;
 }
 
 // See apps/docs/figma-to-tldraw/tech.md §16.3.
@@ -236,7 +250,10 @@ export function snapshotToShapes(
       props: {
         w: place.w,
         h: place.h,
-        node: stripChildren(node),
+        node: withTextSegments(
+          stripChildren(node),
+          snapshot.textSegments?.[node.id],
+        ),
         svg: node.isMask ? '' : (snapshot.svgs[node.id] ?? ''),
         images,
         imageSizes: snapshot.meta.imageSizes ?? {},
