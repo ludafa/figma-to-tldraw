@@ -1,5 +1,6 @@
 import { type Editor, PageRecordType, type TLPageId } from '../engine';
 import { withoutFigmaEffects } from './editing/engine';
+import { variableSetOf, writeVariableSet } from './editing/variables';
 import type { FigmaShape } from './shape-types';
 import { snapshotToShapes } from './to-shapes';
 import type { Snapshot } from './types';
@@ -37,6 +38,8 @@ export function putSnapshot(
           editor.deletePage(page.id);
         }
         editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
+        // See apps/docs/figma-to-tldraw/tech.md §21.3.
+        writeVariableSet(editor, variableSetOf(snapshot));
         editor.createShapes<FigmaShape>(shapes);
         if (mains.length) {
           editor.createPage({ id: COMPONENTS_PAGE, name: '组件' });

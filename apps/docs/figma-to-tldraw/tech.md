@@ -381,6 +381,12 @@ Figma 的图片填充可以调 7 种滤镜（`filters`）：曝光 `exposure`、
 | 截图依赖 modern-screenshot 的 `onCreateForeignObjectSvg`、`includeStyleProperties` 两个选项，以及"字体在 SVG 图片里异步解码、画面稳定后就不再变"这个实测的行为（§19.2）                                                                                                          | 版本锁在 4.7.0；升级后用 E-Learning 和 Furniture 两个 zip 重测，分数应该和 §19.3 的表差不多                                                |
 | 导入页比大页面时同时有 2 倍截图、Figma 图和三份像素数组（§19.2、§19.3），最大实测的是 Furniture（15 页）和 Golio personal-portfolio；更大的页面没测过，8000 万像素以上直接拒绝                                                                                                   | 内存不够时改成分段算差异，或者降到 1 倍比                                                                                                  |
 | 导入的数据存在浏览器 IndexedDB（§19.1），会占硬盘；浏览器清理站点数据时会丢                                                                                                                                                                                                      | 导入记录可以删；丢了重新导入 zip 就行                                                                                                      |
+| 变量的几处换算（不透明度 ÷100、数字转文字、`strokeWeight` 在导出 JSON 里的键名、主组件设的模式带不带到实例、渐变色标能不能绑）是按插件 API 文档猜的（§21.4，调研 §8）                                                                                                            | `variables/*` 用例导出后对着快照逐条核对，`variables.test.ts` 的"自己和自己比"会把算错的字段列出来；核对结果写回调研 §8                    |
+| 快照里的值是 Figma 按导出时的模式算好的，切模式以后才用我们自己算的值（§21）；Figma 给别的属性加了可绑定的字段，`variableSlots` 不认，切模式时这个字段不变                                                                                                                       | 不认的绑定面板里看不到，但不影响画；碰到了再往 `variableSlots` 里加                                                                        |
+| 改变量值时所有带绑定的图层都重算一遍（§21.5 的 `varAll`，`hasVariables` 已按节点缓存）；现有用例最多几十个绑定，几千个绑定的大稿子没测过                                                                                                                                         | 慢了再按变量 id 建反查表，只算用到这个变量的图层                                                                                           |
+| 别名指向库变量、库变量又读不到时（`missing`），这个字段切模式时不变，和 Figma 不一样                                                                                                                                                                                             | 面板显示"读不到的变量"提醒；导出时插件已经尽量把用到的库变量读下来                                                                         |
+| 用户的测试文件在 Figma 免费版（Starter）团队里，集合只能有 1 个模式（§21.8），用例改成单模式（§21.1）：模式从父图层继承、实例带不带主组件的模式、导出 JSON 里有没有 `explicitVariableModes`、`?modes=` 切模式，都没有 Figma 算的结果对照                                         | 这部分只靠 `variables.test.ts` 里手写的数据；以后有付费团队的文件，加回多模式的用例（插件和编辑器的代码都还支持多个模式）                  |
+| 矢量按导出时的 SVG 画，颜色写死在里面；填充绑了变量的矢量（主题色的图标、角标）换模式、改变量值后形状对、颜色不变（§21.9）                                                                                                                                                       | 和面板改矢量颜色一起做：按节点的 `fills` 改写 SVG 里的颜色，或者简单的矢量（椭圆、矩形路径）不用 SVG 直接画                                |
 
 ## 9. 用真实稿子考试（2026-10-24）
 
@@ -1442,3 +1448,184 @@ Golio 的 Personal Portfolio 长页面，2 倍图是 3840×30640（1.17 亿像�
 - 相减模式里 Figma 截图同时在两块里用，两块共用一个金字塔，所以"块好了"的通知是一组监听（`onLoad` 返回取消函数），不是一个回调。
 
 **结果**（2026-10-28，实测，240Hz 屏幕）：E-Learning 和 Golio 放大、拖动、缩放都是 240fps；Golio 放大后拖动从 5fps 到 240fps。
+
+## 21. Figma 变量（2026-10-29，用户追加）
+
+调研见 [probe-variables.md](probe-variables.md)。用户定的范围：做到能改变量的值（调研 §5.1 的 C 档），插件在测试文件里建变量集合，变量数据放文档级记录，库变量只读，导出全部本地变量加上用到的库变量（用户拍板）。下面没标"用户"的做法都是我定的。
+
+**画法不变。** 快照里每个属性的值都是 Figma 按导出时的模式算好的（调研 §3.4），导入时照旧直接画。变量只在编辑时起作用：切模式、改变量的值以后，把受影响图层的字段重新算一遍写回去。
+
+### 21.1 用例（插件 `variables/*`）（2026-10-29，同日修订）
+
+> 2026-10-29 → 同日修订：原来是 3 个集合（FT Theme 有 Light / Dark 两个模式，FT Spacing 有 Compact / Comfortable）、8 个用例，靠给 frame 设不同模式出成对的用例。用户的测试文件在 Figma 免费版（Starter）团队里，给集合加第二个模式时 Figma 报 `Limited to 1 modes only`，用户选了"改成免费版能做的用例"（用户拍板）。现在每个集合只有 1 个模式，暗色、宽松各用一个单独的集合；嵌套模式（`nested`）和不设模式（`theme-auto`）两个用例做不出来，去掉了。
+
+插件（`apps/figma-plugin/code.js`）加了 6 个用例，都是 400 × 300，字体只用 Inter。生成时先建（或复用同名的）五个本地变量集合，再建用例，所以插件界面填前缀 `variables/` 只生成这些。集合和变量的定义在 `VAR_SPECS`（主题和间距的两套值写在 `THEME_VARS`、`SPACING_VARS` 里，一行两列值，`varColumn` 拆成两个集合），`ensureVariables` 负责建和改值（重复生成不会多出集合；集合只有一个模式时把它改名成 `VAR_SPECS` 里的名字）。别名先在同一个集合里找同名变量，再到前面的集合里找，所以 FT Theme Dark 的 button 指向 FT Theme Dark 的 accent。
+
+| 集合                               | 模式                 | 变量                                                                                                                                                                                                                   |
+| ---------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FT Palette                         | Value                | 8 个颜色：blue/500、blue/600、orange/400、orange/500、gray/50、gray/200、gray/700、gray/900                                                                                                                            |
+| FT Theme、FT Theme Dark            | Light、Dark          | 两个集合变量名一样，值是亮色、暗色两套。bg、text、accent、border 是指向 FT Palette 的别名（跨集合）；button 指向同集合的 accent（两层别名）；surface、muted、shadow（带透明度）是颜色；label 是文字；show-badge 是开关 |
+| FT Spacing、FT Spacing Comfortable | Compact、Comfortable | 两个集合变量名一样，值是紧凑、宽松两套：pad、gap、radius、bar-width、stroke、font-size、line-height、opacity（100 / 50）、count（3 / 12.5，绑到文字内容上看数字怎么转成文字）                                          |
+
+| 用例                                      | 测什么                                                                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme-light` / `theme-dark`              | 同一张卡片，分别绑 FT Theme、FT Theme Dark 的变量（圆角绑 FT Spacing）。绑了填充、描边颜色、圆角、阴影颜色、渐变色标、文字颜色、文字内容（label）、显示隐藏（show-badge）、两层别名的按钮色 |
+| `spacing-compact` / `spacing-comfortable` | 同一个纵向自动布局，分别绑 FT Spacing、FT Spacing Comfortable。绑了内边距、间距、圆角、宽、描边粗细、不透明度、字号、行高、数字绑到文字内容；里面一行横向自动布局的间距和内边距             |
+| `instance`                                | 主组件按钮绑 FT Theme 和 FT Spacing；三个实例：跟着主组件、自己把填充和文字换绑到 FT Theme Dark、自己解绑圆角（`setBoundVariable('cornerRadius', null)` 再设成 0）                          |
+| `text-ranges`                             | 绑 FT Theme Dark 和 FT Spacing Comfortable：一段文字里一个词的填充绑 accent、一个词的字号绑 font-size；另一段文字的行高绑 line-height                                                       |
+
+渐变色标没有专门的绑定函数，插件直接把 `boundVariables` 写进色标对象；Figma 不认的话不让用例失败，图层名里记 `Unsupported: gradient stop variables`（和 skia-engine tech.md §11.1 的做法一样）。数字变量绑到文字内容也包了一层，不认就记 `Unsupported: number variable on characters`。
+
+插件导出、编辑器里切模式的代码（§21.2～§21.6）照旧支持多个模式；只是测试用例里没有多个模式的集合，模式的继承和切换没有 Figma 算的结果可以对照，只靠 `variables.test.ts` 里手写的数据（见 §21.7 和风险表）。
+
+### 21.2 插件导出的 `variables`
+
+快照加一个字段 `variables`（`types.ts` 的 `SnapshotVariables`），形状照搬插件 API，方便和 Figma 对照：
+
+| 字段          | 内容                                                                                                                                                                                                                                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `variables`   | 变量 id → 名字、所属集合、类型、`valuesByMode`（别名不展开）、`scopes`、`codeSyntax`、`remote` 等。范围：快照里（`rest` 和 `mains`）所有 `boundVariables` 引用到的，加上本文件全部本地变量，再沿别名链补全（用户拍板：全部本地变量加上用到的库变量） |
+| `collections` | 用到的集合：名字、模式列表、默认模式、`remote`                                                                                                                                                                                                       |
+| `modes`       | 图层 id → 它自己显式设的模式（`explicitVariableModes`），遍历图层时顺手记（`collect`），隐藏图层也记                                                                                                                                                 |
+| `inherited`   | 导出范围的根节点、每个导出的主组件（变体太多只导部分时是每个变体）→ 从导出范围外的祖先（section、page）继承来的模式（`inheritedModes`，从远到近合并）                                                                                                |
+| `missing`     | `getVariableByIdAsync` 读不到的变量 id（库变量、删掉的变量）                                                                                                                                                                                         |
+
+模式不改 `rest` 里的节点，单独放，和 `transforms`、`textSegments` 一个做法。导入时 `to-shapes.ts` 的 `withVariableModes` 把 `modes[id]` 写进 `node.explicitVariableModes`，把 `inherited[id]` 写进 `node.inheritedVariableModes`（REST 里没有这个字段，是我们自己加的）。一份文件没有变量、也没有任何图层设模式时不写这个字段，老快照不变。
+
+`components.ts` 重建实例时，`boundVariables`、`explicitVariableModes`、`inheritedVariableModes` 都不从主组件拷、也不比较（`IGNORED`）：实例保留自己的绑定和模式。
+
+字段值和主组件不一样、但两边绑的是同一个变量时，差别来自实例用了别的模式，不算实例的覆盖：`layer()` 先用 `withBoundValues`（§21.4）把实例的值写进主组件那份（文字两边先过一遍 `withTextBindings`），再比一次，一样就当成"来自主组件"，值照旧用实例的。比的时候缺省的字段按 REST 的默认值算（`REST_DEFAULTS`：`visible` 是 true、`opacity` 是 1），因为导出 JSON 里这两个字段是默认值时不写，而写回的值是显式的（2026-10-29 第二轮 code review 发现）。原来这些字段会被当成"说不出原因的差异"记进覆盖，导入以后改主组件的这些字段，换了模式的实例就跟不上了（2026-10-29 code review 发现）。
+
+插件读变量时，本地变量和本地集合直接用 `getLocalVariablesAsync` / `getLocalVariableCollectionsAsync` 拿到的对象，只有库变量（别名指过去的）才逐个调 `getVariableByIdAsync`，库集合同样只在本地没有时才读，读失败（库没开）就不记这个集合，不让整个导出失败（2026-10-29 第二轮 code review 发现）。原来本地变量也一个个再读一遍，变量多的文件导出很慢（2026-10-29 code review 发现）。
+
+### 21.3 数据放在哪
+
+变量是整份文档共用的，不属于某个图层。画面引擎照 tldraw 加了 `document` 记录（`engine/types.ts` 的 `TLDocument`，id 固定是 `document:document`），编辑器启动时建好，`editor.getDocumentSettings()` / `updateDocumentSettings()` 读写，和 tldraw 同名同用法（用户拍板：放文档级记录）。变量集合和变量放在它的 `meta.figmaVariables`（`editing/variables.ts` 的 `readVariableSet` / `writeVariableSet`）。好处：
+
+- 改变量值就是改这条记录，自动进撤销历史，和连带改的图层是同一步；
+- 导出 `.tldr` 时跟着走（`serialize.ts` 以前写死一条空的 `document` 记录，现在用 store 里这条）。
+
+`putSnapshot` 每次清空文档再放一份快照，所以同一时间只有一套变量，不会有两个 Figma 文件的变量 id 撞在一起。
+
+图层上设的模式放在各自的 `node.explicitVariableModes`；绑定照旧在 `node.boundVariables` 和填充、效果、文字样式各自的 `boundVariables` 里。
+
+### 21.4 算变量的值、写回字段（2026-10-29，同日按实测修订）
+
+> 2026-10-29 → 同日修订：`variables/*` 用例导出后对着快照核对（调研 §8），改了三处：单边描边粗细的键名原来按 `top` / `right` 猜，实际是 `BORDER_TOP_WEIGHT` 这样的；整段文字的绑定原来以为在 `style.boundVariables`，实际只在节点上的数组里（导入时挪过去，见下面 `withTextBindings`）；不透明度 ÷100 和行高写成像素由"待实测"改成实测确认。
+
+`figma/variables.ts`，都是不碰编辑器的纯函数：
+
+- `effectiveModes(chain)`：从最上层往下，每层先并 `inheritedVariableModes`、再并 `explicitVariableModes`，近的覆盖远的。
+- `resolveVariable(set, id, modes)`：调研 §3.4 的算法。别名链上每一跳都按"这个图层在那个集合里的模式"取值；遇到环或读不到的变量返回 `undefined`，字段就不动。
+- `variableSlots(node)`：列出一个节点所有绑了变量的字段，每个字段记"值在哪"和"绑定在哪"两条路径，外加面板上显示的中文名。字段名按导出 JSON 的写法（调研 §3.3）：`size.x/y`、`rectangleCornerRadii.RECTANGLE_*`、`individualStrokeWeights.BORDER_*_WEIGHT`、填充和描边的 `boundVariables.color`、渐变色标、效果的 `color / radius / spread / offsetX / offsetY`、`style` 和 `styleOverrideTable[n]` 里的文字字段和分段填充。
+- `withTextBindings(node)`：导出 JSON 里文字图层的字号、行高这些字段绑了变量时，绑定只出现在节点上的数组里（`boundVariables.fontSize: [别名…]`，实测 `style.boundVariables` 是空的），数组里列的是这段文字用到的所有变量；分段样式自己的绑定另外写在 `styleOverrideTable[n].boundVariables`。导入时（`to-shapes.ts` 的 `withVariableModes`）把数组里没被任何分段样式用到的那个别名挪进 `style.boundVariables`，再去掉这些数组，之后 `variableSlots`、解绑、写回都只看 `style` 和 `styleOverrideTable`。不在读的时候临时推断，是因为解绑了某一段的绑定以后，数组里剩下的别名会被误认成整段文字的。
+- `applyVariables(node, set, modes)`：按上面的清单把值写回，没变就返回原对象。要换算的几处：
+
+| 字段             | 写法                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 宽、高           | 不写进 node，返回 `w` / `h`，由调用方改图形的 `props.w` / `h`                                                                                                                                                                                                                                                                                       |
+| 圆角             | 改 `cornerRadii` 的一个角；四个角相等时写 `cornerRadius`、去掉 `rectangleCornerRadii`                                                                                                                                                                                                                                                               |
+| 不透明度         | 变量值 ÷ 100，夹在 0～1（实测：变量 50 → `opacity: 0.5`）                                                                                                                                                                                                                                                                                           |
+| 显示             | 开关，或者值是 `"true"` / `"false"` 的文字                                                                                                                                                                                                                                                                                                          |
+| 文字内容         | 文字原样；数字用 `String()` 转（实测：插件 API 不让数字变量绑文字内容，用例里标了 Unsupported，这条走不到）                                                                                                                                                                                                                                         |
+| 行高             | 写 `lineHeightPx`，`lineHeightUnit` 改成 `PIXELS`，去掉百分比字段（实测和 Figma 一致）                                                                                                                                                                                                                                                              |
+| 单边描边         | `individualStrokeWeights.BORDER_*_WEIGHT` 绑的值写到 `individualStrokeWeights` 的那条边；节点上没有 `individualStrokeWeights`（四边一样时导出 JSON 只有 `strokeWeight`）就从 `strokeWeight` 起算，写完四边相等再收成 `strokeWeight`                                                                                                                 |
+| 字体样式         | 写 `fontStyle`，`italic` 跟着名字里有没有 italic；`fontWeight` 按名字换成字重（Thin 100、Light 300、Regular 400、Semi Bold / Demi 600、Bold 700、Black 900 等；认不出的名字不写 `fontWeight`，分段样式里没有这个字段时也不会写成空值把整段的字重盖掉（2026-10-29 第二轮 code review 发现）），因为画字时按字重挑字体（2026-10-29 code review 发现） |
+| 段间距、首行缩进 | 写 `style`；有 `textSegments`（插件按段导出的样式）时，段里的值等于原来整段的值的那些段一起改（不等的段来自分段样式，留着），画的时候段里的值优先。分段样式自己绑的段间距不会改到段里，是已知限制（2026-10-29 第二轮 code review 发现）（2026-10-29 code review 发现）                                                                              |
+| 颜色             | 没有透明度的颜色补 `a: 1`                                                                                                                                                                                                                                                                                                                           |
+
+- `detachEdited(prev, next, resized)`：一个绑了变量的字段被改了值、绑定没变，就去掉这个绑定（Figma 里在输入框里输值、拖内边距手柄都会解绑）。宽、高看 `resized`：引擎只在用户自己改尺寸时传，也就是正在拖缩放手柄（`select.resizing`）的选中图层，或者面板 W / H 输入框提交前用 `markUserResize` 标记过的图层；自动布局、约束、文字重新量尺寸、同步实例、变量重算改的尺寸都不算（§21.5）。
+  > 2026-10-29 同日修订：原来宽高一律不解绑，说是"见 §21.5"，可 §21.5 也没处理。拖大一个宽度绑了变量的图层，下次重算（改它的颜色、改任何变量值）又缩回变量的宽度（2026-10-29 code review 发现）。第一版按"图层被选中、尺寸变了"判断，会把约束、文字重新量尺寸这类程序改的尺寸也当成用户改的，改成上面的判断（2026-10-29 第二轮 code review 发现）。
+- `withBoundValues(target, source)`：`source` 里和 `target` 绑了同一个变量的字段，把 `source` 的值写进 `target`（宽高除外）。导入时重建实例用（§21.2）。
+
+### 21.5 切模式、改变量值时的连带修改（2026-10-29，同日修订）
+
+接在编辑引擎（`editing/engine.ts`）现有的流水线上，和组件同步、自动布局重排同一时机（§13.1、§16.4）：
+
+1. 图层变化时（`onChange`）：
+   - 用户自己改了绑定字段的值（不是同步实例、不是变量重算写的），调 `detachEdited` 解绑；
+   - 图层的 `explicitVariableModes` 变了，或者被拖进了别的父图层，记进 `varTrees`（整棵子树要重算）；
+   - 其他改动只要节点变了、身上有绑定，记进 `varShapes`（只算它自己）。
+   - 新建的图层（`afterCreate`，用户新建、粘贴、复制，或者同步实例时建出来的）身上有绑定，也记进 `varShapes`，按它所在位置的模式算。撤销、重做和导入建的不算。
+
+   > 2026-10-29 同日修订：原来只在图层变化时记，新建的不记。补测试时发现主组件新加一个绑了变量的图层，同步进暗色模式的实例后还是亮色的值；粘贴到别的模式的 frame 里也一样。
+
+2. `document` 记录的 `meta.figmaVariables` 变了（改了变量值），记 `varAll`：所有带绑定的图层都重算（`boundShapeIds`）。
+3. 每次操作结束的 `flush` 里，先同步实例，再跑 `refreshDirtyVariables`，最后自动布局重排。重算由 `editing/variables.ts` 的 `refreshVariables` 做：沿父图层算出模式，`applyVariables`，有变化才写回，同时改图形的 `w` / `h` 和不透明度。
+
+几条规则：
+
+- 变量重算写的改动记在 `varWrites`：不记成实例覆盖，也不会被当成"用户改了值"去解绑；但会触发约束和自动布局，和手动改尺寸一样。
+- 主组件里的图层被重算后，照旧算主组件改动、同步到实例；同步过去的值是主组件那个模式下的，实例节点变了、身上有绑定，又会进 `varShapes` 按实例自己的模式再算一遍（调研 §5.5 的顺序）。
+- 同步实例时 `boundVariables` 不整份照抄主组件（`instances.ts` 的 `mergeBindings`）：一个键上实例自己的值和主组件改之前的一样，才换成主组件的新值；不一样（实例自己解绑过）就留实例的。`size`、`rectangleCornerRadii`、`individualStrokeWeights` 里一个子键一个绑定，往下一层按子键这样比，不然实例解绑了宽度以后，主组件解绑高度时实例还留着高度的绑定（2026-10-29 第二轮 code review 发现）。原来整份照抄，实例里解绑过的字段，在主组件解绑别的字段时又被绑回去，值被变量盖掉（2026-10-29 code review 发现）。
+- 文字图层跟着内容改名时，从图层现在的节点上改名：同一次 `onChange` 里前面可能刚解绑过文字内容的变量。原来拿改之前的节点去改名，把刚解掉的绑定又写了回去，下次重算打的字就变回变量的值（2026-10-29 code review 发现）。
+- 写回的结果和现在一样时不写，所以重算最多多跑一轮就停下来。
+- `hasVariables`（图层身上有没有绑定）按节点对象缓存在 `WeakMap` 里。节点每次改都是新对象，缓存不会过期；改变量值时扫全部图层（`boundShapeIds`）不用每个都重新列一遍字段（2026-10-29 code review 发现）。
+- 撤销、重做时不重算：那一步里本来就带着重算的结果。
+- 导入（`putSnapshot`）时引擎暂停，不重算：快照里的值就是 Figma 算好的。
+
+### 21.6 界面
+
+`editing/variables-panel.tsx`：
+
+- **"变量模式"区块**（只选中一个 frame 类图层时）：文档里每个有两个以上模式的集合一个下拉框，第一项是"自动（现在跟着父图层用的模式）"，后面是各个模式。改了就是 `setShapeMode`，一步撤销。
+- **"变量"区块**（选中的图层身上有绑定时）：每个绑定一行：字段名、变量名（鼠标停上去显示"集合 / 变量名"）、在这个图层的模式下的值（颜色有色块），右边"解绑"按钮（保留现在的值）。读不到的库变量显示"读不到的变量"。区块标题右边"变量表"打开变量表。
+- **变量表**（`VariablesDialog`）：左边集合列表（库集合标"库"），右边一行一个变量、一列一个模式（默认模式标"默认"）。颜色用面板的取色框、数字和文字用输入框、开关用复选框，每次改是一步撤销（拖取色框时整段算一步）。值是别名时显示"→ 目标变量"和它的值，点一下改成具体的值。库变量只读（用户拍板）。图层树标题右边也有"变量"按钮能打开它。打开时焦点落在变量表上（变量还没读到时，等读到、表画出来以后再给焦点），按键不会传到后面的画布；遮罩是 `role="dialog"`，`selection.ts` 里在 window 捕获阶段处理 Esc / Enter 的监听遇到对话框里的按键直接放过，不然它会先把 Esc 拿去选父图层（2026-10-29 第二轮 code review 发现）；原来点了表里不能聚焦的地方（比如变量名那格）再按 Backspace，会删掉画布上选中的图层，Esc 也关不掉（2026-10-29 code review 发现）。文字变量的输入框原样提交，能存空字符串和首尾空格（`TextField` 的 `raw`；面板别的输入框照旧去掉首尾空格、空的不提交）（2026-10-29 code review 发现）。
+- `/import` 的右栏 inspector 用的是同一个面板，所以这两块也在那里。
+
+面板里原来的输入框、选择框、取色框挪到了 `editing/panel-fields.tsx`，`panel.tsx` 和变量面板共用；`ColorField` 原来接 `act`，现在接 `onMark`（拖动开始时记一个撤销点）。
+
+### 21.7 怎么验证变量算得对（2026-10-29，同日修订）
+
+> 2026-10-29 → 同日修订：原来用"把 Light 那份切到 Dark 模式，和 Dark 那份比"；免费版做不了多个模式（§21.1），改成"把一个集合的值换成另一个集合的，再和绑另一个集合的那份比"。`?modes=` 参数留着，以后有多个模式的用例还能用。
+
+成对的用例（`theme-light` / `theme-dark`、`spacing-compact` / `spacing-comfortable`）就是标准答案：`theme-light` 绑的是 FT Theme，把 FT Theme 的值换成 FT Theme Dark 的值以后，算出来的东西应该和 Figma 导出的 `theme-dark` 一样。换值用 `figma/variables.ts` 的 `withCollectionValues(set, 目标集合, 来源集合)`：目标集合里每个变量取来源集合里同名变量的值（模式按顺序一一对应）；值是指向来源集合的别名时，改成指向目标集合里的同名变量。这和在变量表里改值走的是同一条路（`document` 记录变了 → 所有绑定图层重算），所以顺带验证了第 5 步。两层检查：
+
+1. **字段对字段**（`figma/variables.test.ts` 的 "Figma variable cases"）：读 `cases/variables/*/snapshot.json`，换好值，对每个绑定字段跑 `applyVariables`，和另一份同位置图层的同一字段比（按 `children` 下标配对；宽高比 `absoluteBoundingBox`；数字差 0.002 以内算相等）。另外每个用例自己和自己比一遍：快照里的值应该就是用它自己的变量算出来的值，这一条能单独查出解析算法和字段换算的错。`cases/` 里没有这些用例时整组跳过，和 `auto-layout.test.ts` 一样。
+2. **截图对比**：画布页的参数 `?values=FT Theme:FT Theme Dark`（`routes/canvas.tsx` 的 `CanvasSearch.values`，`pages/canvas.tsx` 的 `copyValues` 调 `editing/variables.ts` 的 `copyCollectionValues`）在快照放好、字体和图片都加载完以后换值；`?modes=FT Theme:Dark` 按集合名、模式名给根 frame 设模式（`switchModes`），时机一样。切完以后清空撤销记录，按 Cmd+Z 不会把 URL 要的切换撤回去（2026-10-29 code review 发现）。要等字体：换值以后文字要重新量尺寸，字体没到时 Skia 量出来是 0，自动布局会把后面的图层叠上去（第一次跑 `spacing-compact` 换成宽松的值差 0.91% 就是这个原因，改了以后 0.00%）。`scripts/compare.ts` 跑完普通用例后再跑 `VARIABLE_SWITCHES` 里的四组：用 A 用例加参数截图，和 B 用例的 Figma 截图比，结果打印出来，也写进 `results.json` 的 `switches`。只跑一部分用例时（比如 `compare.ts 'variables/*'`），A 在这次的范围里、B 在 `cases/` 里就跑这一组。
+
+| A 加参数                                                           | 和谁比                |
+| ------------------------------------------------------------------ | --------------------- |
+| `theme-light` + `values=FT Theme:FT Theme Dark`                    | `theme-dark`          |
+| `theme-dark` + `values=FT Theme Dark:FT Theme`                     | `theme-light`         |
+| `spacing-compact` + `values=FT Spacing:FT Spacing Comfortable`     | `spacing-comfortable` |
+| `spacing-comfortable` + `values=FT Spacing Comfortable:FT Spacing` | `spacing-compact`     |
+
+`instance`、`text-ranges` 没有成对的用例，只靠第 1 层的"自己和自己比"和普通截图对比。
+
+### 21.8 生成用例放在哪一页、建变量失败时（2026-10-29，用户试用发现）
+
+用户第一次在 Figma 里生成 `variables/` 用例，结果多出一个空的 "Test Cases N" 页面，什么都导不出来。两个问题一起改（`apps/figma-plugin/code.js` 的 `generate`、`casesPageName`）：
+
+**页面名固定，有了就接着用**（用户要求）。原来每次生成都新建一个页面，重名时加编号（"Test Cases 2"……），生成几次就多几页。现在：
+
+| 前缀                    | 页面                                       |
+| ----------------------- | ------------------------------------------ |
+| 空（全部生成）          | `Test Cases`                               |
+| `variables/`            | `Test Cases · variables`                   |
+| `variables/theme-light` | `Test Cases · variables`（取前缀的第一段） |
+
+- 页面已经有了就切过去接着用，没有才新建。页面名都以 `Test Cases` 开头，导出时照旧用 frame 名字当目录（§9.1）。
+- 页面上已有同名的用例：新的画在旧的那个位置，画成功以后删掉旧的；新的画失败就留着旧的，不会越生成越少。页面上没有同名的新用例接在页面现有内容的下面排（行数只按这些新用例算）。原来复用页面时还是按这次生成的顺序从左上角排，只重新生成一部分时会压在别的用例上（2026-10-29 code review 发现）。
+- 一个用例都没画成、页面又是这次新建的，就把页面删掉，切回原来的页面，不留空页面。
+
+**建变量失败时说清楚原因，跳过这些用例。** 原来 `ensureVariables` 出错只记一行日志，后面每个 `variables/` 用例拿不到变量各自报错、各自删掉 frame，就剩下一个空页面。现在：
+
+- 给集合加模式失败时，报错里写明哪个集合、哪个模式，加上一句原因：多半是文件在 Figma 免费版（Starter）团队里，免费版每个集合只能有 1 个模式（Figma 帮助中心说模式只在 Education、Professional、Organization、Enterprise 提供；"免费版 1 个"是第三方资料的说法，没在官方价格页核实）。
+- 这条报错是日志里的红字；`variables/` 用例全部跳过，记进"生成失败"的列表；一个用例都没有可画的时候不建页面，状态栏写"一个用例都没生成成功，没有新建页面"。
+- 在免费版里失败过一次会留下建了一半的集合（比如 FT Theme 只有 Light）。换到付费团队的文件不受影响；同一个文件升级以后再生成，`ensureVariables` 按名字复用集合，把缺的模式和变量补上。
+
+用户在免费版文件里重新生成，日志第一条就是 `集合 “FT Theme” 加不了模式 “Dark”（in addMode: Limited to 1 modes only）`，确认了原因。之后用例改成每个集合 1 个模式（§21.1，用户拍板），这条报错只在以后有人加多个模式的集合时才会出现。
+
+这一节的流程在 Node 里用假的 `figma` 对象跑过（会话临时脚本，没进仓库）：加模式抛错时不建页面、用例都记成跳过；能加模式时建出 `Test Cases · variables`；再生成一次还是这一页、frame 换成新的、变量不重复建；前缀 `variables/theme-light` 只换掉这一个。改成单模式以后，又按用户文件当时的样子（FT Palette 建好、FT Theme 只有 Light）跑了一遍：6 个用例都生成，五个集合 46 个变量，再生成不重复建，FT Theme Dark 的 button 指向 FT Theme Dark 的 accent。
+
+### 21.9 用变量显示、隐藏的矢量（2026-10-29，实测发现）
+
+**隐藏的矢量也导出 SVG。** 矢量图形（椭圆、星形、路径等）按 Figma 导出的 SVG 画（§3），隐藏的图层 Figma 不给导出（§16.1），以前只放一个 `svg: ''` 的占位。可是 `visible` 绑了变量时，换个值它就要显示出来：`theme-dark` 里的角标（show-badge 在暗色下是关）换成亮色的值以后什么都画不出来。现在插件（`collect` 里的 `exportHiddenSvg`）对"自己隐藏、`visible` 绑了变量"的矢量：复制一份，解开复制品的 `visible` 绑定、设成显示，导出复制品的 SVG，再删掉复制品；同时按"复制品渲染范围相对它的包围盒的偏移"加到原图层的包围盒上，记进快照的 `hiddenRenderBounds`（隐藏的图层在导出 JSON 里 `absoluteRenderBounds` 是 `null`）。导入时 `to-shapes.ts` 的 `placement` 用它来放这张 SVG。
+
+- 只处理 `visible` 自己绑了变量的矢量，父图层隐藏的不管：变量能直接把它显示出来的只有这一种，其他隐藏的矢量照旧占位（§16.3）。
+- 父图层是自动布局时，复制品先设成绝对定位（`layoutPositioning = 'ABSOLUTE'`）再显示，不参与排列，SVG 的尺寸和原图层一样。原来复制品会加入排列（填充宽度的会被拉伸），导出的 SVG 尺寸不对（2026-10-29 code review 发现）。用例里没有这种图层，这条没在 Figma 里实测。
+- 复制再删会在 Figma 的撤销记录里留两步，文件内容不变。在主组件里复制时，复制品会临时同步到它的实例，删掉以后也跟着没了。复制失败（比如在实例里面）只记一条警告，照旧占位。
+- 这次用 computer use 在 Figma 里用新插件重新导出了 6 个用例（2026-10-29），`theme-dark` 的角标有了 SVG 和 `hiddenRenderBounds`。
+
+**矢量的颜色不跟着变量变（已知限制）。** SVG 里的颜色是导出时写死的（角标是 `fill="#F97316"`），变量把节点的填充改成别的颜色，`props.node` 变了，画出来的还是旧颜色。所以 `theme-dark` 换成亮色的值以后，角标显示出来了，但还是暗色下的橙色，和 Figma 的蓝色差 0.51%（§21.7 的四组里只有这一组不是 0.0x%）。这和"在面板里改矢量颜色"是同一件事，编辑那边定的是以后再做（§13），这次不做；风险表里记了一条。

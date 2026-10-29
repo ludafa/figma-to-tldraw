@@ -1,4 +1,5 @@
 import type { FigmaNode, FigmaOverride, Snapshot } from './types';
+import { withBoundValues, withTextBindings } from './variables';
 
 // See apps/docs/figma-to-tldraw/tech.md §16.2.
 
@@ -71,11 +72,19 @@ const IGNORED = new Set([
   'pluginData',
   'sharedPluginData',
   'boundVariables',
+  'explicitVariableModes',
+  'inheritedVariableModes',
   'background',
   'backgroundColor',
   'layoutVersion',
   ...PLACEMENT,
 ]);
+
+// See apps/docs/figma-to-tldraw/tech.md §21.2.
+const REST_DEFAULTS: Partial<Record<keyof FigmaNode, unknown>> = {
+  visible: true,
+  opacity: 1,
+};
 
 const TEXT_CONTENT = [
   'characters',
@@ -286,6 +295,18 @@ export function rebuildInstance(
       ...(swap ? SWAP_FIELDS : []),
     ]);
     const out: FigmaNode = { ...copy };
+    let bound: [FigmaNode, FigmaNode] | undefined;
+    // See apps/docs/figma-to-tldraw/tech.md §21.2.
+    const fromModes = (k: keyof FigmaNode) => {
+      if (!bound) {
+        const c = withTextBindings(copy);
+        bound = [withBoundValues(withTextBindings(template), c), c];
+      }
+      return same(
+        bound[0][k] ?? REST_DEFAULTS[k],
+        bound[1][k] ?? REST_DEFAULTS[k],
+      );
+    };
     const keys = new Set([...Object.keys(template), ...Object.keys(copy)]);
     for (const key of keys) {
       if (IGNORED.has(key)) {
@@ -299,7 +320,7 @@ export function rebuildInstance(
       } else if (same(template[k], copy[k])) {
         stats.fromMain++;
         (out as unknown as Record<string, unknown>)[key] = template[k];
-      } else if (swap && same(swap[k], copy[k])) {
+      } else if ((swap && same(swap[k], copy[k])) || fromModes(k)) {
         stats.fromMain++;
       } else {
         stats.inferred++;

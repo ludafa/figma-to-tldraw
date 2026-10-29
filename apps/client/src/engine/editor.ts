@@ -37,7 +37,9 @@ import {
   createShapeId,
   isPageId,
   isShapeId,
+  TLDOCUMENT_ID,
   type TLCamera,
+  type TLDocument,
   type TLPage,
   type TLPageId,
   type TLParentId,
@@ -234,6 +236,19 @@ export class Editor {
       );
       pages = [...this.store.pageIds()];
     }
+    if (!this.store.has(TLDOCUMENT_ID)) {
+      this.history.withMode('ignore', () =>
+        this.store.put([
+          {
+            id: TLDOCUMENT_ID,
+            typeName: 'document',
+            gridSize: 10,
+            name: '',
+            meta: {},
+          },
+        ]),
+      );
+    }
     this.currentPageId = atom('current page', pages[0]);
 
     this.store.onApply((diff) => this.invalidateBounds(diff));
@@ -327,6 +342,18 @@ export class Editor {
 
   getCurrentPageId(): TLPageId {
     return this.currentPageId.get();
+  }
+
+  // See apps/docs/figma-to-tldraw/tech.md §21.3.
+  getDocumentSettings(): TLDocument {
+    return this.store.get<TLDocument>(TLDOCUMENT_ID)!;
+  }
+
+  updateDocumentSettings(
+    settings: Partial<Omit<TLDocument, 'id' | 'typeName'>>,
+  ): this {
+    this.store.put([{ ...this.getDocumentSettings(), ...settings }]);
+    return this;
   }
 
   getCurrentPage(): TLPage {

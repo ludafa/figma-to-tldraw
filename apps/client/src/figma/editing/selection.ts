@@ -38,7 +38,7 @@ export function installFigmaSelection(editor: Editor): () => void {
       !editor.getInstanceState().isFocused ||
       !editor.isIn('select.idle') ||
       (e.target as HTMLElement | null)?.closest?.(
-        'input, textarea, select, [contenteditable="true"]',
+        'input, textarea, select, [contenteditable="true"], [role="dialog"]',
       )
     ) {
       return;

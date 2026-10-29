@@ -13,6 +13,11 @@ export { LayerTree } from './layers';
 export { FigmaInspector, FigmaStylePanel } from './panel';
 export { figmaTextOptions } from './rich-text';
 export { FigmaToolbar, figmaTools, figmaUiOverrides } from './tools';
+export {
+  copyCollectionValues,
+  readVariableSet,
+  setShapeMode,
+} from './variables';
 
 /** Turns on resizing, constraints, auto layout, Figma-style selection and snapping. */
 export function startFigmaEditing(editor: Editor): () => void {

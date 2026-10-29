@@ -95,15 +95,62 @@ function windowFor(areas: RenderArea[]): { width: number; height: number } {
   };
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.7.
+const VARIABLE_SWITCHES: VariableSwitch[] = [
+  {
+    from: 'variables/theme-light',
+    values: 'FT Theme:FT Theme Dark',
+    expect: 'variables/theme-dark',
+  },
+  {
+    from: 'variables/theme-dark',
+    values: 'FT Theme Dark:FT Theme',
+    expect: 'variables/theme-light',
+  },
+  {
+    from: 'variables/spacing-compact',
+    values: 'FT Spacing:FT Spacing Comfortable',
+    expect: 'variables/spacing-comfortable',
+  },
+  {
+    from: 'variables/spacing-comfortable',
+    values: 'FT Spacing Comfortable:FT Spacing',
+    expect: 'variables/spacing-compact',
+  },
+];
+
+interface VariableSwitch {
+  from: string;
+  expect: string;
+  /** `?modes=` on the canvas page. */
+  modes?: string;
+  /** `?values=` on the canvas page. */
+  values?: string;
+}
+
+function switchQuery(sw?: VariableSwitch): string {
+  return [
+    sw?.modes && `&modes=${encodeURIComponent(sw.modes)}`,
+    sw?.values && `&values=${encodeURIComponent(sw.values)}`,
+  ]
+    .filter(Boolean)
+    .join('');
+}
+
+function switchLabel(sw: VariableSwitch): string {
+  return sw.values ? `换值 ${sw.values}` : `切模式 ${sw.modes}`;
+}
+
 async function shoot(
   browser: Browser,
   c: CaseSummary,
   area: RenderArea,
+  sw?: VariableSwitch,
 ): Promise<{ png: Buffer; warnings: string[] }> {
   const page = await browser.newPage({ viewport: null });
   try {
     await page.goto(
-      `${BASE_URL}/canvas?case=${encodeURIComponent(c.dir)}&shot=1`,
+      `${BASE_URL}/canvas?case=${encodeURIComponent(c.dir)}&shot=1${switchQuery(sw)}`,
     );
     await page.waitForFunction(() => window.__figmaReady === true, null, {
       timeout: 30_000,
@@ -167,11 +214,14 @@ async function compareCase(
   c: CaseSummary,
   outDir: string,
   sub = '',
+  sw?: VariableSwitch,
 ): Promise<Result> {
   const caseOut = path.join(outDir, 'cases', c.dir, sub);
   fs.mkdirSync(caseOut, { recursive: true });
   const expectedRaw = PNG.sync.read(
-    fs.readFileSync(path.join(CASES_DIR, c.dir, 'expected@2x.png')),
+    fs.readFileSync(
+      path.join(CASES_DIR, sw?.expect ?? c.dir, 'expected@2x.png'),
+    ),
   );
   const expected = onWhite(expectedRaw);
   fs.writeFileSync(
@@ -181,7 +231,7 @@ async function compareCase(
   const base = { dir: c.dir, width: c.width, height: c.height };
   const snapshot = snapshotOf(c);
   try {
-    const { png, warnings } = await shoot(browser, c, renderArea(snapshot));
+    const { png, warnings } = await shoot(browser, c, renderArea(snapshot), sw);
     fs.writeFileSync(path.join(caseOut, 'actual.png'), png);
     const actual = PNG.sync.read(png);
     if (actual.width !== expected.width || actual.height !== expected.height) {
@@ -292,6 +342,10 @@ ${rows}
 `;
 }
 
+function slugOf(text: string): string {
+  return text.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+}
+
 async function main() {
   const patterns = process.argv.slice(2);
   const index = JSON.parse(
@@ -358,12 +412,31 @@ async function main() {
     }
     fs.rmSync(path.join(caseOut, 'retry'), { recursive: true, force: true });
   }
+  // See apps/docs/figma-to-tldraw/tech.md §21.7.
+  const switches: (Result & VariableSwitch)[] = [];
+  for (const sw of VARIABLE_SWITCHES) {
+    const c = cases.find((x) => x.dir === sw.from);
+    if (!c || !index.cases.some((x) => x.dir === sw.expect)) {
+      continue;
+    }
+    const r = await compareCase(
+      browser,
+      c,
+      outDir,
+      `switch-${slugOf(sw.values ?? sw.modes ?? '')}`,
+      sw,
+    );
+    switches.push({ ...r, ...sw });
+    console.log(
+      `${switchLabel(sw)}：${sw.from} 对比 ${sw.expect}：${r.diff.toFixed(2)}%${r.error ? '  出错' : ''}`,
+    );
+  }
   await browser.close();
 
   results.sort((a, b) => b.diff - a.diff);
   fs.writeFileSync(
     path.join(outDir, 'results.json'),
-    JSON.stringify({ startedAt, results }, null, 2),
+    JSON.stringify({ startedAt, results, switches }, null, 2),
   );
   fs.writeFileSync(
     path.join(outDir, 'index.html'),

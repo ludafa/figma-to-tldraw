@@ -24,6 +24,7 @@ import type {
   Matrix2x3,
   Snapshot,
 } from './types';
+import { withTextBindings } from './variables';
 
 // See apps/docs/figma-to-tldraw/tech.md §4.
 
@@ -100,6 +101,24 @@ function withTextSegments(
   return segments ? { ...node, textSegments: segments } : node;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.2.
+function withVariableModes(
+  raw: FigmaNode,
+  variables: Snapshot['variables'],
+): FigmaNode {
+  const node = withTextBindings(raw);
+  const own = variables?.modes[node.id];
+  const inherited = variables?.inherited[node.id];
+  if (!own && !inherited) {
+    return node;
+  }
+  return {
+    ...node,
+    ...(own ? { explicitVariableModes: own } : {}),
+    ...(inherited ? { inheritedVariableModes: inherited } : {}),
+  };
+}
+
 // See apps/docs/figma-to-tldraw/tech.md §16.3.
 function spanVariants(node: FigmaNode): FigmaNode {
   const boxes = node.absoluteBoundingBox
@@ -144,7 +163,9 @@ export function snapshotToShapes(
     const svg = snapshot.svgs[node.id];
     // See apps/docs/figma-to-tldraw/tech.md §16.3.
     if (type === 'figma-vector' && !node.isMask && (svg || !hidden)) {
-      const rb = node.absoluteRenderBounds;
+      // See apps/docs/figma-to-tldraw/tech.md §21.9.
+      const rb =
+        node.absoluteRenderBounds ?? snapshot.hiddenRenderBounds?.[node.id];
       if (!svg || !rb) {
         return undefined;
       }
@@ -250,9 +271,12 @@ export function snapshotToShapes(
       props: {
         w: place.w,
         h: place.h,
-        node: withTextSegments(
-          stripChildren(node),
-          snapshot.textSegments?.[node.id],
+        node: withVariableModes(
+          withTextSegments(
+            stripChildren(node),
+            snapshot.textSegments?.[node.id],
+          ),
+          snapshot.variables,
         ),
         svg: node.isMask ? '' : (snapshot.svgs[node.id] ?? ''),
         images,

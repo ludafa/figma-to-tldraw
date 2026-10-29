@@ -13,6 +13,7 @@ import {
   type TLComponents,
 } from '../engine';
 import {
+  copyCollectionValues,
   figmaShapeVisibility,
   FigmaStylePanel,
   figmaTextOptions,
@@ -20,13 +21,16 @@ import {
   figmaTools,
   figmaUiOverrides,
   LayerTree,
+  readVariableSet,
   relayoutAll,
+  setShapeMode,
   startFigmaEditing,
 } from '../figma/editing';
 import { putSnapshot } from '../figma/editor';
 import hello from '../figma/fixtures/hello.json';
 import { caseUrl, loadCase, loadCaseIndex, waitForAssets } from '../figma/load';
 import { renderArea } from '../figma/render-area';
+import type { FigmaShape } from '../figma/shape-types';
 import { figmaShapeUtils } from '../figma/shapes';
 import { shapeIdFor } from '../figma/to-shapes';
 import type { CaseIndex, Snapshot } from '../figma/types';
@@ -127,6 +131,44 @@ function showSnapshot(
   showFrom(0);
   // See apps/docs/figma-to-tldraw/tech.md §12.2.
   window.__figmaShotFrom = showFrom;
+  return warnings;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.7.
+function switchModes(
+  editor: Editor,
+  snapshot: Snapshot,
+  id: string,
+  spec: string,
+): string[] {
+  const set = readVariableSet(editor);
+  const rootId = shapeIdFor(id, snapshot.rest.document.id);
+  const warnings: string[] = [];
+  for (const pair of spec.split(',')) {
+    const [collectionName, modeName] = pair.split(':').map((x) => x.trim());
+    const collection = Object.values(set?.collections ?? {}).find(
+      (c) => c.name === collectionName,
+    );
+    const mode = collection?.modes.find((m) => m.name === modeName);
+    const root = editor.getShape<FigmaShape>(rootId);
+    if (!collection || !mode || !root) {
+      warnings.push(`切不了模式：${pair}`);
+      continue;
+    }
+    setShapeMode(editor, root, collection.id, mode.modeId);
+  }
+  return warnings;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.7.
+function copyValues(editor: Editor, spec: string): string[] {
+  const warnings: string[] = [];
+  for (const pair of spec.split(',')) {
+    const [target, source] = pair.split(':').map((x) => x.trim());
+    if (!copyCollectionValues(editor, target, source)) {
+      warnings.push(`换不了变量值：${pair}`);
+    }
+  }
   return warnings;
 }
 
@@ -268,6 +310,18 @@ export function CanvasPage() {
         setSnapshot(snap);
         setWarnings(list);
         const missing = await waitForAssets(snap, assetBase);
+        // See apps/docs/figma-to-tldraw/tech.md §21.7.
+        if (!cancelled && search.modes) {
+          missing.push(
+            ...switchModes(editor, snap, dir ?? 'fixture/hello', search.modes),
+          );
+        }
+        if (!cancelled && search.values) {
+          missing.push(...copyValues(editor, search.values));
+        }
+        if (!cancelled && (search.modes || search.values)) {
+          editor.clearHistory();
+        }
         await getCanvasController(editor)?.whenIdle();
         if (!cancelled) {
           for (const w of missing) {
@@ -286,7 +340,7 @@ export function CanvasPage() {
     return () => {
       cancelled = true;
     };
-  }, [editor, search.case, shot]);
+  }, [editor, search.case, shot, search.modes, search.values]);
 
   // See apps/docs/figma-to-tldraw/tech.md §17.
   useEffect(() => {
