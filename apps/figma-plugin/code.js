@@ -267,6 +267,17 @@ async function prepareFonts() {
   F.semibold = await pickFont([{ family: 'Inter', style: 'Semi Bold' }, { family: 'Inter', style: 'SemiBold' }], F.medium);
   F.bold = await pickFont([{ family: 'Inter', style: 'Bold' }], F.semibold);
   F.italic = await pickFont([{ family: 'Inter', style: 'Italic' }], F.regular);
+  F.light = await pickFont([{ family: 'Inter', style: 'Light' }], F.regular);
+  F.boldItalic = await pickFont([{ family: 'Inter', style: 'Bold Italic' }], F.italic);
+  F.lato = await pickFont([{ family: 'Lato', style: 'Regular' }], F.regular);
+  F.latoLight = await pickFont([{ family: 'Lato', style: 'Light' }], F.lato);
+  F.latoBold = await pickFont([{ family: 'Lato', style: 'Bold' }], F.lato);
+  F.latoBlack = await pickFont([{ family: 'Lato', style: 'Black' }], F.latoBold);
+  F.latoItalic = await pickFont([{ family: 'Lato', style: 'Italic' }], F.lato);
+  F.latoBoldItalic = await pickFont([{ family: 'Lato', style: 'Bold Italic' }], F.latoItalic);
+  F.poppins = await pickFont([{ family: 'Poppins', style: 'Regular' }], F.regular);
+  F.poppinsSemi = await pickFont([{ family: 'Poppins', style: 'SemiBold' }, { family: 'Poppins', style: 'Semi Bold' }], F.poppins);
+  F.mono = await pickFont([{ family: 'Roboto Mono', style: 'Regular' }], F.regular);
   F.cjk = await pickFont(
     [
       { family: 'Noto Sans SC', style: 'Regular' },
@@ -615,6 +626,353 @@ add('text/fixed-overflow', function (f) {
   var t = text(f, LOREM.slice(0, 120), { x: 80, y: 80, size: 16 });
   t.textAutoResize = 'NONE';
   t.resize(240, 60);
+});
+
+// ---- 混合样式文字 ----
+// See apps/docs/skia-engine/tech.md §11.
+function range(t, word, nth) {
+  var s = -1;
+  for (var k = 0; k <= (nth || 0); k++) {
+    s = t.characters.indexOf(word, s + 1);
+    if (s < 0) throw new Error('找不到 "' + word + '"');
+  }
+  return [s, s + word.length];
+}
+
+function setOn(t, word, prop, value, nth) {
+  var r = range(t, word, nth);
+  t['setRange' + prop](r[0], r[1], value);
+}
+
+function trySetOn(t, word, prop, value, failed) {
+  try {
+    setOn(t, word, prop, value);
+  } catch (e) {
+    failed.push(prop + ' ' + JSON.stringify(value));
+  }
+}
+
+function markUnsupported(t, failed) {
+  if (failed.length) t.name = 'Unsupported: ' + failed.join(', ');
+}
+
+add('text-mixed/size-last-line', function (f) {
+  var t1 = text(f, 'First line is plain.\nSecond line has a Big word.\nThird line is plain.', { x: 30, y: 24, width: 340, size: 18 });
+  setOn(t1, 'Big', 'FontSize', 36);
+  var t2 = text(f, 'A wrapped paragraph in eighteen pixels that keeps going until the very end, where a Huge word sits.', {
+    x: 30,
+    y: 160,
+    width: 340,
+    size: 18,
+  });
+  setOn(t2, 'Huge', 'FontSize', 40);
+});
+add('text-mixed/size-multi-in-line', function (f) {
+  var t1 = text(f, 'Sizes 12 20 32 48 mixed', { x: 30, y: 30, size: 16 });
+  setOn(t1, '12', 'FontSize', 12);
+  setOn(t1, '20', 'FontSize', 20);
+  setOn(t1, '32', 'FontSize', 32);
+  setOn(t1, '48', 'FontSize', 48);
+  var t2 = text(f, 'Two lines: the first has a Large word and the second line has an even Larger one here.', {
+    x: 30,
+    y: 120,
+    width: 340,
+    size: 16,
+  });
+  setOn(t2, 'Large', 'FontSize', 28);
+  setOn(t2, 'Larger', 'FontSize', 40);
+});
+add('text-mixed/size-small-in-big', function (f) {
+  var t1 = text(f, '$49 per month\nBilled yearly, cancel anytime.', { x: 30, y: 30, size: 40, font: F.semibold });
+  setOn(t1, ' per month', 'FontSize', 16);
+  var r = range(t1, 'Billed yearly, cancel anytime.');
+  t1.setRangeFontSize(r[0], r[1], 14);
+  t1.setRangeFontName(r[0], r[1], F.regular);
+  t1.setRangeFills(r[0], r[1], [solid('#6B7280')]);
+  var t2 = text(f, 'Small text with ONE big word in the middle of a wrapped paragraph that goes on.', { x: 30, y: 160, width: 340, size: 14 });
+  setOn(t2, 'ONE', 'FontSize', 30);
+});
+add('text-mixed/line-height-fixed', function (f) {
+  var t1 = text(f, 'Fixed 24px line height. This paragraph has a Big word on the second line and keeps wrapping.', {
+    x: 30,
+    y: 24,
+    width: 340,
+    size: 16,
+    lineHeight: { value: 24, unit: 'PIXELS' },
+  });
+  setOn(t1, 'Big', 'FontSize', 32);
+  var t2 = text(f, 'Line height 150%. A Big word sits on the first line, then more words wrap below it.', {
+    x: 30,
+    y: 160,
+    width: 340,
+    size: 16,
+    lineHeight: { value: 150, unit: 'PERCENT' },
+  });
+  setOn(t2, 'Big', 'FontSize', 32);
+});
+add('text-mixed/line-height-runs', function (f) {
+  var t = text(
+    f,
+    'Paragraph with auto line height.\nThis paragraph uses forty pixels.\nTight twelve pixel lines in this paragraph wrap onto two lines.\nHalf of this line is tall.',
+    { x: 30, y: 24, width: 340, size: 16 }
+  );
+  setOn(t, 'This paragraph uses forty pixels.', 'LineHeight', { value: 40, unit: 'PIXELS' });
+  setOn(t, 'Tight twelve pixel lines in this paragraph wrap onto two lines.', 'LineHeight', { value: 12, unit: 'PIXELS' });
+  setOn(t, 'is tall.', 'LineHeight', { value: 36, unit: 'PIXELS' });
+});
+add('text-mixed/fonts', function (f) {
+  var t1 = text(f, 'Inter meets Lato, Poppins, Roboto Mono and 思源黑体 in one paragraph that wraps onto more lines.', {
+    x: 30,
+    y: 30,
+    width: 340,
+    size: 20,
+  });
+  setOn(t1, 'Lato', 'FontName', F.lato);
+  setOn(t1, 'Poppins', 'FontName', F.poppins);
+  setOn(t1, 'Roboto Mono', 'FontName', F.mono);
+  setOn(t1, '思源黑体', 'FontName', F.cjk);
+  var t2 = text(f, 'Lato base with Inter, Poppins and Roboto Mono words, big Poppins too.', { x: 30, y: 170, width: 340, size: 18, font: F.lato });
+  setOn(t2, 'Inter', 'FontName', F.regular);
+  setOn(t2, 'Poppins', 'FontName', F.poppins);
+  setOn(t2, 'Roboto Mono', 'FontName', F.mono);
+  var r = range(t2, 'big Poppins');
+  t2.setRangeFontName(r[0], r[1], F.poppinsSemi);
+  t2.setRangeFontSize(r[0], r[1], 28);
+});
+add('text-mixed/weights', function (f) {
+  var t1 = text(f, 'Light Regular Medium\nSemiBold Bold Italic BoldItalic', { x: 30, y: 30, size: 22 });
+  setOn(t1, 'Light', 'FontName', F.light);
+  setOn(t1, 'Medium', 'FontName', F.medium);
+  setOn(t1, 'SemiBold', 'FontName', F.semibold);
+  setOn(t1, 'Bold', 'FontName', F.bold, 1);
+  setOn(t1, 'Italic', 'FontName', F.italic);
+  setOn(t1, 'BoldItalic', 'FontName', F.boldItalic);
+  var t2 = text(f, 'Lato Light Bold Black\nItalic BoldItalic', { x: 30, y: 150, size: 22, font: F.lato });
+  setOn(t2, 'Light', 'FontName', F.latoLight);
+  setOn(t2, 'Bold', 'FontName', F.latoBold);
+  setOn(t2, 'Black', 'FontName', F.latoBlack);
+  setOn(t2, 'Italic', 'FontName', F.latoItalic);
+  setOn(t2, 'BoldItalic', 'FontName', F.latoBoldItalic);
+});
+add('text-mixed/letter-spacing', function (f) {
+  var t1 = text(f, 'tight normal wide wider', { x: 30, y: 40, size: 24 });
+  setOn(t1, 'tight', 'LetterSpacing', { value: -1.5, unit: 'PIXELS' });
+  setOn(t1, 'wide', 'LetterSpacing', { value: 4, unit: 'PIXELS' });
+  setOn(t1, 'wider', 'LetterSpacing', { value: 20, unit: 'PERCENT' });
+  var t2 = text(f, 'Spacing 3px, one plain word.', { x: 30, y: 110, size: 16, letterSpacing: { value: 3, unit: 'PIXELS' } });
+  setOn(t2, 'plain', 'LetterSpacing', { value: 0, unit: 'PIXELS' });
+  var t3 = text(f, 'Centered text with WIDE spaced words that wraps to a second line.', { x: 30, y: 170, width: 340, size: 18, align: 'CENTER' });
+  setOn(t3, 'WIDE spaced', 'LetterSpacing', { value: 6, unit: 'PIXELS' });
+});
+add('text-mixed/colors', function (f) {
+  var t1 = text(f, 'Red Green Blue Faded Stacked Hidden end of the line.', { x: 30, y: 30, width: 340, size: 24, font: F.semibold });
+  setOn(t1, 'Red', 'Fills', [solid('#DC2626')]);
+  setOn(t1, 'Green', 'Fills', [solid('#16A34A')]);
+  setOn(t1, 'Blue', 'Fills', [solid('#2563EB')]);
+  setOn(t1, 'Faded', 'Fills', [solid('#111827', 0.35)]);
+  setOn(t1, 'Stacked', 'Fills', [solid('#2563EB'), solid('#DC2626', 0.5)]);
+  setOn(t1, 'Hidden', 'Fills', []);
+  var t2 = text(f, 'Mixed colors inside a half transparent layer.', { x: 30, y: 180, width: 340, size: 24, font: F.semibold });
+  setOn(t2, 'colors', 'Fills', [solid('#DC2626')]);
+  t2.opacity = 0.5;
+});
+add('text-mixed/gradients', function (f) {
+  var t1 = text(f, 'Linear Radial Angular Diamond Solid', { x: 30, y: 24, width: 340, size: 36, font: F.bold });
+  setOn(t1, 'Linear', 'Fills', [gradient('GRADIENT_LINEAR', [stop(0, '#F97316'), stop(1, '#8B5CF6')])]);
+  setOn(t1, 'Radial', 'Fills', [gradient('GRADIENT_RADIAL', [stop(0, '#22C55E'), stop(1, '#1D4ED8')])]);
+  setOn(t1, 'Angular', 'Fills', [gradient('GRADIENT_ANGULAR', [stop(0, '#EC4899'), stop(0.5, '#FACC15'), stop(1, '#EC4899')])]);
+  setOn(t1, 'Diamond', 'Fills', [gradient('GRADIENT_DIAMOND', [stop(0, '#06B6D4'), stop(1, '#7C3AED')])]);
+  var t2 = text(f, 'One gradient over the whole box, one word solid.', { x: 30, y: 190, width: 340, size: 22, font: F.bold });
+  t2.fills = [gradient('GRADIENT_LINEAR', [stop(0, '#0EA5E9'), stop(1, '#E11D48')], TOP_TO_BOTTOM)];
+  setOn(t2, 'solid', 'Fills', [solid('#111827')]);
+});
+add('text-mixed/decorations', function (f) {
+  var t1 = text(f, 'Underline small BIG red', { x: 30, y: 30, size: 20 });
+  setOn(t1, 'Underline small BIG red', 'TextDecoration', 'UNDERLINE');
+  setOn(t1, 'small', 'FontSize', 14);
+  setOn(t1, 'BIG', 'FontSize', 34);
+  setOn(t1, 'red', 'Fills', [solid('#DC2626')]);
+  var t2 = text(f, 'Strike through a phrase that wraps across two lines in this box.', { x: 30, y: 100, width: 340, size: 18 });
+  setOn(t2, 'through a phrase that wraps across two', 'TextDecoration', 'STRIKETHROUGH');
+  var t3 = text(f, 'A link to figma.com and an underlined word.', { x: 30, y: 200, width: 340, size: 18 });
+  setOn(t3, 'figma.com', 'Hyperlink', { type: 'URL', value: 'https://figma.com' });
+  setOn(t3, 'underlined', 'TextDecoration', 'UNDERLINE');
+});
+add('text-mixed/decoration-styles', function (f) {
+  var failed = [];
+  var t = text(f, 'Wavy underline\nDotted underline\nThick offset underline\nRed underline color\nDefault ink: gypsy jog\nNo skip ink: gypsy jog', {
+    x: 30,
+    y: 24,
+    size: 22,
+  });
+  setOn(t, t.characters, 'TextDecoration', 'UNDERLINE');
+  trySetOn(t, 'Wavy underline', 'TextDecorationStyle', 'WAVY', failed);
+  trySetOn(t, 'Dotted underline', 'TextDecorationStyle', 'DOTTED', failed);
+  trySetOn(t, 'Thick offset underline', 'TextDecorationThickness', { value: 3, unit: 'PIXELS' }, failed);
+  trySetOn(t, 'Thick offset underline', 'TextDecorationOffset', { value: 4, unit: 'PIXELS' }, failed);
+  trySetOn(t, 'Red underline color', 'TextDecorationColor', { value: solid('#DC2626') }, failed);
+  trySetOn(t, 'No skip ink: gypsy jog', 'TextDecorationSkipInk', false, failed);
+  markUnsupported(t, failed);
+});
+// 一行一个装饰线，不带下伸字母，量波浪线、点线随字号和粗细怎么变
+function decoLine(f, str, x, y, size, props, failed) {
+  var t = text(f, str, { x: x, y: y, size: size });
+  setOn(t, t.characters, 'TextDecoration', props.kind || 'UNDERLINE');
+  Object.keys(props).forEach(function (k) {
+    if (k !== 'kind') trySetOn(t, t.characters, k, props[k], failed);
+  });
+  return t;
+}
+function decoShapes(style) {
+  return function (f) {
+    var failed = [];
+    var s = { TextDecorationStyle: style };
+    var px = function (v) {
+      return { value: v, unit: 'PIXELS' };
+    };
+    decoLine(f, 'same thin ruler', 20, 20, 12, s, failed);
+    decoLine(f, 'same thin ruler', 20, 50, 22, s, failed);
+    decoLine(f, 'thin 1px', 20, 95, 22, { TextDecorationStyle: style, TextDecorationThickness: px(1) }, failed);
+    decoLine(f, 'thick 3px', 20, 135, 22, { TextDecorationStyle: style, TextDecorationThickness: px(3) }, failed);
+    decoLine(f, 'strike line', 20, 175, 22, { kind: 'STRIKETHROUGH', TextDecorationStyle: style }, failed);
+    decoLine(f, 'offset 6px', 210, 20, 22, { TextDecorationStyle: style, TextDecorationOffset: px(6) }, failed);
+    decoLine(f, 'thick 6px', 210, 95, 22, { TextDecorationStyle: style, TextDecorationThickness: px(6) }, failed);
+    var big = decoLine(f, 'same thin ruler', 20, 215, 40, s, failed);
+    markUnsupported(big, failed);
+  };
+}
+add('text-mixed/decoration-wavy', decoShapes('WAVY'));
+add('text-mixed/decoration-dotted', decoShapes('DOTTED'));
+add('text-mixed/decoration-units', function (f) {
+  var failed = [];
+  var pct = function (v) {
+    return { value: v, unit: 'PERCENT' };
+  };
+  var px = function (v) {
+    return { value: v, unit: 'PIXELS' };
+  };
+  decoLine(f, 'thick 10%', 20, 20, 22, { TextDecorationThickness: pct(10) }, failed);
+  decoLine(f, 'thick 10%', 210, 20, 40, { TextDecorationThickness: pct(10) }, failed);
+  decoLine(f, 'offset 25%', 20, 80, 22, { TextDecorationOffset: pct(25) }, failed);
+  decoLine(f, 'offset 25%', 210, 80, 40, { TextDecorationOffset: pct(25) }, failed);
+  decoLine(f, 'gypsy jog', 20, 150, 40, { TextDecorationThickness: px(3) }, failed);
+  decoLine(f, 'gypsy jog', 210, 150, 40, { TextDecorationStyle: 'WAVY' }, failed);
+  var last = decoLine(f, 'quip gypsy', 20, 225, 40, { kind: 'STRIKETHROUGH', TextDecorationThickness: px(3) }, failed);
+  markUnsupported(last, failed);
+});
+add('text-mixed/case', function (f) {
+  var failed = [];
+  var t1 = text(f, 'upper LOWER title case words Small Caps Forced Caps', { x: 30, y: 30, width: 340, size: 22 });
+  setOn(t1, 'upper', 'TextCase', 'UPPER');
+  setOn(t1, 'LOWER', 'TextCase', 'LOWER');
+  setOn(t1, 'title case words', 'TextCase', 'TITLE');
+  trySetOn(t1, 'Small Caps', 'TextCase', 'SMALL_CAPS', failed);
+  trySetOn(t1, 'Forced Caps', 'TextCase', 'SMALL_CAPS_FORCED', failed);
+  markUnsupported(t1, failed);
+  var failed2 = [];
+  var t2 = text(f, 'Lato Small Caps and Forced Caps', { x: 30, y: 150, size: 22, font: F.lato });
+  trySetOn(t2, 'Small Caps', 'TextCase', 'SMALL_CAPS', failed2);
+  trySetOn(t2, 'Forced Caps', 'TextCase', 'SMALL_CAPS_FORCED', failed2);
+  markUnsupported(t2, failed2);
+  var t3 = text(f, 'wordsplit title case', { x: 30, y: 220, size: 22 });
+  setOn(t3, 'split title case', 'TextCase', 'TITLE');
+});
+add('text-mixed/align', function (f) {
+  var t1 = text(f, 'Centered text with a Bigger word and a bold ending ', { x: 30, y: 24, width: 340, size: 18, align: 'CENTER' });
+  setOn(t1, 'Bigger', 'FontSize', 30);
+  setOn(t1, 'bold ending ', 'FontName', F.bold);
+  var t2 = text(f, 'Right aligned lines with Mixed sizes that wrap around here.', { x: 30, y: 160, width: 340, size: 18, align: 'RIGHT' });
+  setOn(t2, 'Mixed sizes', 'FontSize', 26);
+});
+add('text-mixed/truncation', function (f) {
+  var t1 = text(f, LOREM, { x: 40, y: 30, width: 320, size: 16 });
+  setOn(t1, 'several', 'FontSize', 24);
+  setOn(t1, 'so we can compare line breaks', 'Fills', [solid('#DC2626')]);
+  try {
+    t1.textTruncation = 'ENDING';
+    t1.maxLines = 3;
+  } catch (e) {
+    t1.name = 'Truncation not supported';
+  }
+  var t2 = text(f, 'One line: Bold red end that does not fit at all', { x: 40, y: 200, size: 16 });
+  setOn(t2, 'Bold red end that does not fit at all', 'FontName', F.bold);
+  setOn(t2, 'red end that does not fit at all', 'Fills', [solid('#DC2626')]);
+  t2.textAutoResize = 'NONE';
+  t2.resize(240, 24);
+  try {
+    t2.textTruncation = 'ENDING';
+  } catch (e) {}
+});
+add('text-mixed/lists', function (f) {
+  var t = text(f, 'Unordered item one\nItem two with bold words\nNested item\nRed item\nOrdered first\nBig ordered\nNested ordered', {
+    x: 30,
+    y: 24,
+    width: 340,
+    size: 16,
+  });
+  var r = range(t, 'Unordered item one\nItem two with bold words\nNested item\nRed item');
+  t.setRangeListOptions(r[0], r[1], { type: 'UNORDERED' });
+  r = range(t, 'Ordered first\nBig ordered\nNested ordered');
+  t.setRangeListOptions(r[0], r[1], { type: 'ORDERED' });
+  setOn(t, 'Nested item', 'Indentation', 2);
+  setOn(t, 'Nested ordered', 'Indentation', 2);
+  setOn(t, 'bold words', 'FontName', F.bold);
+  setOn(t, 'Red item', 'Fills', [solid('#DC2626')]);
+  setOn(t, 'Big', 'FontSize', 24);
+  try {
+    t.listSpacing = 6;
+  } catch (e) {}
+});
+add('text-mixed/paragraphs', function (f) {
+  var failed = [];
+  var t1 = text(f, 'First paragraph with an indent that wraps onto a second line here.\nSecond paragraph has more space after it.\nThird paragraph.', {
+    x: 30,
+    y: 24,
+    width: 340,
+    size: 16,
+  });
+  t1.paragraphIndent = 24;
+  t1.paragraphSpacing = 8;
+  trySetOn(t1, 'Second paragraph has more space after it.', 'ParagraphSpacing', 24, failed);
+  markUnsupported(t1, failed);
+  var t2 = text(f, 'Drop the first word in a big size, then let normal words wrap onto the next lines.', { x: 30, y: 180, width: 340, size: 16 });
+  t2.paragraphIndent = 40;
+  setOn(t2, 'Drop', 'FontSize', 32);
+});
+add('text-mixed/cjk-latin', function (f) {
+  var t1 = text(f, '中文正文里夹着 English words、粗体 Bold、大号 32px 和红色文字，看看行高和基线。第二行继续换行。', {
+    x: 30,
+    y: 24,
+    width: 340,
+    size: 18,
+    font: F.cjk,
+  });
+  setOn(t1, 'English words', 'FontName', F.regular);
+  setOn(t1, 'Bold', 'FontName', F.bold);
+  setOn(t1, '32px', 'FontSize', 32);
+  setOn(t1, '红色文字', 'Fills', [solid('#DC2626')]);
+  var t2 = text(f, 'Inter base 混排中文 with Chinese runs 和大号中文 inside a wrapped line.', { x: 30, y: 170, width: 340, size: 18 });
+  setOn(t2, '混排中文', 'FontName', F.cjk);
+  setOn(t2, '和大号中文', 'FontName', F.cjk);
+  setOn(t2, '和大号中文', 'FontSize', 28);
+});
+add('text-mixed/stroke-shadow', function (f) {
+  f.fills = [solid('#F3F4F6')];
+  var t1 = text(f, 'Shadow on Mixed colors', { x: 30, y: 30, size: 32, font: F.bold });
+  setEffects(t1, [shadow('DROP_SHADOW', '#000000', 0.35, 0, 4, 8, 0)]);
+  setOn(t1, 'Mixed', 'Fills', [solid('#DC2626')]);
+  setOn(t1, 'colors', 'FontSize', 24);
+  var t2 = text(f, 'Outlined Text', { x: 30, y: 110, size: 44, font: F.bold });
+  t2.strokes = [solid('#2563EB')];
+  t2.strokeWeight = 2;
+  t2.strokeAlign = 'OUTSIDE';
+  setOn(t2, 'Text', 'Fills', [solid('#FFFFFF')]);
+  var t3 = text(f, 'Center stroke big', { x: 30, y: 200, size: 36, font: F.bold });
+  t3.fills = [solid('#FACC15')];
+  t3.strokes = [solid('#111827')];
+  t3.strokeWeight = 1.5;
+  t3.strokeAlign = 'CENTER';
+  setOn(t3, 'big', 'FontSize', 48);
 });
 
 // ---- 矢量 ----
@@ -1086,10 +1444,17 @@ function uniquePageName(base) {
   return base + ' ' + i;
 }
 
-async function generate(images) {
+function startsWith(prefix) {
+  return function (c) {
+    return !prefix || c.name.indexOf(prefix) === 0;
+  };
+}
+
+async function generate(images, only) {
   post({ type: 'log', text: '加载字体…' });
   await prepareFonts();
   post({ type: 'log', text: '中文字体：' + F.cjk.family + ' ' + F.cjk.style });
+  post({ type: 'log', text: '混合样式文字的字体：' + [F.lato, F.poppins, F.mono].map(function (x) { return x.family; }).join('、') });
 
   var hashes = {};
   for (var k in images) {
@@ -1103,13 +1468,14 @@ async function generate(images) {
 
   var failed = [];
   var ok = 0;
-  var all = CASES.concat(PAGES);
-  var rows = Math.ceil(CASES.length / COLS);
+  var cases = CASES.filter(startsWith(only));
+  var all = cases.concat(PAGES.filter(startsWith(only)));
+  var rows = Math.ceil(cases.length / COLS);
   var pageX = 0;
 
   for (var i = 0; i < all.length; i++) {
     var c = all[i];
-    var isPage = i >= CASES.length;
+    var isPage = i >= cases.length;
     post({ type: 'progress', done: i, total: all.length, text: c.name });
     var f = null;
     try {
@@ -1234,6 +1600,35 @@ async function bakeFilteredImage(hash, filters) {
   }
 }
 
+// See apps/docs/skia-engine/tech.md §11.4.
+var TEXT_SEGMENT_FIELDS = [
+  'paragraphSpacing',
+  'paragraphIndent',
+  'listSpacing',
+  'textDecorationStyle',
+  'textDecorationOffset',
+  'textDecorationThickness',
+  'textDecorationColor',
+  'textDecorationSkipInk',
+];
+
+function textSegments(node) {
+  var segs;
+  try {
+    segs = node.getStyledTextSegments(TEXT_SEGMENT_FIELDS);
+  } catch (e) {
+    return null;
+  }
+  if (segs.length < 2 && node.textDecoration === 'NONE') return null;
+  return segs.map(function (seg) {
+    var o = { start: seg.start, end: seg.end };
+    TEXT_SEGMENT_FIELDS.forEach(function (k) {
+      if (seg[k] !== undefined && seg[k] !== null) o[k] = seg[k];
+    });
+    return o;
+  });
+}
+
 async function collect(node, out, hidden) {
   // 节点本身的宽高和绝对变换：REST 格式里没有，旋转的节点要靠它摆放
   if ('absoluteTransform' in node) {
@@ -1272,6 +1667,8 @@ async function collect(node, out, hidden) {
     });
   }
   if (node.type === 'TEXT') {
+    var segs = textSegments(node);
+    if (segs) out.textSegments[node.id] = segs;
     try {
       node.getStyledTextSegments(['fontName']).forEach(function (s) {
         out.fonts[s.fontName.family + ' / ' + s.fontName.style] = true;
@@ -1407,7 +1804,7 @@ async function exportMains(root, rest, out) {
 
 async function exportOne(node, dir) {
   var rest = await node.exportAsync({ format: 'JSON_REST_V1' });
-  var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {} };
+  var out = { svgs: {}, images: {}, fonts: {}, warnings: [], transforms: {}, masks: {}, textSegments: {} };
   await collect(node, out);
   var pageFonts = Object.keys(out.fonts);
   var mains = await exportMains(node, rest, out);
@@ -1474,7 +1871,7 @@ async function exportOne(node, dir) {
     masks: out.masks,
     warnings: out.warnings,
   };
-  var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms, mains: mains };
+  var snapshot = { meta: meta, rest: rest, svgs: out.svgs, transforms: out.transforms, textSegments: out.textSegments, mains: mains };
   files.push({ path: dir + '/snapshot.json', text: JSON.stringify(snapshot, null, 2) });
 
   return {
@@ -1562,7 +1959,7 @@ async function exportList(items) {
 
 figma.ui.onmessage = async function (msg) {
   try {
-    if (msg.type === 'generate') await generate(msg.images);
+    if (msg.type === 'generate') await generate(msg.images, msg.only);
     else if (msg.type === 'export') await exportCases();
     else if (msg.type === 'export-list') await exportList(msg.items);
     else if (msg.type === 'close') figma.closePlugin();

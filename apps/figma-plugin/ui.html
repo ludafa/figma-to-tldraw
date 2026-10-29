@@ -56,7 +56,8 @@
 
   <div class="step">
     <b>1. 生成测试用例</b>
-    <span>新建一个 “Test Cases” 页面，自动画出所有用例。</span>
+    <span>新建一个 “Test Cases” 页面，自动画出所有用例。下面填了前缀（如 text-mixed/）时只画名字以它开头的用例。</span>
+    <input id="only" placeholder="只生成的前缀，空着就全部生成" style="width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace">
     <button id="gen">生成测试用例</button>
   </div>
 
@@ -307,7 +308,7 @@ $gen.onclick = async function () {
       square: await makeImage(400, 400, 140, 'SQUARE'),
       ramp: await makeRamp(),
     };
-    send({ type: 'generate', images: images });
+    send({ type: 'generate', images: images, only: document.getElementById('only').value.trim() });
   } catch (e) {
     log('生成图片失败：' + e.message, true);
     busy(false);
