@@ -18,6 +18,7 @@
 | `apps/client/src/engine/render/image-size.test.ts`（新） | `encodedImageSize` 读 PNG、JPEG、GIF、WebP 文件头，其他格式返回 null；`imageLevel` 按缩放取档、最小 256px、小图不缩；`levelsToDrop` 不到上限时一档都不丢、超过时丢最久没用的 | 2026-10-28 |
 | `apps/client/src/engine/render/tiles.test.ts`（新） | `overviewCovers`：总览范围内（含一个总览像素的余量）算覆盖，伸出去的不算 | 2026-10-28 |
 | `apps/client/src/figma/skia/text-shadows.test.ts`（新） | `withTextShadows`：按偏移和 3 个 sigma 扩大文字的绘制范围，隐藏的投影和别的效果不算 | 2026-10-28 |
+| `apps/client/src/figma/skia/text.test.ts` | 段落按 `\n` 切、`\r` 当空格；`resolvedLineHeight`：同字体按字号放大、换了字体用那个字体的自动行高（Poppins、Roboto Mono、Noto Sans SC）、固定行高不变（tech.md §11.2）；首字母大写从词中间开始时不变大写（§11.9） | 2026-10-27，2026-10-28 |
 
 画面本身没有单测（要 WebGL），靠 §2 的对比脚本和 §4 的交互脚本兜底。整个 client 共 27 个测试文件、145 条（2026-10-28 code review 修正后）。
 
@@ -149,3 +150,31 @@ plan.md "2026-10-28（code review 修正）"那一节的改动。本机同上。
 - `/demo` 加载到 `__figmaReady` 8.9 秒，页面错误 0 个。
 - `/import` 回归（手动验收第 38～42 条的脚本，tldraw 版 verification.md）：全部通过，E-Learning 4 个画板 0.01%，Free Banking 显示商业字体提醒，`/compare` 能看到同一批导入。`/compare` 导入 Free Banking：All Cards 0.44%、History 0.19%、Home 0.30%、Statistics 0.10%、Onboarding-2 0.24%，和改之前一样。
 - 没测：总览扩大（§5.5）只有单测，没在页面上专门构造"往总览外加图形"的场景看；两个画布同时在一个页面上的键盘分配（§6.5）没有现成的页面，没实测。
+
+### 2026-10-28～10-29（混合样式文字）
+
+plan.md "2026-10-28（分支 `feat/mixed-text`，混合样式文字）"那一节的改动。本机同上，对比脚本连 `CANVAS_URL=http://localhost:5199`。
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 27 个测试文件、149 条全部通过（`skia/text.test.ts` 新增 4 条：`resolvedLineHeight` 3 条、首字母大写 1 条）。
+- 基线（改之前）：`text-mixed/*` 19 个平均 1.42%，12 / 19 小于 1%（`reports/fidelity/20261028-224211`）。
+- 全量对比（`reports/fidelity/20261029-090108`）：194 / 194 小于 1%，平均 0.090%，最大 0.83%（`designs-30`）。和上一次全量（`20261028-001008`，175 个）比：变好 109，变差 0，不变 66。其中 3 个（`settings-pages-desktop-2`、`settings-pages-desktop-4`、`design-product-detail-2`）上次是没画出来的 100%，这次 0.01%～0.11%。
+- `text-mixed/*` 19 个平均 0.075%，各用例：
+
+  | 用例                | 差异  | 用例                 | 差异  |
+  | ------------------- | ----- | -------------------- | ----- |
+  | `align`             | 0.03% | `letter-spacing`     | 0.21% |
+  | `case`              | 0.02% | `line-height-fixed`  | 0.08% |
+  | `cjk-latin`         | 0.12% | `line-height-runs`   | 0.07% |
+  | `colors`            | 0.03% | `lists`              | 0.08% |
+  | `decoration-styles` | 0.08% | `paragraphs`         | 0.11% |
+  | `decorations`       | 0.05% | `size-last-line`     | 0.06% |
+  | `fonts`             | 0.07% | `size-multi-in-line` | 0.05% |
+  | `gradients`         | 0.08% | `size-small-in-big`  | 0.09% |
+  | `stroke-shadow`     | 0.04% | `truncation`         | 0.11% |
+  | `weights`           | 0.05% |                      |       |
+
+- 文字类老用例因为基线取整（tech.md §11.11）明显变好：`text/wrap` 0.44% → 0.10%，`text/line-height` 0.37% → 0.07%，`text/decoration-case` 0.18% → 0.00%，`text/align-horizontal` 0.13% → 0.01%。
+- 全量跑完后，波浪线的线宽从 t 改成 2t/3，只重跑了 `decoration-styles`（0.08%），没再跑全量。只有带波浪线的文字受影响，老用例里没有。
+- 之后（2026-10-29）computer use 能用了：在 Figma 里生成并导入 3 个装饰线用例（共 197 个），改了跳过下伸部分的挖法和波浪线圆头（tech.md §11.10）。第二次全量对比（`reports/fidelity/20261029-091947`）：197 / 197 小于 1%，平均 0.091%，最大 0.83%；`text-mixed/*` 22 个平均 0.083%，最大 0.21%（`letter-spacing`）；新用例 `decoration-wavy` 0.17%、`decoration-dotted` 0.04%、`decoration-units` 0.19%；和第一次全量比变好 1、变差 2（+0.005%、+0.007%）、不变 191。
+- 装饰线逐条量过（2 倍图）：点线、波浪线 12 / 22 / 40px 和 1 / 3 / 6px 粗的波长、摆幅、墨量、点距、点大小和 Figma 差 ≤ 0.25px；`PERCENT` 粗细和偏移逐像素一样；跳过下伸部分 12 个空隙的边缘每条差 ≤ 3 像素。
+- 没做：`SMALL_CAPS`、`SMALL_CAPS_FORCED` 在 Figma 里对 Inter、Lato 都设不上，没测到；很粗的波浪线在跳过下伸部分时的断口形状（Figma 是圆头、断得更早）没对上。

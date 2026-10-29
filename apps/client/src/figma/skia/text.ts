@@ -1,7 +1,9 @@
 import type {
   Canvas,
   CanvasKit,
+  Color,
   FontWeight,
+  Paint,
   Paragraph,
   TextShadow,
   TextStyle,
@@ -11,9 +13,21 @@ import type { FontRequest } from '../../engine/render/fonts';
 import type { Resources } from '../../engine/render/resources';
 import fontMetrics from '../font-metrics.json';
 import { FONT_SUBSTITUTES } from '../fonts';
-import { gradientMatrix } from '../paint-math';
-import type { FigmaNode, FigmaPaint, FigmaTypeStyle } from '../types';
-import { color4f, type Disposer, visiblePaints } from './paints';
+import type {
+  FigmaAutoLength,
+  FigmaNode,
+  FigmaPaint,
+  FigmaTextSegment,
+  FigmaTypeStyle,
+} from '../types';
+import {
+  color4f,
+  type Disposer,
+  type PaintSource,
+  skiaBlend,
+  skiaPaint,
+  visiblePaints,
+} from './paints';
 
 // See apps/docs/skia-engine/tech.md §7.2.
 
@@ -36,21 +50,24 @@ export function resolvedLineHeight(
 ): number {
   const style = { ...base, ...override };
   const size = style.fontSize ?? 16;
-  let px: number;
-  // See apps/docs/skia-engine/tech.md §7.2.
-  const sameFont =
-    style.lineHeightUnit === 'INTRINSIC_%' &&
-    (override?.fontFamily ?? base.fontFamily) === base.fontFamily;
+  const baseSize = base.fontSize ?? 16;
+  if (style.lineHeightUnit === 'INTRINSIC_%') {
+    // See apps/docs/skia-engine/tech.md §11.2.
+    const ratio =
+      style.fontFamily === base.fontFamily &&
+      base.lineHeightUnit === 'INTRINSIC_%' &&
+      base.lineHeightPx !== undefined
+        ? base.lineHeightPx / baseSize
+        : (intrinsicRatio(style) ?? (style.lineHeightPx ?? size * 1.2) / size);
+    return Math.round(ratio * size);
+  }
   if (
-    (override?.lineHeightPx !== undefined && !sameFont) ||
+    override?.lineHeightPx !== undefined ||
     style.lineHeightUnit === 'PIXELS'
   ) {
-    px = style.lineHeightPx ?? size * 1.2;
-  } else {
-    const baseSize = base.fontSize ?? 16;
-    px = ((base.lineHeightPx ?? baseSize * 1.2) / baseSize) * size;
+    return style.lineHeightPx ?? size * 1.2;
   }
-  return style.lineHeightUnit === 'INTRINSIC_%' ? Math.round(px) : px;
+  return ((base.lineHeightPx ?? baseSize * 1.2) / baseSize) * size;
 }
 
 // See apps/docs/skia-engine/tech.md §7.2.
@@ -97,17 +114,25 @@ export function textRuns(node: FigmaNode): Run[] {
   return runs;
 }
 
-function applyCase(text: string, style: FigmaTypeStyle): string {
+function applyCase(
+  text: string,
+  style: FigmaTypeStyle,
+  before: string,
+): string {
   switch (style.textCase) {
     case 'UPPER':
       return text.toUpperCase();
     case 'LOWER':
       return text.toLowerCase();
-    case 'TITLE':
+    case 'TITLE': {
+      // See apps/docs/skia-engine/tech.md §11.9.
+      const midWord = before !== '' && !/[\s\u2028]/u.test(before);
       return text.replace(
         /(^|[\s\u2028])(\p{L})/gu,
-        (_, a: string, b: string) => a + b.toUpperCase(),
+        (m: string, a: string, b: string, at: number) =>
+          at === 0 && midWord ? m : a + b.toUpperCase(),
       );
+    }
   }
   return text;
 }
@@ -115,14 +140,20 @@ function applyCase(text: string, style: FigmaTypeStyle): string {
 // See apps/docs/figma-to-tldraw/tech.md §12.7.
 export function paragraphs(runs: Run[]): Run[][] {
   const out: Run[][] = [[]];
+  let before = '';
   for (const run of runs) {
     const parts = run.text.replaceAll('\r', ' ').split('\n');
     parts.forEach((part, i) => {
       if (i > 0) {
         out.push([]);
+        before = '';
       }
       if (part) {
-        out[out.length - 1].push({ ...run, text: applyCase(part, run.style) });
+        out[out.length - 1].push({
+          ...run,
+          text: applyCase(part, run.style, before),
+        });
+        before = part.slice(-1);
       }
     });
   }
@@ -153,6 +184,18 @@ interface TypoMetrics {
 }
 
 const METRICS = fontMetrics as Record<string, TypoMetrics>;
+
+// See apps/docs/skia-engine/tech.md §11.2.
+const INTRINSIC_RATIOS: Record<string, number> = { 'Noto Sans SC': 1.2 };
+
+function intrinsicRatio(style: FigmaTypeStyle): number | undefined {
+  const family = resolveFont(style).metricsFamily;
+  const m = METRICS[family];
+  return (
+    INTRINSIC_RATIOS[family] ??
+    (m ? (m.hhea[0] + m.hhea[1] + m.hhea[2]) / m.upem : undefined)
+  );
+}
 
 interface ResolvedFont {
   requests: FontRequest[];
@@ -246,12 +289,13 @@ interface Decoration {
   end: number;
   style: FigmaTypeStyle;
   aliases: string[];
+  seg?: FigmaTextSegment;
 }
 
 export interface TextLine {
-  /** Single-line paragraphs: the visible text, and the gradient mask pass. */
+  /** Single-line paragraphs: the visible text, and one mask per `fills` entry. */
   para: Paragraph;
-  mask?: Paragraph;
+  masks: (Paragraph | undefined)[];
   x: number;
   baseline: number;
   top: number;
@@ -260,6 +304,12 @@ export interface TextLine {
   decorations: Decoration[];
   /** First UTF-16 offset of the line in `node.characters`. */
   sourceStart: number;
+  /** List bullet or number, on the first line of a list item. */
+  marker?: { para: Paragraph; x: number; width: number };
+  /** Glyph outlines for the node's strokes, and all glyphs filled to clip them. */
+  strokes?: { outline: Paragraph; glyphs?: Paragraph };
+  /** All glyphs filled, for underlines that skip around them. */
+  inkCut?: Paragraph;
 }
 
 export interface FigmaTextLayout {
@@ -268,26 +318,47 @@ export interface FigmaTextLayout {
   contentHeight: number;
   /** Widest line. */
   contentWidth: number;
-  gradient?: FigmaPaint;
+  /** Fills drawn through glyph masks, one list per distinct run fill. */
+  fills: FigmaPaint[][];
   complete: boolean;
 }
 
-// See apps/docs/figma-to-tldraw/tech.md §6.7.
-function gradientFill(style: FigmaTypeStyle, node: FigmaNode) {
+function isPlainSolid(p: FigmaPaint) {
+  return (
+    p.type === 'SOLID' &&
+    (!p.blendMode || p.blendMode === 'NORMAL' || p.blendMode === 'PASS_THROUGH')
+  );
+}
+
+// See apps/docs/skia-engine/tech.md §11.3.
+function layeredFills(
+  style: FigmaTypeStyle,
+  node: FigmaNode,
+): FigmaPaint[] | undefined {
   const fills = visiblePaints(style.fills ?? node.fills);
-  if (fills.some((p) => p.type === 'SOLID')) {
-    return undefined;
-  }
-  return fills.find((p) => p.type.startsWith('GRADIENT_'));
+  return fills.every(isPlainSolid) ? undefined : fills;
+}
+
+function fillKey(fills: FigmaPaint[]) {
+  return JSON.stringify(fills);
 }
 
 function solidColor(ck: CanvasKit, style: FigmaTypeStyle, node: FigmaNode) {
-  const solid = visiblePaints(style.fills ?? node.fills).find(
-    (p) => p.type === 'SOLID',
-  );
-  return solid?.color
-    ? color4f(ck, solid.color, solid.opacity ?? 1)
-    : ck.TRANSPARENT;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let a = 0;
+  for (const p of visiblePaints(style.fills ?? node.fills)) {
+    if (p.type !== 'SOLID' || !p.color) {
+      continue;
+    }
+    const pa = p.color.a * (p.opacity ?? 1);
+    r = p.color.r * pa + r * (1 - pa);
+    g = p.color.g * pa + g * (1 - pa);
+    b = p.color.b * pa + b * (1 - pa);
+    a = pa + a * (1 - pa);
+  }
+  return a > 0 ? ck.Color4f(r / a, g / a, b / a, a) : ck.TRANSPARENT;
 }
 
 function dropShadows(node: FigmaNode) {
@@ -330,8 +401,33 @@ export function withTextShadows(node: FigmaNode, box: Edges): Edges {
 interface BuildOptions {
   maxLines?: number;
   ellipsis?: boolean;
-  /** 'mask': gradient runs opaque black, others clear. */
-  pass?: 'normal' | 'mask';
+  /** Width of an empty box before the text (first-line indent). */
+  indent?: number;
+  /**
+   * 'mask': runs whose layered fills match `maskKey` (or every run for
+   * `ALL_GLYPHS`) opaque black, others clear. 'stroke': black glyph outlines.
+   */
+  pass?: 'normal' | 'mask' | 'stroke';
+  maskKey?: string;
+  strokeWidth?: number;
+}
+
+const ALL_GLYPHS = '*';
+
+// See apps/docs/skia-engine/tech.md §11.6.
+function textStroke(node: FigmaNode) {
+  const weight = node.strokeWeight ?? 1;
+  if (!visiblePaints(node.strokes).length || weight <= 0) {
+    return undefined;
+  }
+  const align = node.strokeAlign ?? 'OUTSIDE';
+  return { align, width: align === 'CENTER' ? weight : weight * 2 };
+}
+
+/** How far a text node's stroke reaches outside its glyphs. */
+export function textStrokeOutset(node: FigmaNode): number {
+  const stroke = textStroke(node);
+  return stroke && stroke.align !== 'INSIDE' ? stroke.width / 2 : 0;
 }
 
 class TextBuilder {
@@ -365,16 +461,23 @@ class TextBuilder {
     return aliases;
   }
 
-  textStyle(run: Run, pass: BuildOptions['pass']): TextStyle {
+  textStyle(run: Run, opts: BuildOptions): TextStyle {
     const ck = this.ck;
     const style = run.style;
     const font = resolveFont(style);
-    const gradient = gradientFill(style, this.node);
-    let color = solidColor(ck, style, this.node);
-    if (pass === 'mask') {
-      color = gradient ? ck.BLACK : ck.TRANSPARENT;
-    } else if (gradient) {
-      color = ck.TRANSPARENT;
+    const pass = opts.pass;
+    const layered = layeredFills(style, this.node);
+    let color: Color;
+    if (pass === 'stroke') {
+      color = ck.BLACK;
+    } else if (pass === 'mask') {
+      color =
+        opts.maskKey === ALL_GLYPHS ||
+        (layered && fillKey(layered) === opts.maskKey)
+          ? ck.BLACK
+          : ck.TRANSPARENT;
+    } else {
+      color = layered ? ck.TRANSPARENT : solidColor(ck, style, this.node);
     }
     return new ck.TextStyle({
       color,
@@ -388,7 +491,7 @@ class TextBuilder {
       letterSpacing: style.letterSpacing ?? 0,
       fontFeatures:
         style.textCase === 'SMALL_CAPS' ? [{ name: 'smcp', value: 1 }] : [],
-      shadows: pass === 'mask' ? [] : this.shadows,
+      shadows: pass === 'mask' || pass === 'stroke' ? [] : this.shadows,
     });
   }
 
@@ -398,7 +501,7 @@ class TextBuilder {
     const ps = new ck.ParagraphStyle({
       textStyle: this.textStyle(
         { text: ' ', style: base, lineHeight: 0 },
-        opts.pass,
+        opts,
       ),
       applyRoundingHack: false,
       maxLines: opts.maxLines,
@@ -409,20 +512,187 @@ class TextBuilder {
       ps,
       this.res.fonts.getCollection(),
     );
+    if (opts.indent) {
+      b.addPlaceholder(
+        opts.indent,
+        0,
+        ck.PlaceholderAlignment.Baseline,
+        ck.TextBaseline.Alphabetic,
+        0,
+      );
+    }
+    let fg: Paint | undefined;
+    let bg: Paint | undefined;
+    if (opts.pass === 'stroke') {
+      fg = new ck.Paint();
+      fg.setAntiAlias(true);
+      fg.setStyle(ck.PaintStyle.Stroke);
+      fg.setStrokeWidth(opts.strokeWidth ?? 1);
+      fg.setStrokeJoin(
+        this.node.strokeJoin === 'ROUND'
+          ? ck.StrokeJoin.Round
+          : this.node.strokeJoin === 'BEVEL'
+            ? ck.StrokeJoin.Bevel
+            : ck.StrokeJoin.Miter,
+      );
+      fg.setColor(ck.BLACK);
+      bg = new ck.Paint();
+      bg.setColor(ck.TRANSPARENT);
+    }
     for (const r of runs) {
       const s = Math.max(r.start, from);
       const e = Math.min(r.end, to);
       if (e <= s) {
         continue;
       }
-      b.pushStyle(this.textStyle(r, opts.pass));
+      if (fg && bg) {
+        b.pushPaintStyle(this.textStyle(r, opts), fg, bg);
+      } else {
+        b.pushStyle(this.textStyle(r, opts));
+      }
       b.addText(r.text.slice(s - r.start, e - r.start));
       b.pop();
     }
     const p = b.build();
     b.delete();
+    fg?.delete();
+    bg?.delete();
     return p;
   }
+}
+
+// See apps/docs/skia-engine/tech.md §11.4.
+function segmentAt(node: FigmaNode, offset: number) {
+  const segs = node.textSegments ?? [];
+  return (
+    segs.find((seg) => seg.start <= offset && offset < seg.end) ?? segs.at(-1)
+  );
+}
+
+function styleAt(runs: Run[], offset: number): FigmaTypeStyle | undefined {
+  let at = 0;
+  for (const r of runs) {
+    if (offset < at + r.text.length) {
+      return r.style;
+    }
+    at += r.text.length;
+  }
+  return runs.at(-1)?.style;
+}
+
+const LIST_INDENT_EM = 1.5;
+
+function alphaNumber(n: number) {
+  let out = '';
+  for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) {
+    out = String.fromCharCode(97 + ((k - 1) % 26)) + out;
+  }
+  return out;
+}
+
+function romanNumber(n: number) {
+  const digits: [number, string][] = [
+    [1000, 'm'],
+    [900, 'cm'],
+    [500, 'd'],
+    [400, 'cd'],
+    [100, 'c'],
+    [90, 'xc'],
+    [50, 'l'],
+    [40, 'xl'],
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let out = '';
+  let k = n;
+  for (const [v, d] of digits) {
+    for (; k >= v; k -= v) {
+      out += d;
+    }
+  }
+  return out;
+}
+
+// See apps/docs/skia-engine/tech.md §11.5.
+export function listMarker(
+  type: 'ORDERED' | 'UNORDERED',
+  level: number,
+  n: number,
+): string {
+  if (type === 'UNORDERED') {
+    return '•';
+  }
+  const kind = (Math.max(level, 1) - 1) % 3;
+  return `${kind === 1 ? alphaNumber(n) : kind === 2 ? romanNumber(n) : n}.`;
+}
+
+interface ParagraphInfo {
+  start: number;
+  type: 'NONE' | 'ORDERED' | 'UNORDERED';
+  level: number;
+  indent: number;
+  firstIndent: number;
+  spacing: number;
+  listSpacing: number;
+  marker?: { text: string; style: FigmaTypeStyle; unit: number };
+}
+
+// See apps/docs/skia-engine/tech.md §11.4.
+function paragraphInfo(node: FigmaNode, count: number): ParagraphInfo[] {
+  const style = node.style ?? {};
+  const runs = textRuns(node);
+  const chars = (node.characters ?? '').replaceAll('\r', ' ');
+  const out: ParagraphInfo[] = [];
+  const counters: number[] = [];
+  const kinds: string[] = [];
+  let start = 0;
+  for (let i = 0; i < count; i++) {
+    const nl = chars.indexOf('\n', start);
+    const end = nl < 0 ? chars.length : nl;
+    const seg = segmentAt(node, start);
+    const type = node.lineTypes?.[i] ?? 'NONE';
+    const level = node.lineIndentations?.[i] ?? 0;
+    const markerStyle =
+      styleAt(runs, end < chars.length ? end : Math.max(end - 1, start)) ??
+      style;
+    const unit = (markerStyle.fontSize ?? 16) * LIST_INDENT_EM;
+    let marker: ParagraphInfo['marker'];
+    if (type === 'NONE') {
+      counters.length = 0;
+      kinds.length = 0;
+    } else {
+      counters.length = Math.min(counters.length, level + 1);
+      kinds.length = Math.min(kinds.length, level + 1);
+      if (kinds[level] !== type) {
+        counters[level] = 0;
+        kinds[level] = type;
+      }
+      counters[level] = (counters[level] ?? 0) + 1;
+      marker = {
+        text: listMarker(type, level, counters[level]),
+        style: markerStyle,
+        unit,
+      };
+    }
+    out.push({
+      start,
+      type,
+      level,
+      indent: level * unit,
+      firstIndent:
+        type === 'NONE'
+          ? (seg?.paragraphIndent ?? style.paragraphIndent ?? 0)
+          : 0,
+      spacing: seg?.paragraphSpacing ?? style.paragraphSpacing ?? 0,
+      listSpacing: seg?.listSpacing ?? style.listSpacing ?? 0,
+      marker,
+    });
+    start = end + 1;
+  }
+  return out;
 }
 
 export function layoutText(
@@ -451,10 +721,15 @@ export function layoutText(
         ? Math.max(1, Math.floor(h / baseLH))
         : undefined))
     : undefined;
-  const gradient = paras
-    .flat()
-    .map((r) => gradientFill(r.style, node))
-    .find((p) => p !== undefined);
+  const fillSets = new Map<string, FigmaPaint[]>();
+  for (const r of paras.flat()) {
+    const fills = layeredFills(r.style, node);
+    if (fills) {
+      fillSets.set(fillKey(fills), fills);
+    }
+  }
+  const fillKeys = [...fillSets.keys()];
+  const stroke = textStroke(node);
 
   const lines: TextLine[] = [];
   // See apps/docs/skia-engine/tech.md §7.2.
@@ -470,16 +745,21 @@ export function layoutText(
     return baseline;
   };
   let width = 0;
-  let sourceOffset = 0;
-  const spacing = style.paragraphSpacing ?? 0;
   let truncated = false;
+  const infos = paragraphInfo(node, paras.length);
 
   for (const [pi, runs] of paras.entries()) {
     if (truncated) {
       break;
     }
+    const info = infos[pi];
     if (pi > 0) {
-      top += spacing;
+      // See apps/docs/skia-engine/tech.md §11.4.
+      const prev = infos[pi - 1];
+      top +=
+        prev.type !== 'NONE' && info.type !== 'NONE'
+          ? prev.listSpacing
+          : prev.spacing;
     }
     const placed: PlacedRun[] = [];
     let at = 0;
@@ -493,109 +773,196 @@ export function layoutText(
       const baseline = place(baseA, baseD);
       lines.push({
         para: empty,
-        x: 0,
+        masks: [],
+        x: info.indent,
         baseline,
         top: baseline - baseA,
         height: baseA + baseD,
         width: 0,
         decorations: [],
-        sourceStart: sourceOffset,
+        sourceStart: info.start,
       });
-      sourceOffset += 1;
       if (maxLines !== undefined && lines.length >= maxLines) {
         truncated = pi < paras.length - 1;
       }
       continue;
     }
-    const full = builder.build(placed, 0, paraText.length);
-    full.layout(wide ? 1e7 : Math.max(w, 1) + 0.01);
-    const metrics = full.getLineMetrics();
+    // See apps/docs/skia-engine/tech.md §11.4.
+    const full = builder.build(placed, 0, paraText.length, {
+      indent: info.firstIndent,
+    });
+    const shift = info.firstIndent ? 1 : 0;
+    const lsAt = (i: number) =>
+      placed.find((r) => r.start <= i && i < r.end)?.style.letterSpacing ?? 0;
+    const wrapRoom = Math.max(w - info.indent, 1);
+    // See apps/docs/skia-engine/tech.md §11.7.
+    let extra = Math.max(...placed.map((r) => r.style.letterSpacing ?? 0));
+    let metrics = [];
+    for (let attempt = 0; ; attempt++) {
+      full.layout(wide ? 1e7 : wrapRoom + extra + 0.01);
+      metrics = full.getLineMetrics();
+      if (wide || attempt === 3) {
+        break;
+      }
+      const over = metrics.find(
+        (lm) =>
+          lm.width - lsAt(lm.endExcludingWhitespaces - 1 - shift) >
+          wrapRoom + 0.01,
+      );
+      if (!over) {
+        break;
+      }
+      extra = Math.min(
+        extra - 0.01,
+        lsAt(over.endExcludingWhitespaces - 1 - shift),
+      );
+    }
     full.delete();
     for (const [li, lm] of metrics.entries()) {
       const last = maxLines !== undefined && lines.length === maxLines - 1;
       const more = li < metrics.length - 1 || pi < paras.length - 1;
-      const start = lm.startIndex;
-      let end = wide ? lm.endIndex : lm.endExcludingWhitespaces;
+      const start = Math.max(0, lm.startIndex - shift);
+      let end = Math.max(
+        start,
+        (wide ? lm.endIndex : lm.endExcludingWhitespaces) - shift,
+      );
+      const lineIndent = info.indent + (li === 0 ? info.firstIndent : 0);
+      const room = Math.max(w - lineIndent, 1);
       if (last && more) {
         end = paraText.length;
       }
       const inLine = placed.filter(
         (r) => r.end > start && r.start < Math.max(end, start + 1),
       );
+      // See apps/docs/skia-engine/tech.md §11.8.
       let a = baseA;
       let d = baseD;
+      let tallest = -Infinity;
       for (const r of inLine) {
-        if (r.lineHeight > baseLH) {
-          const [ra, rd] = lineHalves(
-            ck,
-            res,
-            r.style,
-            r.lineHeight,
-            builder.aliases(r.style, r.text),
-          );
-          a = Math.max(a, ra);
-          d = Math.max(d, rd);
+        if (r.lineHeight < tallest) {
+          continue;
+        }
+        const [ra, rd] = lineHalves(
+          ck,
+          res,
+          r.style,
+          r.lineHeight,
+          builder.aliases(r.style, r.text),
+        );
+        if (r.lineHeight > tallest || ra > a) {
+          a = ra;
+          d = rd;
+          tallest = r.lineHeight;
         }
       }
-      const para =
-        last && more
-          ? builder.build(placed, start, end, { maxLines: 1, ellipsis: true })
-          : builder.build(placed, start, end);
-      para.layout(last && more ? Math.max(w, 1) + 0.01 : 1e7);
-      const lineWidth =
-        last && more
-          ? (para.getLineMetrics()[0]?.width ?? 0)
-          : para.getMaxIntrinsicWidth();
-      let mask: Paragraph | undefined;
-      if (gradient) {
-        mask =
-          last && more
-            ? builder.build(placed, start, end, {
-                maxLines: 1,
-                ellipsis: true,
-                pass: 'mask',
-              })
-            : builder.build(placed, start, end, { pass: 'mask' });
-        mask.layout(last && more ? Math.max(w, 1) + 0.01 : 1e7);
-      }
+      const ellipsis = last && more;
+      const buildLine = (opts: BuildOptions = {}) => {
+        const p = builder.build(
+          placed,
+          start,
+          end,
+          ellipsis ? { ...opts, maxLines: 1, ellipsis: true } : opts,
+        );
+        p.layout(ellipsis ? room + 0.01 : 1e7);
+        return p;
+      };
+      const para = buildLine();
+      const lineWidth = ellipsis
+        ? (para.getLineMetrics()[0]?.width ?? 0)
+        : para.getMaxIntrinsicWidth();
+      const masks = fillKeys.map((key) => {
+        const used = inLine.some((r) => {
+          const fills = layeredFills(r.style, node);
+          return fills !== undefined && fillKey(fills) === key;
+        });
+        return used ? buildLine({ pass: 'mask', maskKey: key }) : undefined;
+      });
+      const strokes = stroke && {
+        outline: buildLine({ pass: 'stroke', strokeWidth: stroke.width }),
+        glyphs:
+          stroke.align === 'CENTER'
+            ? undefined
+            : buildLine({ pass: 'mask', maskKey: ALL_GLYPHS }),
+      };
       const decorations: Decoration[] = [];
       for (const r of inLine) {
         const deco = r.style.textDecoration;
-        if (deco === 'UNDERLINE' || deco === 'STRIKETHROUGH') {
+        if (deco !== 'UNDERLINE' && deco !== 'STRIKETHROUGH') {
+          continue;
+        }
+        // See apps/docs/skia-engine/tech.md §11.10.
+        const e = Math.min(r.end, end);
+        for (let s = Math.max(r.start, start); s < e;) {
+          const seg = segmentAt(node, info.start + s);
+          const segEnd = seg ? seg.end - info.start : e;
+          const to = segEnd > s ? Math.min(segEnd, e) : e;
           decorations.push({
             kind: deco,
-            start: Math.max(r.start, start) - start,
-            end: Math.min(r.end, end) - start,
+            start: s - start,
+            end: to - start,
             style: r.style,
             aliases: builder.aliases(r.style, r.text),
+            seg,
           });
+          s = to;
         }
       }
+      const inkCut = decorations.some(skipsInk)
+        ? buildLine({ pass: 'mask', maskKey: ALL_GLYPHS })
+        : undefined;
       const x =
-        align === 'CENTER'
-          ? (w - lineWidth) / 2
+        lineIndent +
+        (align === 'CENTER'
+          ? (room - lineWidth) / 2
           : align === 'RIGHT'
-            ? w - lineWidth
-            : 0;
+            ? room - lineWidth
+            : 0);
+      let marker: TextLine['marker'];
+      if (li === 0 && info.marker) {
+        // See apps/docs/skia-engine/tech.md §11.5.
+        const m = info.marker;
+        const mp = builder.build(
+          [
+            {
+              text: m.text,
+              style: m.style,
+              lineHeight: 0,
+              start: 0,
+              end: m.text.length,
+            },
+          ],
+          0,
+          m.text.length,
+        );
+        mp.layout(1e7);
+        const mw = mp.getMaxIntrinsicWidth();
+        marker = { para: mp, x: info.indent - m.unit / 2 - mw / 2, width: mw };
+      }
       const baseline = place(a, d);
       lines.push({
         para,
-        mask,
+        masks,
         x,
         baseline,
         top: baseline - a,
         height: a + d,
         width: lineWidth,
         decorations,
-        sourceStart: sourceOffset + start,
+        sourceStart: info.start + start,
+        marker,
+        strokes,
+        inkCut,
       });
-      width = Math.max(width, lineWidth);
+      // See apps/docs/skia-engine/tech.md §11.7.
+      width = Math.max(
+        width,
+        lineIndent + lineWidth - (end > start ? lsAt(end - 1) : 0),
+      );
       if (last) {
         truncated = more;
         break;
       }
     }
-    sourceOffset += paraText.length + 1;
   }
 
   const contentHeight = top + (lastD ?? 0);
@@ -607,7 +974,7 @@ export function layoutText(
     offset = h - contentHeight;
   } else if (
     (autoResize === 'HEIGHT' || wide) &&
-    Math.abs(h - contentHeight) <= 0.5
+    Math.abs(h - contentHeight) < 0.5
   ) {
     offset = (h - contentHeight) / 2;
   }
@@ -619,9 +986,140 @@ export function layoutText(
     lines,
     contentHeight,
     contentWidth: width,
-    gradient,
+    fills: [...fillSets.values()],
     complete: builder.complete,
   };
+}
+
+// See apps/docs/skia-engine/tech.md §11.10.
+function decorationLength(
+  len: FigmaAutoLength | undefined,
+  size: number,
+  auto: number,
+) {
+  if (len?.unit === 'PIXELS' && len.value !== undefined) {
+    return len.value;
+  }
+  if (len?.unit === 'PERCENT' && len.value !== undefined) {
+    return (len.value / 100) * size;
+  }
+  return auto;
+}
+
+function skipsInk(deco: Decoration) {
+  return deco.kind === 'UNDERLINE' && deco.seg?.textDecorationSkipInk !== false;
+}
+
+/** Top of the line relative to the baseline, and its thickness. */
+function decorationGeometry(ck: CanvasKit, res: Resources, deco: Decoration) {
+  const size = deco.style.fontSize ?? 16;
+  const tf = deco.aliases[0] ? res.fonts.typeface(deco.aliases[0]) : undefined;
+  const font = tf ? new ck.Font(tf, size) : undefined;
+  const m = font?.getMetrics();
+  font?.delete();
+  if (deco.kind === 'UNDERLINE') {
+    const auto = m?.underlineThickness ?? size / 14;
+    const thickness = decorationLength(
+      deco.seg?.textDecorationThickness,
+      size,
+      auto,
+    );
+    const top = decorationLength(
+      deco.seg?.textDecorationOffset,
+      size,
+      (m?.underlinePosition ?? size / 10) + auto / 2,
+    );
+    return { top, thickness, auto };
+  }
+  const auto = m?.strikeoutThickness ?? size / 14;
+  const thickness = decorationLength(
+    deco.seg?.textDecorationThickness,
+    size,
+    auto,
+  );
+  const center = (m?.strikeoutPosition ?? -size * 0.3) + auto / 2;
+  return { top: center - thickness / 2, thickness, auto };
+}
+
+function decorationColor(ck: CanvasKit, node: FigmaNode, deco: Decoration) {
+  const value = deco.seg?.textDecorationColor?.value;
+  if (value && value !== 'AUTO' && value.type === 'SOLID' && value.color) {
+    return ck.Color4f(
+      value.color.r,
+      value.color.g,
+      value.color.b,
+      (value.color.a ?? 1) * (value.opacity ?? 1),
+    );
+  }
+  return solidColor(ck, deco.style, node);
+}
+
+const WAVE_LENGTH = 3.5;
+
+/** Draws one decoration and returns the band it covers and its skip-ink padding. */
+function drawDecoration(
+  ck: CanvasKit,
+  canvas: Canvas,
+  res: Resources,
+  node: FigmaNode,
+  line: TextLine,
+  deco: Decoration,
+  d: Disposer,
+  lsShift: number,
+) {
+  const rects = line.para.getRectsForRange(
+    deco.start,
+    deco.end,
+    ck.RectHeightStyle.Tight,
+    ck.RectWidthStyle.Tight,
+  );
+  if (!rects.length) {
+    return undefined;
+  }
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const r of rects) {
+    x0 = Math.min(x0, r.rect[0]);
+    x1 = Math.max(x1, r.rect[2]);
+  }
+  x0 += line.x + lsShift;
+  x1 += line.x + lsShift;
+  const { top, thickness: t, auto } = decorationGeometry(ck, res, deco);
+  const y = line.baseline + top;
+  const p = d.keep(new ck.Paint());
+  p.setAntiAlias(true);
+  p.setColor(decorationColor(ck, node, deco));
+  const style = deco.seg?.textDecorationStyle ?? 'SOLID';
+  if (style === 'DOTTED') {
+    const b = new ck.PathBuilder();
+    for (let cx = x0 + t / 2; cx <= x1 - t / 2 + 0.01; cx += 2 * t) {
+      b.addOval(ck.XYWHRect(cx - t / 2, y, t, t));
+    }
+    canvas.drawPath(d.keep(b.detachAndDelete()), p);
+  } else if (style === 'WAVY') {
+    const b = new ck.PathBuilder();
+    const amp = t / 2;
+    const width = (t * 2) / 3;
+    const k = (2 * Math.PI) / (WAVE_LENGTH * t);
+    const cy = y + t / 2;
+    b.moveTo(x0, cy + amp);
+    for (let x = x0 + 0.25; x < x1; x += 0.25) {
+      b.lineTo(x, cy + amp * Math.cos(k * (x - x0)));
+    }
+    b.lineTo(x1, cy + amp * Math.cos(k * (x1 - x0)));
+    p.setStyle(ck.PaintStyle.Stroke);
+    p.setStrokeWidth(width);
+    p.setStrokeCap(ck.StrokeCap.Round);
+    canvas.drawPath(d.keep(b.detachAndDelete()), p);
+    return {
+      top: cy - amp - width / 2,
+      bottom: cy + amp + width / 2,
+      pad: auto,
+    };
+  } else {
+    canvas.drawRect(ck.LTRBRect(x0, y, x1, y + t), p);
+  }
+  return { top: y, bottom: y + t, pad: auto };
 }
 
 function drawDecorations(
@@ -634,50 +1132,51 @@ function drawDecorations(
   lsShift: number,
 ) {
   for (const deco of line.decorations) {
-    const rects = line.para.getRectsForRange(
-      deco.start,
-      deco.end,
-      ck.RectHeightStyle.Tight,
-      ck.RectWidthStyle.Tight,
-    );
-    if (!rects.length) {
+    const glyphs = line.inkCut;
+    if (!glyphs || !skipsInk(deco)) {
+      drawDecoration(ck, canvas, res, node, line, deco, d, lsShift);
       continue;
     }
-    let x0 = Infinity;
-    let x1 = -Infinity;
-    for (const r of rects) {
-      x0 = Math.min(x0, r.rect[0]);
-      x1 = Math.max(x1, r.rect[2]);
+    // See apps/docs/skia-engine/tech.md §11.10.
+    canvas.saveLayer();
+    const band = drawDecoration(ck, canvas, res, node, line, deco, d, lsShift);
+    if (band) {
+      const out = d.keep(new ck.Paint());
+      out.setBlendMode(ck.BlendMode.DstOut);
+      out.setImageFilter(
+        d.keep(
+          ck.ImageFilter.MakeDilate(
+            band.pad,
+            band.bottom - band.top + band.pad / 4,
+            null,
+          ),
+        ),
+      );
+      canvas.saveLayer(out);
+      canvas.clipRect(
+        ck.LTRBRect(
+          -1e5,
+          band.top - band.pad / 4,
+          1e5,
+          band.bottom + band.pad / 4,
+        ),
+        ck.ClipOp.Intersect,
+        true,
+      );
+      canvas.drawParagraph(
+        glyphs,
+        line.x + lsShift,
+        paragraphTop(line.baseline, glyphs),
+      );
+      canvas.restore();
     }
-    const size = deco.style.fontSize ?? 16;
-    const tf = deco.aliases[0]
-      ? res.fonts.typeface(deco.aliases[0])
-      : undefined;
-    const font = tf ? new ck.Font(tf, size) : undefined;
-    const m = font?.getMetrics();
-    font?.delete();
-    let y: number;
-    let thickness: number;
-    if (deco.kind === 'UNDERLINE') {
-      thickness = m?.underlineThickness ?? size / 14;
-      y = line.baseline + (m?.underlinePosition ?? size / 10) + thickness / 2;
-    } else {
-      thickness = m?.strikeoutThickness ?? size / 14;
-      y = line.baseline + (m?.strikeoutPosition ?? -size * 0.3);
-    }
-    const p = d.keep(new ck.Paint());
-    p.setAntiAlias(true);
-    p.setColor(solidColor(ck, deco.style, node));
-    canvas.drawRect(
-      ck.LTRBRect(
-        line.x + x0 + lsShift,
-        y,
-        line.x + x1 + lsShift,
-        y + thickness,
-      ),
-      p,
-    );
+    canvas.restore();
   }
+}
+
+// See apps/docs/skia-engine/tech.md §11.11.
+function paragraphTop(baseline: number, para: Paragraph) {
+  return baseline - Math.round(para.getAlphabeticBaseline());
 }
 
 /** Draws a laid-out text box in its local space. */
@@ -687,72 +1186,117 @@ export function drawText(
   res: Resources,
   node: FigmaNode,
   layout: FigmaTextLayout,
-  w: number,
-  h: number,
+  src: PaintSource,
   d: Disposer,
 ) {
+  const shift = -(node.style?.letterSpacing ?? 0) / 2;
   for (const line of layout.lines) {
-    const ls = node.style?.letterSpacing ?? 0;
-    const shift = -ls / 2;
     canvas.drawParagraph(
       line.para,
       line.x + shift,
-      line.baseline - line.para.getAlphabeticBaseline(),
+      paragraphTop(line.baseline, line.para),
     );
-    drawDecorations(ck, canvas, res, node, line, d, shift);
-  }
-  const gradient = layout.gradient;
-  if (!gradient) {
-    return;
-  }
-  const g = gradientMatrix(gradient, w, h);
-  const stops = gradient.gradientStops ?? [];
-  const colors = stops.map((s) => color4f(ck, s.color));
-  const pos = stops.map((s) => s.position);
-  const m = [g[0][0], g[0][1], g[0][2], g[1][0], g[1][1], g[1][2], 0, 0, 1];
-  const shader =
-    gradient.type === 'GRADIENT_RADIAL'
-      ? ck.Shader.MakeRadialGradient(
-          [0, 0],
-          1,
-          colors,
-          pos,
-          ck.TileMode.Clamp,
-          m,
-        )
-      : gradient.type === 'GRADIENT_ANGULAR'
-        ? ck.Shader.MakeSweepGradient(0, 0, colors, pos, ck.TileMode.Clamp, m)
-        : ck.Shader.MakeLinearGradient(
-            [0, 0],
-            [1, 0],
-            colors,
-            pos,
-            ck.TileMode.Clamp,
-            m,
-          );
-  d.keep(shader);
-  canvas.saveLayer();
-  for (const line of layout.lines) {
-    if (line.mask) {
-      const ls = node.style?.letterSpacing ?? 0;
+    const m = line.marker;
+    if (m) {
       canvas.drawParagraph(
-        line.mask,
-        line.x - ls / 2,
-        line.baseline - line.mask.getAlphabeticBaseline(),
+        m.para,
+        m.x + shift,
+        paragraphTop(line.baseline, m.para),
       );
     }
+    drawDecorations(ck, canvas, res, node, line, d, shift);
   }
-  const p = d.keep(new ck.Paint());
-  p.setShader(shader);
-  p.setAlphaf(gradient.opacity ?? 1);
-  p.setBlendMode(ck.BlendMode.SrcIn);
-  canvas.drawPaint(p);
-  canvas.restore();
+  // See apps/docs/skia-engine/tech.md §11.3.
+  layout.fills.forEach((fills, k) => {
+    for (const fill of fills) {
+      const p = skiaPaint(ck, fill, src, res, d);
+      if (!p) {
+        continue;
+      }
+      p.setBlendMode(ck.BlendMode.SrcIn);
+      const layer = d.keep(new ck.Paint());
+      const blend = skiaBlend(ck, fill.blendMode);
+      if (blend) {
+        layer.setBlendMode(blend);
+      }
+      canvas.saveLayer(layer);
+      for (const line of layout.lines) {
+        const mask = line.masks[k];
+        if (mask) {
+          canvas.drawParagraph(
+            mask,
+            line.x + shift,
+            paragraphTop(line.baseline, mask),
+          );
+        }
+      }
+      canvas.drawPaint(p);
+      canvas.restore();
+    }
+  });
+  drawStrokes(ck, canvas, res, node, layout, src, d, shift);
+}
+
+// See apps/docs/skia-engine/tech.md §11.6.
+function drawStrokes(
+  ck: CanvasKit,
+  canvas: Canvas,
+  res: Resources,
+  node: FigmaNode,
+  layout: FigmaTextLayout,
+  src: PaintSource,
+  d: Disposer,
+  shift: number,
+) {
+  const draw = (pick: (line: TextLine) => Paragraph | undefined) => {
+    for (const line of layout.lines) {
+      const para = pick(line);
+      if (para) {
+        canvas.drawParagraph(
+          para,
+          line.x + shift,
+          paragraphTop(line.baseline, para),
+        );
+      }
+    }
+  };
+  const align = node.strokeAlign ?? 'OUTSIDE';
+  for (const stroke of visiblePaints(node.strokes)) {
+    const p = skiaPaint(ck, stroke, src, res, d);
+    if (!p) {
+      continue;
+    }
+    p.setBlendMode(ck.BlendMode.SrcIn);
+    const layer = d.keep(new ck.Paint());
+    const blend = skiaBlend(ck, stroke.blendMode);
+    if (blend) {
+      layer.setBlendMode(blend);
+    }
+    canvas.saveLayer(layer);
+    draw((line) => line.strokes?.outline);
+    if (align !== 'CENTER') {
+      const cut = d.keep(new ck.Paint());
+      cut.setBlendMode(
+        align === 'OUTSIDE' ? ck.BlendMode.DstOut : ck.BlendMode.DstIn,
+      );
+      canvas.saveLayer(cut);
+      draw((line) => line.strokes?.glyphs);
+      canvas.restore();
+    }
+    canvas.drawPaint(p);
+    canvas.restore();
+  }
 }
 
 export function disposeLayout(layout: FigmaTextLayout) {
   for (const line of layout.lines) {
     line.para.delete();
-    line.mask?.delete();
+    line.marker?.para.delete();
+    line.strokes?.outline.delete();
+    line.strokes?.glyphs?.delete();
+    line.inkCut?.delete();
+    for (const mask of line.masks) {
+      mask?.delete();
+    }
   }
 }

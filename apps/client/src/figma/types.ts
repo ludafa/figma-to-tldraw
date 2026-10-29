@@ -116,7 +116,28 @@ export interface FigmaTypeStyle {
   lineHeightUnit?: 'PIXELS' | 'FONT_SIZE_%' | 'INTRINSIC_%';
   paragraphSpacing?: number;
   paragraphIndent?: number;
+  listSpacing?: number;
   fills?: FigmaPaint[];
+}
+
+/** A length that Figma can also leave on "auto". */
+export interface FigmaAutoLength {
+  unit: 'AUTO' | 'PIXELS' | 'PERCENT';
+  value?: number;
+}
+
+// See apps/docs/skia-engine/tech.md §11.4.
+export interface FigmaTextSegment {
+  start: number;
+  end: number;
+  paragraphSpacing?: number;
+  paragraphIndent?: number;
+  listSpacing?: number;
+  textDecorationStyle?: 'SOLID' | 'WAVY' | 'DOTTED';
+  textDecorationOffset?: FigmaAutoLength;
+  textDecorationThickness?: FigmaAutoLength;
+  textDecorationColor?: { value: 'AUTO' | FigmaPaint };
+  textDecorationSkipInk?: boolean;
 }
 
 export interface FigmaArcData {
@@ -196,6 +217,10 @@ export interface FigmaNode extends FigmaLayoutProps {
   style?: FigmaTypeStyle;
   characterStyleOverrides?: number[];
   styleOverrideTable?: Record<string, FigmaTypeStyle>;
+  /** Not in REST: per-range text properties the plugin exports (`snapshot.textSegments`). */
+  textSegments?: FigmaTextSegment[];
+  lineTypes?: ('NONE' | 'ORDERED' | 'UNORDERED')[];
+  lineIndentations?: number[];
   styles?: Record<string, string>;
   /** Instances: the main component's node id. */
   componentId?: string;
@@ -284,6 +309,7 @@ export interface Snapshot {
   };
   svgs: Record<string, string>;
   transforms?: Record<string, NodeTransform>;
+  textSegments?: Record<string, FigmaTextSegment[]>;
   /** Main components (or whole component sets) the page's instances use, by node id. */
   mains?: Record<string, FigmaNode>;
 }

@@ -14,6 +14,7 @@ import {
   drawText,
   type FigmaTextLayout,
   layoutText,
+  textStrokeOutset,
   withTextShadows,
 } from '../skia/text';
 import { FigmaShapeUtil, layerBlurSigma } from './base';
@@ -57,7 +58,7 @@ function lineExtent(layout: FigmaTextLayout): CachedExtent['box'] {
   let r = -Infinity;
   let b = -Infinity;
   for (const line of layout.lines) {
-    l = Math.min(l, line.x);
+    l = Math.min(l, line.x, line.marker?.x ?? line.x);
     r = Math.max(r, line.x + line.width);
     t = Math.min(t, line.top);
     b = Math.max(b, line.top + line.height);
@@ -146,7 +147,8 @@ export class FigmaTextShapeUtil extends FigmaShapeUtil<'figma-text'> {
     let b = h;
     const box = this.getExtent(shape);
     if (box) {
-      const size = 4 + (node.style?.fontSize ?? 16) * 0.5;
+      const size =
+        4 + (node.style?.fontSize ?? 16) * 0.5 + textStrokeOutset(node);
       l = Math.min(l, box.l - size);
       r = Math.max(r, box.r + size);
       t = Math.min(t, box.t - size);
@@ -175,13 +177,14 @@ export class FigmaTextShapeUtil extends FigmaShapeUtil<'figma-text'> {
   }
 
   paint(shape: FigmaShape<'figma-text'>, ctx: PaintContext) {
-    const { w, h, node } = shape.props;
+    const { w, h, node, images, imageSizes } = shape.props;
     if (node.isMask) {
       return;
     }
     const layout = this.getLayout(shape);
+    const src = { w, h, images, imageSizes, scale: ctx.scale };
     this.withFlip(shape, ctx, () =>
-      drawText(ctx.ck, ctx.canvas, ctx.resources, node, layout, w, h, ctx),
+      drawText(ctx.ck, ctx.canvas, ctx.resources, node, layout, src, ctx),
     );
   }
 }

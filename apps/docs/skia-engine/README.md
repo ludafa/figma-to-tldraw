@@ -1,7 +1,7 @@
 ---
 name: skia-engine
 title: 自研 Skia 画面引擎
-description: 用自己写的 CanvasKit（Skia 编译成 WebAssembly，跑在 WebGL 上）画面引擎替换 tldraw：apps/client/src/engine/ 里和 tldraw 同名同用法的 API（Editor、ShapeUtil、createShapeId、getIndices、StateNode、react / computed / atom、useEditor / useValue、<SkiaCanvas> 对应 <Tldraw>）；自己的信号、store、撤销历史、分数索引、几何；渲染层（canvaskit.ts 加载、fonts.ts 按 @font-face 懒加载字体和共用的 FontCollection、resources.ts 图片（浏览器 createImageBitmap 解码、按内容去重、按缩放取 1/2^k 的档位，image-size.ts）和 SVG 缓存、svg.ts 把 Figma 导出的 SVG 翻成 Skia 绘制、瓦片缓存、选框层）；Figma 图形的 Skia 画法（figma/skia/：填充、渐变、图片、描边、虚线、阴影、背景模糊、文字按 Figma 规则逐行放基线、font-metrics.json 和生成它的 scripts/font-metrics.ts）；还原度目标（每个用例差异 < 1%）和 4 项操作 ≥ 60fps 的性能目标与测法（scripts/bench.ts，也能测 /demo）；总览 Demo 页 /demo（全部 175 个用例、22100 个图形铺在一张画布上，?copies=N 重复，demo/layout.ts、demo/load.ts、标签层）。改画面引擎、查渲染和 Figma 不一致、查卡顿或内存（wasm 堆涨满）、改 /demo 时来读。
+description: 用自己写的 CanvasKit（Skia 编译成 WebAssembly，跑在 WebGL 上）画面引擎替换 tldraw：apps/client/src/engine/ 里和 tldraw 同名同用法的 API（Editor、ShapeUtil、createShapeId、getIndices、StateNode、react / computed / atom、useEditor / useValue、<SkiaCanvas> 对应 <Tldraw>）；自己的信号、store、撤销历史、分数索引、几何；渲染层（canvaskit.ts 加载、fonts.ts 按 @font-face 懒加载字体和共用的 FontCollection、resources.ts 图片（浏览器 createImageBitmap 解码、按内容去重、按缩放取 1/2^k 的档位，image-size.ts）和 SVG 缓存、svg.ts 把 Figma 导出的 SVG 翻成 Skia 绘制、瓦片缓存、选框层）；Figma 图形的 Skia 画法（figma/skia/：填充、渐变、图片、描边、虚线、阴影、背景模糊、文字按 Figma 规则逐行放基线、font-metrics.json 和生成它的 scripts/font-metrics.ts）；混合样式文字（每行按段取行高、各字体的自动行高、多种填充、列表符号、首行缩进、文字描边、字间距断行、下划线的波浪线 / 点线 / 粗细 / 偏移 / 跳过下伸部分，插件导出的 textSegments，插件 text-mixed/* 22 个用例）；还原度目标（每个用例差异 < 1%）和 4 项操作 ≥ 60fps 的性能目标与测法（scripts/bench.ts，也能测 /demo）；总览 Demo 页 /demo（全部 175 个用例、22100 个图形铺在一张画布上，?copies=N 重复，demo/layout.ts、demo/load.ts、标签层）。改画面引擎、查渲染和 Figma 不一致、查卡顿或内存（wasm 堆涨满）、改 /demo 时来读。
 changes: [2026-10-27, 2026-10-28]
 status: 已上线
 code:
@@ -24,6 +24,8 @@ code:
 
 2026-10-28 提交前按 code review 修了 14 处：撤销历史（`run` 的历史模式、`bailToMark`）、文字工具进编辑状态、切页时的镜头、拖动抬起的定时器、信号和 store 的 O(N²)、总览跟着内容扩大、WebGL 句柄、Linear Dodge 混合、多画布的键盘、漏掉的文字投影等（[plan.md](plan.md) 最后一节）。
 
+2026-10-28～10-29 攻混合样式文字（用户追加）：插件加了 `text-mixed/*` 用例，修了换字体的自动行高、多种填充、首行缩进和按段的段间距、列表符号、文字描边、字间距断行、按段取行高、首字母大写、装饰线样式；顺带查出 Skia 段落里的基线是取整过的，原来所有文字都偏开小数部分，改了以后全量 197 个用例平均 0.091%，原来的 175 个没有一个变差（[tech.md §11](tech.md#11-混合样式文字2026-10-28用户追加)）。
+
 ## 关键决定
 
 - 自研引擎的 API 和 tldraw 保持一致（`Editor`、`ShapeUtil`、`StateNode`、`createShapeId`、`getIndices`、`react` / `computed` 等），这样 `figma/editing/` 里 3000 多行编辑代码和它们的测试只换 import 就能复用（用户拍板"保持与 tldraw 一致的 api 设计"，见 [tech.md §1](tech.md#1-选型2026-10-27)）
@@ -39,6 +41,8 @@ code:
 - 所有段落共用一个 `FontCollection`，变量轴只给可变字体：原来每建一个段落都克隆一份字体，`/demo` 上 wasm 堆涨满 2GB（2026-10-28，见 [tech.md §5.2](tech.md#52-字体enginerenderfontsts)）
 - 瓦片按 128 × 128 的片补画，每片 `flush` 一次，脏块和新瓦片共用每帧 8ms 预算，缩放中只给 40%（2026-10-28，见 [tech.md §5.5](tech.md#55-瓦片缓存2026-10-27)）
 - `/demo` 打开要十几秒是快照 JSON 太大，现阶段接受，以后单独做 JSON 体积优化（用户确认，2026-10-28，见 [product.md §7](product.md#7-总览-demo-页-demo2026-10-27用户追加)）
+- 放段落时按 Skia 取整后的基线（`round(getAlphabeticBaseline())`）对齐：原来按没取整的值，字形偏开 0.3～0.5px，2 倍图上差一行像素（2026-10-29，见 [tech.md §11.11](tech.md#1111-skia-段落里的基线是取整过的2026-10-29)）
+- 文字的段落属性和装饰线设置从插件导出的 `textSegments` 读，REST 格式里没有（2026-10-28，见 [tech.md §11.4](tech.md#114-段落属性插件导出的-textsegments2026-10-28)）
 - 中途不问用户，技术选择自己定，定了写进文档（用户拍板）
 
 ## 文件
