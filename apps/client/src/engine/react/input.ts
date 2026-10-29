@@ -12,6 +12,7 @@ import {
   type TLUiActionsContextType,
   type TLUiToolsContextType,
 } from './actions';
+import { wheelUnit } from './wheel';
 
 // See apps/docs/skia-engine/tech.md §6.
 
@@ -197,7 +198,7 @@ export function bindInput(
       return;
     }
     e.preventDefault();
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    const unit = wheelUnit(e.deltaMode);
     const dx = e.deltaX * unit;
     const dy = e.deltaY * unit;
     if (e.ctrlKey || e.metaKey) {

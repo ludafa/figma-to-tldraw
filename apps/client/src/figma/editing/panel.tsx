@@ -45,9 +45,11 @@ import {
 import {
   ColorField,
   FIELD,
+  isMergingSteps,
   MIXED,
   NumberField,
   round,
+  stepBase,
   Row,
   same,
   Section,
@@ -74,7 +76,7 @@ interface Item {
 
 type NodeFn = (node: FigmaNode, shape: FigmaShape) => FigmaNode;
 
-/** Every call is one undo step, except `merge` calls (a color drag). */
+// See apps/docs/figma-to-tldraw/tech.md §13.4.
 function actions(editor: Editor, items: Item[]) {
   const current = () =>
     items.flatMap(({ shape }) => {
@@ -83,7 +85,7 @@ function actions(editor: Editor, items: Item[]) {
     });
   return {
     nodes(fn: NodeFn, merge = false) {
-      if (!merge) {
+      if (!merge && !isMergingSteps()) {
         editor.markHistoryStoppingPoint('figma panel');
       }
       const updates = current().flatMap((s) => {
@@ -97,11 +99,15 @@ function actions(editor: Editor, items: Item[]) {
       }
     },
     shapes(fn: (s: FigmaShape) => TLShapePartial<FigmaShape>) {
-      editor.markHistoryStoppingPoint('figma panel');
+      if (!isMergingSteps()) {
+        editor.markHistoryStoppingPoint('figma panel');
+      }
       editor.updateShapes(current().map(fn));
     },
     mark() {
-      editor.markHistoryStoppingPoint('figma panel');
+      if (!isMergingSteps()) {
+        editor.markHistoryStoppingPoint('figma panel');
+      }
     },
   };
 }
@@ -987,6 +993,18 @@ function TextSection({ items, act }: { items: Item[]; act: Actions }) {
             if (auto || (Number.isFinite(px) && px > 0)) {
               act.nodes((n) => setLineHeight(n, auto ? 'auto' : px));
             }
+          }}
+          onStep={(delta, typed) => {
+            const base = stepBase(
+              typed,
+              typeof lineHeight === 'string' ? Number(lineHeight) : undefined,
+            );
+            if (base === undefined || !Number.isFinite(base)) {
+              return false;
+            }
+            const px = Math.max(1, round(base + delta));
+            act.nodes((n) => setLineHeight(n, px));
+            return true;
           }}
         />
         <NumberField

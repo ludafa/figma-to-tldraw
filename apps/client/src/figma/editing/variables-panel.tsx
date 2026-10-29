@@ -22,6 +22,7 @@ import {
 import {
   ColorField,
   FIELD,
+  isMergingSteps,
   NumberField,
   Section,
   SelectField,
@@ -254,7 +255,7 @@ function ValueCell({
   const raw = variable.valuesByMode[modeId];
   const modes: FigmaVariableModes = { [variable.variableCollectionId]: modeId };
   const write = (value: FigmaVariableValue, merge = false) => {
-    if (!merge) {
+    if (!merge && !isMergingSteps()) {
       editor.markHistoryStoppingPoint('variable value');
     }
     setVariableValue(editor, variable.id, modeId, value);
