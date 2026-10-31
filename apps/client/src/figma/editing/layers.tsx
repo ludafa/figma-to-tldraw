@@ -48,6 +48,7 @@ import {
 import { isFigmaShape, type FigmaShape } from '../shape-types';
 import { isAutoLayout } from './auto-layout';
 import { isComponentLike } from './instances';
+import { VariablesButton } from './variables-panel';
 
 // See apps/docs/figma-to-tldraw/tech.md §14.2.
 
@@ -385,9 +386,10 @@ export function LayerTree({ editor }: { editor: Editor }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <PageTabs editor={editor} />
-      <h2 className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
-        图层
-      </h2>
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
+        <h2 className="text-xs font-medium text-muted-foreground">图层</h2>
+        <VariablesButton editor={editor} />
+      </div>
       <div
         role="tree"
         aria-label="图层"

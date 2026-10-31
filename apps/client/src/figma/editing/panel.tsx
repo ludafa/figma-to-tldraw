@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type CSSProperties, type ReactNode, useState } from 'react';
 
 import {
   DefaultStylePanel,
@@ -8,9 +8,9 @@ import {
   useEditor,
   useValue,
 } from '../../engine';
+import { rgba } from '../geometry';
 import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type {
-  FigmaColor,
   FigmaEffect,
   FigmaLayoutConstraint,
   FigmaLayoutSizing,
@@ -23,6 +23,7 @@ import {
   figmaComponentHooks,
   isFigmaEditing,
   isGroup,
+  markUserResize,
   resizedNode,
   setSizing,
 } from './engine';
@@ -42,6 +43,24 @@ import {
   setProperty,
   shapeByNodeId,
 } from './instances';
+import type { LocalImage } from './paint-edit';
+import type { PaintTarget } from './paint-library';
+import { PaintPopover } from './paint-popover';
+import {
+  ColorField,
+  FIELD,
+  isMergingSteps,
+  MIXED,
+  NumberField,
+  round,
+  stepBase,
+  Row,
+  same,
+  Section,
+  SelectField,
+  type Shown,
+  TextField,
+} from './panel-fields';
 import {
   setFills,
   setLayoutMode,
@@ -50,55 +69,9 @@ import {
   setStrokeWeight,
   setTextStyle,
 } from './panel-ops';
+import { BoundVariablesSection, VariableModesSection } from './variables-panel';
 
 // See apps/docs/figma-to-tldraw/tech.md §13.4.
-
-const MIXED = Symbol('mixed');
-type Shown<T> = T | typeof MIXED | undefined;
-
-function same<T>(values: (T | typeof MIXED)[]): Shown<T> {
-  if (!values.length) {
-    return undefined;
-  }
-  if (values.includes(MIXED)) {
-    return MIXED;
-  }
-  const first = JSON.stringify(values[0]);
-  return values.every((v) => JSON.stringify(v) === first)
-    ? (values[0] as T)
-    : MIXED;
-}
-
-function round(v: number): number {
-  return Math.round(v * 100) / 100;
-}
-
-function toHex(c: FigmaColor | undefined): string {
-  if (!c) {
-    return '#000000';
-  }
-  return `#${[c.r, c.g, c.b]
-    .map((v) =>
-      Math.round(v * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
-}
-
-function fromHex(hex: string, a: number): FigmaColor | undefined {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) {
-    return undefined;
-  }
-  const n = Number.parseInt(m[1], 16);
-  return {
-    r: ((n >> 16) & 255) / 255,
-    g: ((n >> 8) & 255) / 255,
-    b: (n & 255) / 255,
-    a,
-  };
-}
 
 interface Item {
   shape: FigmaShape;
@@ -107,7 +80,7 @@ interface Item {
 
 type NodeFn = (node: FigmaNode, shape: FigmaShape) => FigmaNode;
 
-/** Every call is one undo step, except `merge` calls (a color drag). */
+// See apps/docs/figma-to-tldraw/tech.md §13.4.
 function actions(editor: Editor, items: Item[]) {
   const current = () =>
     items.flatMap(({ shape }) => {
@@ -116,7 +89,7 @@ function actions(editor: Editor, items: Item[]) {
     });
   return {
     nodes(fn: NodeFn, merge = false) {
-      if (!merge) {
+      if (!merge && !isMergingSteps()) {
         editor.markHistoryStoppingPoint('figma panel');
       }
       const updates = current().flatMap((s) => {
@@ -130,42 +103,19 @@ function actions(editor: Editor, items: Item[]) {
       }
     },
     shapes(fn: (s: FigmaShape) => TLShapePartial<FigmaShape>) {
-      editor.markHistoryStoppingPoint('figma panel');
+      if (!isMergingSteps()) {
+        editor.markHistoryStoppingPoint('figma panel');
+      }
       editor.updateShapes(current().map(fn));
     },
     mark() {
-      editor.markHistoryStoppingPoint('figma panel');
+      if (!isMergingSteps()) {
+        editor.markHistoryStoppingPoint('figma panel');
+      }
     },
   };
 }
 type Actions = ReturnType<typeof actions>;
-
-const FIELD =
-  'flex h-6 min-w-0 items-center gap-1 rounded-sm bg-black/[0.04] px-1.5 focus-within:ring-1 focus-within:ring-[var(--color-selected,#2f80ed)]';
-
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-t border-black/10 px-3 py-2">
-      <div className="mb-1.5 flex h-5 items-center justify-between font-semibold">
-        <span>{title}</span>
-        {action}
-      </div>
-      <div className="flex flex-col gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-function Row({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 gap-1.5">{children}</div>;
-}
 
 function IconButton({
   label,
@@ -181,143 +131,11 @@ function IconButton({
       type="button"
       title={label}
       aria-label={label}
-      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-black/60 hover:bg-black/[0.06]"
+      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground/60 hover:bg-foreground/[0.06]"
       onClick={onClick}
     >
       {children}
     </button>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  placeholder,
-  disabled,
-  onCommit,
-  onStep,
-}: {
-  label?: ReactNode;
-  value: string;
-  placeholder?: string;
-  disabled?: boolean;
-  onCommit: (text: string) => void;
-  onStep?: (delta: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = (text: string) => {
-    setDraft(null);
-    if (text.trim() !== '' && text !== value) {
-      onCommit(text.trim());
-    }
-  };
-  return (
-    <label className={`${FIELD} ${disabled ? 'opacity-50' : ''}`}>
-      {label !== undefined && (
-        <span className="shrink-0 text-black/45">{label}</span>
-      )}
-      <input
-        className="w-full min-w-0 bg-transparent outline-none"
-        value={draft ?? value}
-        placeholder={placeholder}
-        disabled={disabled}
-        onFocus={(e) => {
-          setDraft(value);
-          e.currentTarget.select();
-        }}
-        onChange={(e) => setDraft(e.currentTarget.value)}
-        onBlur={(e) => commit(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.currentTarget.blur();
-          } else if (onStep && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-            e.preventDefault();
-            setDraft(null);
-            onStep((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
-          }
-        }}
-      />
-    </label>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  disabled,
-  min,
-  scale = 1,
-  onCommit,
-}: {
-  label: ReactNode;
-  value: Shown<number>;
-  disabled?: boolean;
-  min?: number;
-  scale?: number;
-  onCommit: (v: number) => void;
-}) {
-  const shown = typeof value === 'number' ? round(value * scale) : undefined;
-  const commit = (v: number) => onCommit(Math.max(min ?? -Infinity, v) / scale);
-  return (
-    <TextField
-      label={label}
-      value={shown === undefined ? '' : String(shown)}
-      placeholder={value === MIXED ? '混合' : ''}
-      disabled={disabled}
-      onCommit={(text) => {
-        const v = Number(text);
-        if (Number.isFinite(v)) {
-          commit(v);
-        }
-      }}
-      onStep={(delta) => commit((shown ?? 0) + delta)}
-    />
-  );
-}
-
-function SelectField<T extends string | number>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label?: string;
-  value: Shown<T>;
-  options: [T, string][];
-  onChange: (v: T) => void;
-}) {
-  const known = options.some(([v]) => v === value);
-  return (
-    <label className={FIELD}>
-      {label && <span className="shrink-0 text-black/45">{label}</span>}
-      <select
-        className="w-full min-w-0 bg-transparent outline-none"
-        value={known ? String(value) : ''}
-        onChange={(e) => {
-          const hit = options.find(
-            ([v]) => String(v) === e.currentTarget.value,
-          );
-          if (hit) {
-            onChange(hit[0]);
-          }
-        }}
-      >
-        {!known && (
-          <option value="" disabled>
-            {value === MIXED
-              ? '混合'
-              : value === undefined
-                ? ''
-                : String(value)}
-          </option>
-        )}
-        {options.map(([v, text]) => (
-          <option key={String(v)} value={String(v)}>
-            {text}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -331,59 +149,17 @@ function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex h-6 rounded-sm bg-black/[0.04] p-0.5">
+    <div className="flex h-6 rounded-sm bg-foreground/[0.04] p-0.5">
       {options.map(([v, text]) => (
         <button
           key={v}
           type="button"
-          className={`flex-1 rounded-[3px] ${v === value ? 'bg-white shadow-sm' : 'text-black/55 hover:text-black'}`}
+          className={`flex-1 rounded-[3px] ${v === value ? 'bg-background shadow-sm dark:bg-foreground/15' : 'text-foreground/55 hover:text-foreground'}`}
           onClick={() => onChange(v)}
         >
           {text}
         </button>
       ))}
-    </div>
-  );
-}
-
-function ColorField({
-  color,
-  act,
-  onChange,
-}: {
-  color: FigmaColor | undefined;
-  act: Actions;
-  onChange: (c: FigmaColor, merge: boolean) => void;
-}) {
-  const hex = toHex(color);
-  const a = color?.a ?? 1;
-  return (
-    <div className={FIELD}>
-      <input
-        type="color"
-        className="size-4 shrink-0 cursor-pointer rounded-sm border border-black/10 bg-transparent p-0"
-        value={hex}
-        onPointerDown={act.mark}
-        onChange={(e) => {
-          const c = fromHex(e.currentTarget.value, a);
-          if (c) {
-            onChange(c, true);
-          }
-        }}
-      />
-      <input
-        className="w-full min-w-0 bg-transparent uppercase outline-none"
-        defaultValue={hex.slice(1)}
-        key={hex}
-        onFocus={(e) => e.currentTarget.select()}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        onBlur={(e) => {
-          const c = fromHex(e.currentTarget.value, a);
-          if (c && toHex(c) !== hex) {
-            onChange(c, false);
-          }
-        }}
-      />
     </div>
   );
 }
@@ -398,6 +174,43 @@ const PAINT_LABEL: Record<FigmaPaint['type'], string> = {
   EMOJI: '表情',
   VIDEO: '视频',
 };
+
+// See apps/docs/figma-to-tldraw/tech.md §13.4.
+function PaintSwatch({
+  paint,
+  images,
+}: {
+  paint: FigmaPaint;
+  images: Record<string, string>;
+}) {
+  const src =
+    paint.type === 'IMAGE' && paint.imageRef && images[paint.imageRef];
+  const stops = (paint.gradientStops ?? []).map(
+    (s) => `${rgba(s.color)} ${round(s.position * 100)}%`,
+  );
+  const list = stops.length === 1 ? [stops[0], stops[0]] : stops;
+  const background: CSSProperties['background'] = !list.length
+    ? undefined
+    : paint.type === 'GRADIENT_LINEAR'
+      ? `linear-gradient(90deg, ${list.join(', ')})`
+      : paint.type === 'GRADIENT_ANGULAR'
+        ? `conic-gradient(${list.join(', ')})`
+        : paint.type === 'GRADIENT_RADIAL' || paint.type === 'GRADIENT_DIAMOND'
+          ? `radial-gradient(${list.join(', ')})`
+          : undefined;
+  if (!src && !background) {
+    return null;
+  }
+  return (
+    <span className="size-4 shrink-0 overflow-hidden rounded-sm border border-foreground/10 bg-[repeating-conic-gradient(#e5e5e5_0%_25%,#fff_0%_50%)] bg-size-[8px_8px]">
+      {src ? (
+        <img src={src} alt="" className="size-full object-cover" />
+      ) : (
+        <span className="block size-full" style={{ background }} />
+      )}
+    </span>
+  );
+}
 
 function Eye({ on }: { on: boolean }) {
   return (
@@ -415,30 +228,75 @@ function Eye({ on }: { on: boolean }) {
   );
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §22.
 function PaintList({
   paints,
+  items,
   act,
+  target,
   readOnly,
   onChange,
 }: {
   paints: FigmaPaint[];
+  items: Item[];
   act: Actions;
+  target: PaintTarget;
   readOnly?: boolean;
   onChange: (paints: FigmaPaint[], merge: boolean) => void;
 }) {
-  const patch = (i: number, p: Partial<FigmaPaint>, merge = false) =>
+  const [open, setOpen] = useState<{ i: number; anchor: HTMLElement }>();
+  const images = imagesOf(items);
+  const replace = (i: number, p: FigmaPaint, merge = false) =>
     onChange(
-      paints.map((q, j) => (j === i ? { ...q, ...p } : q)),
+      paints.map((q, j) => (j === i ? p : q)),
       merge,
     );
+  const patch = (i: number, p: Partial<FigmaPaint>, merge = false) =>
+    replace(i, { ...paints[i], ...p } as FigmaPaint, merge);
+  const toggle = (i: number, el: HTMLElement) => {
+    const anchor = el.closest<HTMLElement>('[data-paint-row]') ?? el;
+    setOpen(open?.i === i ? undefined : { i, anchor });
+  };
+  const addImage = (i: number, image: LocalImage, p: FigmaPaint) => {
+    act.shapes((s) => ({
+      id: s.id,
+      type: s.type,
+      props: {
+        images: { ...s.props.images, [image.ref]: image.url },
+        imageSizes: { ...s.props.imageSizes, [image.ref]: image.size },
+      },
+    }));
+    replace(i, p, true);
+  };
+  const shown = open && paints[open.i];
+  const first = items[0]?.shape;
   return (
     <>
+      {shown && first && (
+        <PaintPopover
+          anchor={open.anchor}
+          paint={shown}
+          images={images}
+          imageSizes={Object.assign(
+            {},
+            ...items.map((it) => it.shape.props.imageSizes),
+          )}
+          node={{ w: first.props.w, h: first.props.h }}
+          shapeId={first.id}
+          target={target}
+          onChange={(p, merge) => replace(open.i, p, merge)}
+          onMark={act.mark}
+          onImage={(image, p) => addImage(open.i, image, p)}
+          onClose={() => setOpen(undefined)}
+        />
+      )}
       {paints
         .map((p, i) => [p, i] as const)
         .reverse()
         .map(([p, i]) => (
           <div
             key={i}
+            data-paint-row=""
             className={`flex items-center gap-1 ${p.visible === false ? 'opacity-45' : ''} ${readOnly ? 'pointer-events-none' : ''}`}
           >
             <IconButton
@@ -451,13 +309,19 @@ function PaintList({
               {p.type === 'SOLID' ? (
                 <ColorField
                   color={p.color}
-                  act={act}
+                  onMark={act.mark}
                   onChange={(color, merge) => patch(i, { color }, merge)}
+                  onOpen={readOnly ? undefined : (el) => toggle(i, el)}
                 />
               ) : (
-                <div className={`${FIELD} text-black/60`}>
-                  {PAINT_LABEL[p.type]}
-                </div>
+                <button
+                  type="button"
+                  className={`${FIELD} w-full text-left`}
+                  onClick={(e) => toggle(i, e.currentTarget)}
+                >
+                  <PaintSwatch paint={p} images={images} />
+                  <span className="truncate">{PAINT_LABEL[p.type]}</span>
+                </button>
               )}
             </div>
             <div className="w-14 shrink-0">
@@ -484,6 +348,10 @@ function PaintList({
         ))}
     </>
   );
+}
+
+function imagesOf(items: Item[]): Record<string, string> {
+  return Object.assign({}, ...items.map((i) => i.shape.props.images));
 }
 
 function solid(r: number, g: number, b: number): FigmaPaint {
@@ -514,14 +382,17 @@ function PositionSection({ items, act }: { items: Item[]; act: Actions }) {
     return ((((d + 180) % 360) + 360) % 360) - 180;
   };
   const resize = (axis: Axis, v: number) =>
-    act.shapes((s) => ({
-      id: s.id,
-      type: s.type,
-      props: {
-        [axis === 'x' ? 'w' : 'h']: Math.max(0.01, v),
-        node: resizedNode(editor, s, axis === 'x', axis === 'y'),
-      },
-    }));
+    act.shapes((s) => {
+      markUserResize(editor, [s.id]);
+      return {
+        id: s.id,
+        type: s.type,
+        props: {
+          [axis === 'x' ? 'w' : 'h']: Math.max(0.01, v),
+          node: resizedNode(editor, s, axis === 'x', axis === 'y'),
+        },
+      };
+    });
   return (
     <Section title="位置和尺寸">
       <Row>
@@ -629,7 +500,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
   if (nodes.some((n) => n.layoutWrap === 'WRAP' || n.layoutMode === 'GRID')) {
     return (
       <Section title="自动布局">
-        <div className="text-black/50">换行和网格布局暂不支持编辑</div>
+        <div className="text-foreground/50">换行和网格布局暂不支持编辑</div>
       </Section>
     );
   }
@@ -665,7 +536,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
       {mode !== 'NONE' && mode !== MIXED && (
         <>
           <div className="flex gap-2">
-            <div className="grid grid-cols-3 gap-0.5 rounded-sm bg-black/[0.04] p-1">
+            <div className="grid grid-cols-3 gap-0.5 rounded-sm bg-foreground/[0.04] p-1">
               {ALIGN.flatMap((row) =>
                 ALIGN.map((col) => {
                   const p = mode === 'HORIZONTAL' ? col : row;
@@ -685,7 +556,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
                       }
                     >
                       <span
-                        className={`rounded-full ${on ? 'size-2 bg-[var(--color-selected,#2f80ed)]' : 'size-1 bg-black/30'}`}
+                        className={`rounded-full ${on ? 'size-2 bg-[var(--color-selected,#2f80ed)]' : 'size-1 bg-foreground/30'}`}
                       />
                     </button>
                   );
@@ -899,17 +770,20 @@ function FillSection({ items, act }: { items: Item[]; act: Actions }) {
       }
     >
       {paints === MIXED ? (
-        <div className="text-black/50">混合</div>
+        <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
+          key={items.map((it) => it.shape.id).join()}
           paints={paints ?? []}
+          items={items}
           act={act}
+          target="fill"
           readOnly={vector}
           onChange={change}
         />
       )}
       {vector && (
-        <div className="text-black/50">
+        <div className="text-foreground/50">
           矢量的颜色写在 SVG 里，下一步再支持修改
         </div>
       )}
@@ -946,11 +820,14 @@ function StrokeSection({ items, act }: { items: Item[]; act: Actions }) {
       }
     >
       {paints === MIXED ? (
-        <div className="text-black/50">混合</div>
+        <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
+          key={items.map((it) => it.shape.id).join()}
           paints={paints ?? []}
+          items={items}
           act={act}
+          target="stroke"
           readOnly={vector}
           onChange={change}
         />
@@ -1030,7 +907,7 @@ function EffectSection({ items, act }: { items: Item[]; act: Actions }) {
         </IconButton>
       }
     >
-      {effects === MIXED && <div className="text-black/50">混合</div>}
+      {effects === MIXED && <div className="text-foreground/50">混合</div>}
       {list.map((e, i) => {
         const shadow = e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW';
         return (
@@ -1065,7 +942,7 @@ function EffectSection({ items, act }: { items: Item[]; act: Actions }) {
                   <div className="col-span-2">
                     <ColorField
                       color={e.color}
-                      act={act}
+                      onMark={act.mark}
                       onChange={(c, merge) =>
                         patch(i, { color: { ...c, a: e.color?.a ?? 1 } }, merge)
                       }
@@ -1219,6 +1096,18 @@ function TextSection({ items, act }: { items: Item[]; act: Actions }) {
               act.nodes((n) => setLineHeight(n, auto ? 'auto' : px));
             }
           }}
+          onStep={(delta, typed) => {
+            const base = stepBase(
+              typed,
+              typeof lineHeight === 'string' ? Number(lineHeight) : undefined,
+            );
+            if (base === undefined || !Number.isFinite(base)) {
+              return false;
+            }
+            const px = Math.max(1, round(base + delta));
+            act.nodes((n) => setLineHeight(n, px));
+            return true;
+          }}
         />
         <NumberField
           label="字距"
@@ -1287,7 +1176,7 @@ function ActionButton({
   return (
     <button
       type="button"
-      className="h-6 rounded-sm bg-black/[0.04] px-2 hover:bg-black/[0.08]"
+      className="h-6 rounded-sm bg-foreground/[0.04] px-2 hover:bg-foreground/[0.08]"
       onClick={onClick}
     >
       {label}
@@ -1374,15 +1263,18 @@ function InstanceSection({ shape }: { shape: FigmaShape }) {
             ? shapeByNodeId(editor, String(prop.value), shape)
             : undefined;
         return (
-          <div key={key} className="flex h-6 items-center gap-1 text-black/60">
-            <span className="text-black/45">{label}</span>
+          <div
+            key={key}
+            className="flex h-6 items-center gap-1 text-foreground/60"
+          >
+            <span className="text-foreground/45">{label}</span>
             <span className="truncate">
               {swapTo?.props.node.name ?? String(prop.value)}
             </span>
           </div>
         );
       })}
-      <div className="text-black/45">
+      <div className="text-foreground/45">
         {overrides ? `覆盖了 ${overrides} 个字段` : '没有覆盖'}
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -1437,7 +1329,7 @@ function MainSection({ shape }: { shape: FigmaShape }) {
       {defs.map(([key, def]) => (
         <div key={key} className="flex h-6 items-center justify-between gap-2">
           <span className="truncate">{propertyName(key)}</span>
-          <span className="shrink-0 text-black/45">
+          <span className="shrink-0 text-foreground/45">
             {def.type === 'VARIANT'
               ? `变体 ${def.variantOptions?.length ?? 0} 个`
               : def.type === 'BOOLEAN'
@@ -1450,7 +1342,7 @@ function MainSection({ shape }: { shape: FigmaShape }) {
       ))}
       {node.type === 'COMPONENT' && (
         <>
-          <div className="text-black/45">文件里有 {count} 个实例</div>
+          <div className="text-foreground/45">文件里有 {count} 个实例</div>
           <div>
             <ActionButton
               label="生成实例"
@@ -1506,7 +1398,7 @@ function FigmaPanel({ items }: { items: Item[] }) {
   const groups = shapes.every(isGroup);
   const types = new Set(shapes.map((s) => s.props.node.type));
   return (
-    <div className="figma-panel pb-1 text-[11px] text-[var(--color-text-1,#1d1d1d)]">
+    <div className="figma-panel pb-1 text-[11px] text-foreground">
       <div className="flex items-baseline justify-between gap-2 px-3 py-2">
         <span
           className={`truncate font-semibold ${
@@ -1517,7 +1409,7 @@ function FigmaPanel({ items }: { items: Item[] }) {
             ? shapes[0].props.node.name
             : `${shapes.length} 个图层`}
         </span>
-        <span className="shrink-0 text-black/45">
+        <span className="shrink-0 text-foreground/45">
           {types.size === 1
             ? (TYPE_LABEL[[...types][0]] ?? [...types][0])
             : '混合'}
@@ -1534,6 +1426,8 @@ function FigmaPanel({ items }: { items: Item[] }) {
       {shapes.every((s) => canBecomeComponent(editor, s)) && (
         <NewComponentSection shapes={shapes} />
       )}
+      {shapes.length === 1 && <VariableModesSection shape={shapes[0]} />}
+      {shapes.length === 1 && <BoundVariablesSection shape={shapes[0]} />}
       <PositionSection items={items} act={act} />
       {frames && <AutoLayoutSection items={items} act={act} />}
       <SizingSection items={items} act={act} />

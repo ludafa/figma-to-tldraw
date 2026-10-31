@@ -303,6 +303,44 @@ function withFields(
   return out as unknown as FigmaNode;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.5.
+function mergeBindings(
+  own: object | undefined,
+  before: object | undefined,
+  now: object | undefined,
+): object | undefined {
+  const get = (o: object | undefined, k: string) =>
+    (o as Record<string, unknown> | undefined)?.[k];
+  const out: Record<string, unknown> = {};
+  const keys = new Set([
+    ...Object.keys(own ?? {}),
+    ...Object.keys(before ?? {}),
+    ...Object.keys(now ?? {}),
+  ]);
+  for (const k of keys) {
+    const [o, b, n] = [get(own, k), get(before, k), get(now, k)];
+    const value = [o, b, n].every((v) => v === undefined || isBindingMap(v))
+      ? mergeBindings(o as object, b as object, n as object)
+      : same(o, b)
+        ? n
+        : o;
+    if (value !== undefined) {
+      out[k] = value;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.5.
+function isBindingMap(v: unknown): boolean {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    !Array.isArray(v) &&
+    (v as { type?: unknown }).type !== 'VARIABLE_ALIAS'
+  );
+}
+
 export function changedFields(a: FigmaNode, b: FigmaNode): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].filter(
@@ -554,7 +592,14 @@ export function syncInstances(
           !driven.has(f) &&
           !same(target.props.node[k], next.props.node[k])
         ) {
-          patch[f] = next.props.node[k];
+          patch[f] =
+            f === 'boundVariables'
+              ? mergeBindings(
+                  target.props.node.boundVariables,
+                  prev.props.node.boundVariables,
+                  next.props.node.boundVariables,
+                )
+              : next.props.node[k];
         }
       }
       if (!isRoot && isInstance(target)) {

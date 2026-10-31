@@ -3,10 +3,13 @@ import '../figma/figma.css';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import {
   createContext,
+  type CSSProperties,
+  type DragEvent,
+  type ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
-  type DragEvent,
 } from 'react';
 
 import {
@@ -14,6 +17,7 @@ import {
   serializeTldrawJson,
   type TLComponents,
   Tldraw,
+  usePagePosition,
 } from '../engine';
 import type { DiffNode } from '../figma/diff-attribution';
 import {
@@ -64,6 +68,37 @@ interface Overlay {
 
 const OverlayContext = createContext<Overlay | null>(null);
 
+// See apps/docs/skia-engine/tech.md §6.9.
+function OnPage({
+  x,
+  y,
+  style,
+  children,
+}: {
+  x: number;
+  y: number;
+  style: CSSProperties;
+  children?: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  usePagePosition(ref, x, y);
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        transformOrigin: '0 0',
+        pointerEvents: 'none',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function CanvasOverlay() {
   const overlay = useContext(OverlayContext);
   if (!overlay) {
@@ -74,36 +109,33 @@ function CanvasOverlay() {
   return (
     <>
       {mode !== 'off' && src && (
-        <img
-          src={src}
-          alt=""
-          draggable={false}
+        <OnPage
+          x={area.x}
+          y={area.y}
           style={{
-            position: 'absolute',
-            left: area.x,
-            top: area.y,
             width: area.width,
             height: area.height,
-            maxWidth: 'none',
             opacity: mode === 'half' ? 0.5 : 1,
             mixBlendMode: mode === 'diff' ? 'difference' : undefined,
-            pointerEvents: 'none',
-            zIndex: 1_000_000,
           }}
-        />
+        >
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            className="block size-full max-w-none"
+          />
+        </OnPage>
       )}
       {highlight && (
-        <div
+        <OnPage
+          x={area.x + highlight.x}
+          y={area.y + highlight.y}
           style={{
-            position: 'absolute',
-            left: area.x + highlight.x,
-            top: area.y + highlight.y,
             width: highlight.width,
             height: highlight.height,
             outline: 'calc(2px / var(--tl-zoom)) solid #f43f5e',
             background: 'rgb(244 63 94 / 12%)',
-            pointerEvents: 'none',
-            zIndex: 1_000_001,
           }}
         />
       )}
@@ -112,7 +144,7 @@ function CanvasOverlay() {
 }
 
 const components: TLComponents = {
-  OnTheCanvas: CanvasOverlay,
+  InFrontOfTheCanvas: CanvasOverlay,
   StylePanel: null,
   Toolbar: FigmaToolbar,
 };

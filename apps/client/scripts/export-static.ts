@@ -13,12 +13,13 @@ const DIST = path.resolve(import.meta.dirname, '../dist');
 const OUT = path.join(ROOT, '.deploy');
 const SITE_URL = process.env.SITE_URL ?? 'https://figma-to-tldraw.vercel.app';
 const URL_MAP = path.join(ROOT, 'case-urls.json');
+const LUT_DIR = path.join(ROOT, 'filter-luts');
 
 const VERCEL_CONFIG = {
   redirects: [{ source: '/', destination: '/showcase', permanent: false }],
   rewrites: [
     {
-      source: '/((?!assets/|cases/|reports/).*)',
+      source: '/((?!assets/|cases/|reports/|filter-luts/).*)',
       destination: '/index.html',
     },
   ],
@@ -121,6 +122,15 @@ function main() {
         recursive: true,
       });
     }
+  }
+
+  // See apps/docs/figma-to-tldraw/tech.md §22.3.
+  if (fs.existsSync(LUT_DIR)) {
+    fs.cpSync(LUT_DIR, path.join(OUT, 'filter-luts'), { recursive: true });
+  } else {
+    console.warn(
+      '没有图片滤镜的色表（filter-luts/），线上改图片调整时画布不会变',
+    );
   }
 
   const reportFile = path.join(REPORT_DIR, 'results.json');

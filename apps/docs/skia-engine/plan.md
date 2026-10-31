@@ -238,3 +238,24 @@
   - [x] **尺寸核对。** 点线、波浪线在 12 / 22 / 40px 和 1 / 3 / 6px 粗下，波长、摆幅、墨量、点距、点大小都和 Figma 差 ≤ 0.25px，随线粗变的猜测成立；`PERCENT` 是字号的百分比，逐像素一样；删除线 Figma 不让设样式和粗细（tech.md §11.10）
   - [x] **粗线时跳过下伸部分挖多了。** 现象：6px 粗的波浪线上沿被每个字母的底边削平；40px 的 g、y 空隙比 Figma 宽 1～1.5px。原因：原来把字形往外描一圈、宽度跟着线的粗细走；Figma 是在字形碰到线的地方竖着切一段，留的空隙跟字体自带的下划线粗细走。改动：每条下划线单独一层，`DstOut` 层里只画落在横带（上下各扩 p/4）里的字形，用膨胀滤镜横向撑开 p、竖向撑满；比了 5 组参数，取空隙边缘误差最小的一组（tech.md §11.10）。波浪线两头改成圆头。检查：6px 波浪线墨量 4.97 对 Figma 5.10、摆幅 7.47 对 7.68；12 个空隙的边缘每条差 ≤ 3（2 倍图）；`decoration-wavy` 0.21% → 0.17%
 - [x] 第二次全量回归：197 / 197 小于 1%，平均 0.091%，最大 0.83%（`designs-30`）；和第一次全量比变好 1、变差 2（+0.005%、+0.007%）、不变 191；原来的 175 个和分支开始前比仍是变好 109、变差 0（2026-10-29，`reports/fidelity/20261029-091947`）
+
+## 2026-10-29（分支 `feat/figma-variables`，切用例残留，用户试用发现）
+
+### 阶段 1：删掉、改动的图形漏标旧位置
+
+- 文件：`apps/client/src/engine/render/renderer.ts`、`render/renderer.test.ts`。
+- 状态：✅ 完成（2026-10-29）
+- 现象：`/canvas` 切用例后，上个用例比新用例大出来的部分留在画布上（用户截图）。
+- 原因：一条记录发一次变化，删子图形时清掉了父 frame 的 `pageBounds`，轮到父 frame 时查不到旧位置，没标脏（tech.md §5.10）。
+- 实际改动：清掉的 `pageBounds` 挪进 `stalePageBounds`，图形自己被改、被删时拿它当旧位置。
+- 检查：`pnpm lint`、`pnpm typecheck`、`pnpm test`（29 个文件、201 条，`renderer.test.ts` 新增 2 条，去掉修复会失败）通过；Playwright 切 4 组用例逐像素比都是 0（verification.md §4）。
+- 偏差：先试了"同一次变化里先读完旧位置再清缓存"，单测没过，才发现 store 一条记录发一次变化。
+
+### 阶段 2：差异叠加看不出区别（用户试用发现）
+
+- 文件：`apps/client/src/engine/react/hooks.ts`（`usePagePosition`）、`apps/client/src/pages/canvas.tsx`、`apps/client/src/pages/import.tsx`。
+- 状态：✅ 完成（2026-10-29）
+- 现象：`/canvas` 顶上"不叠加 / 半透明 / 差异"切了没什么区别（用户截图）；长用例名把三个按钮挤成一字一行。
+- 原因：叠加图在 `OnTheCanvas`（`CameraLayer` 里），带 `transform` 的这一层是隔离的混合组，`difference` 碰不到下面的 WebGL 画布（tech.md §6.9）。手动验收第 1 条"差异几乎全黑"其实从换引擎起就不成立，当时没发现。
+- 实际改动：加 `usePagePosition`，叠加图和 `/import` 的高亮框改放 `InFrontOfTheCanvas`、各自跟着镜头；工具条限宽、用例名截断、按钮不换行。
+- 检查：`pnpm lint`、`pnpm typecheck`、`pnpm test` 通过；Playwright 量了三种模式的近黑像素、平移缩放后还对得上、`/import` 的差异和高亮框、900px 宽窗口里工具条的截断（verification.md §4）。

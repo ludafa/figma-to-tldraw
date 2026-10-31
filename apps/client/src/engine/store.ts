@@ -240,10 +240,12 @@ export class Store {
   private ids: Record<TypeName, Set<string>> = {
     shape: new Set(),
     page: new Set(),
+    document: new Set(),
   };
   private idVersions: Record<TypeName, Atom<number>> = {
     shape: atom('store shape ids', 0),
     page: atom('store page ids', 0),
+    document: atom('store document ids', 0),
   };
   private idSnapshots = new Map<
     TypeName,

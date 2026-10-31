@@ -56,7 +56,7 @@
 
   <div class="step">
     <b>1. 生成测试用例</b>
-    <span>新建一个 “Test Cases” 页面，自动画出所有用例。下面填了前缀（如 text-mixed/）时只画名字以它开头的用例。</span>
+    <span>在 “Test Cases” 页面上画出所有用例。下面填了前缀（如 text-mixed/）时只画名字以它开头的用例，画在 “Test Cases · text-mixed” 页面上（取前缀的第一段）。页面已经有了就接着用，同名的用例换成新画的。</span>
     <input id="only" placeholder="只生成的前缀，空着就全部生成" style="width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace">
     <button id="gen">生成测试用例</button>
   </div>
@@ -74,6 +74,11 @@
     <button id="expList" class="secondary">按列表导出</button>
   </div>
 
+  <div class="step">
+    <b>4. 量图片滤镜</b>
+    <span>让 Figma 给一张色表图套上 7 种图片调整的各个档位并导出，打包成 zip，用来在网页里还原这些调整。不改任何页面（临时建的矩形导完就删）。</span>
+    <button id="measure" class="secondary">量图片滤镜</button>
+  </div>
   <div id="status"></div>
   <div id="fontWarn" hidden></div>
   <div id="log"></div>
@@ -234,6 +239,121 @@ function makeRamp() {
   });
 }
 
+// See apps/docs/figma-to-tldraw/probe-image-filters.md §2.
+var FILTER_KEYS = ['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'highlights', 'shadows'];
+var FILTER_STEPS = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.15, -0.1, -0.05,
+  0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+var OFF_GRID = { exposure: 0.37, contrast: -0.63, saturation: 0.12, temperature: 0.84, tint: -0.27, highlights: 0.55, shadows: -0.08 };
+var COMBOS = [
+  { exposure: 0.5, contrast: 0.5 },
+  { contrast: 0.5, saturation: 0.5 },
+  { saturation: 0.5, temperature: 0.5 },
+  { temperature: 0.5, tint: 0.5 },
+  { exposure: 0.5, temperature: 0.5 },
+  { highlights: 0.5, shadows: 0.5 },
+  { exposure: 0.5, highlights: 0.5 },
+  { contrast: 0.5, shadows: -0.5 },
+  { exposure: -0.5, saturation: -0.5 },
+  { exposure: 0.3, contrast: 0.4, saturation: -0.5, temperature: 0.5, highlights: -0.4 },
+  { exposure: 0.5, contrast: 0.5, saturation: 0.5, temperature: 0.5, tint: 0.5, highlights: 0.5, shadows: 0.5 },
+];
+
+function cubeLevel(i) {
+  return Math.round((i * 255) / 63);
+}
+
+function pngBytes(c) {
+  return new Promise(function (r) { c.toBlob(r, 'image/png'); }).then(function (blob) {
+    return blob.arrayBuffer();
+  }).then(function (buf) {
+    return new Uint8Array(buf);
+  });
+}
+
+function makeCube() {
+  var c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  var g = c.getContext('2d');
+  var img = g.createImageData(512, 512);
+  for (var b = 0; b < 64; b++) {
+    for (var gr = 0; gr < 64; gr++) {
+      for (var r = 0; r < 64; r++) {
+        var x = (b % 8) * 64 + r;
+        var y = Math.floor(b / 8) * 64 + gr;
+        var o = (y * 512 + x) * 4;
+        img.data[o] = cubeLevel(r);
+        img.data[o + 1] = cubeLevel(gr);
+        img.data[o + 2] = cubeLevel(b);
+        img.data[o + 3] = 255;
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return pngBytes(c);
+}
+
+function makeContext() {
+  var c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 256;
+  var g = c.getContext('2d');
+  g.fillStyle = '#000000';
+  g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#FFFFFF';
+  g.fillRect(256, 0, 256, 256);
+  [0, 256].forEach(function (left) {
+    g.fillStyle = 'rgb(' + [32, 32, 32].map(cubeLevel).join(',') + ')';
+    g.fillRect(left + 96, 48, 64, 64);
+    g.fillStyle = 'rgb(' + [50, 20, 10].map(cubeLevel).join(',') + ')';
+    g.fillRect(left + 96, 144, 64, 64);
+  });
+  return pngBytes(c);
+}
+
+// See apps/docs/figma-to-tldraw/probe-image-filters.md §2.
+async function isOpaque(bytes) {
+  var bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+  var c = document.createElement('canvas');
+  c.width = bitmap.width;
+  c.height = bitmap.height;
+  var g = c.getContext('2d');
+  g.drawImage(bitmap, 0, 0);
+  var data = g.getImageData(0, 0, c.width, c.height).data;
+  for (var i = 3; i < data.length; i += 4) {
+    if (data[i] !== 255) return false;
+  }
+  return true;
+}
+
+function measureJobs() {
+  var jobs = [
+    { name: 'cube/identity.png', image: 'cube', filters: {} },
+    { name: 'context/identity.png', image: 'context', filters: {} },
+  ];
+  FILTER_KEYS.forEach(function (key) {
+    FILTER_STEPS.forEach(function (v) {
+      var f = {};
+      f[key] = v;
+      jobs.push({ name: 'cube/' + key + '/' + v.toFixed(2) + '.png', image: 'cube', filters: f });
+    });
+    [-1, 1].forEach(function (v) {
+      var f = {};
+      f[key] = v;
+      jobs.push({ name: 'context/' + key + '/' + v + '.png', image: 'context', filters: f });
+    });
+  });
+  COMBOS.forEach(function (f, i) {
+    jobs.push({ name: 'combo/' + i + '.png', image: 'cube', filters: f });
+  });
+  Object.keys(OFF_GRID).forEach(function (key) {
+    var f = {};
+    f[key] = OFF_GRID[key];
+    jobs.push({ name: 'off-grid/' + key + '.png', image: 'cube', filters: f });
+  });
+  return jobs;
+}
+
 // ---------------------------------------------------------------------------
 // 界面
 // ---------------------------------------------------------------------------
@@ -291,6 +411,7 @@ function busy(on) {
   $gen.disabled = on;
   $exp.disabled = on;
   document.getElementById("expList").disabled = on;
+  document.getElementById('measure').disabled = on;
 }
 
 function send(msg) {
@@ -314,6 +435,40 @@ $gen.onclick = async function () {
     busy(false);
   }
 };
+
+var measureState = null;
+
+document.getElementById('measure').onclick = async function () {
+  busy(true);
+  $log.innerHTML = '';
+  $status.textContent = '准备色表图…';
+  try {
+    var jobs = measureJobs();
+    var enc = new TextEncoder();
+    measureState = {
+      files: [{ name: 'filter-probe/index.json', data: enc.encode(JSON.stringify({ jobs: jobs }, null, 2)) }],
+    };
+    send({ type: 'measure', images: { cube: await makeCube(), context: await makeContext() }, jobs: jobs });
+  } catch (e) {
+    log('生成色表图失败：' + e.message, true);
+    busy(false);
+  }
+};
+
+function finishMeasure() {
+  var blob = makeZip(measureState.files);
+  var d = new Date();
+  var stamp = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'figma-filter-probe-' + stamp + '.zip';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  $status.textContent = '量完了：' + (measureState.files.length - 1) + ' 张图，' + (blob.size / 1024 / 1024).toFixed(1) + ' MB';
+  measureState = null;
+  busy(false);
+}
 
 $exp.onclick = function () {
   busy(true);
@@ -377,12 +532,14 @@ onmessage = function (event) {
   if (!msg) return;
 
   if (msg.type === 'log') {
-    log(msg.text);
+    log(msg.text, msg.error);
   } else if (msg.type === 'progress') {
     $status.textContent = '处理中 ' + (msg.done + 1) + ' / ' + msg.total;
     log(msg.text);
   } else if (msg.type === 'generate-done') {
-    $status.textContent = '生成完成：' + msg.ok + ' / ' + msg.total + ' 个用例，页面 “' + msg.page + '”';
+    $status.textContent = msg.page
+      ? '生成完成：' + msg.ok + ' / ' + msg.total + ' 个用例，页面 “' + msg.page + '”'
+      : '一个用例都没生成成功，没有新建页面，原因看下面';
     if (msg.failed.length) {
       log('以下用例生成失败（其他用例不受影响）：', true);
       msg.failed.forEach(function (t) { log('  ' + t, true); });
@@ -406,12 +563,21 @@ onmessage = function (event) {
   } else if (msg.type === 'export-error') {
     exportState.errors.push({ name: msg.name, error: msg.text });
     log('导出失败：' + msg.name + '：' + msg.text, true);
+  } else if (msg.type === 'measure-check') {
+    isOpaque(msg.bytes).then(function (ok) {
+      send({ type: 'measure-checked', ok: ok });
+    });
+  } else if (msg.type === 'measure-file') {
+    measureState.files.push({ name: 'filter-probe/' + msg.name, data: msg.bytes });
+  } else if (msg.type === 'measure-done') {
+    finishMeasure();
   } else if (msg.type === 'export-done') {
     finishExport();
   } else if (msg.type === 'error') {
     $status.textContent = '出错了';
     log(msg.text, true);
     exportState = null;
+    measureState = null;
     busy(false);
   }
 };

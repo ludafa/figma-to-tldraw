@@ -11,6 +11,7 @@ import {
 } from '../../engine';
 import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type { FigmaLayoutSizing, FigmaNode } from '../types';
+import { detachEdited, hasVariables } from '../variables';
 import {
   type Axis,
   axisSizing,
@@ -40,6 +41,7 @@ import {
   type Renames,
   syncInstances,
 } from './instances';
+import { boundShapeIds, refreshVariables } from './variables';
 
 // See apps/docs/figma-to-tldraw/tech.md §13.1 and §13.2.
 
@@ -65,6 +67,17 @@ interface EditingState {
   /** Undo and redo replay a step that already has its side effects. */
   replaying: number;
   allowDelete: number;
+  // See apps/docs/figma-to-tldraw/tech.md §21.5.
+  /** Layers whose whole subtree needs its bound fields recomputed. */
+  varTrees: Set<TLShapeId>;
+  /** Layers whose own bound fields need recomputing. */
+  varShapes: Set<TLShapeId>;
+  /** A variable's value changed: recompute every bound layer. */
+  varAll: boolean;
+  /** Writes made by the variable pass: no overrides, no detaching. */
+  varWrites: Set<TLShapeId>;
+  /** Layers the user resized through the panel this operation. */
+  userResized: Set<TLShapeId>;
 }
 
 const STATES = new WeakMap<Editor, EditingState>();
@@ -76,6 +89,14 @@ function near(a: number, b: number): boolean {
 
 export function isFigmaEditing(editor: Editor): boolean {
   return STATES.has(editor);
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.4.
+export function markUserResize(editor: Editor, ids: TLShapeId[]) {
+  const state = STATES.get(editor);
+  for (const id of ids) {
+    state?.userResized.add(id);
+  }
 }
 
 /** Runs `fn` without re-measuring or re-laying out anything (used on import). */
@@ -302,8 +323,9 @@ function onChange(
   }
   // See apps/docs/figma-to-tldraw/tech.md §16.4.
   const quiet = state.quiet.delete(next.id);
+  const fromVariables = state.varWrites.delete(next.id);
   if (!state.replaying) {
-    if (!quiet) {
+    if (!quiet && !fromVariables) {
       recordOverride(editor, prev, next);
     }
     const main = mainAround(editor, next);
@@ -318,16 +340,48 @@ function onChange(
     prev.x !== next.x || prev.y !== next.y || prev.rotation !== next.rotation;
   const node = next.props.node;
 
+  // See apps/docs/figma-to-tldraw/tech.md §21.5.
+  if (!state.replaying) {
+    const byUser =
+      state.userResized.delete(next.id) ||
+      (editor.isIn('select.resizing') &&
+        editor.getSelectedShapeIds().includes(next.id));
+    const resized =
+      sized && byUser
+        ? { w: resizedW, h: prev.props.h !== next.props.h }
+        : undefined;
+    if ((nodeChanged || resized) && !quiet && !fromVariables) {
+      const detached = detachEdited(prev.props.node, node, resized);
+      if (detached !== node) {
+        state.varWrites.add(next.id);
+        editor.updateShape<FigmaShape>({
+          id: next.id,
+          type: next.type,
+          props: { node: detached },
+        });
+      }
+    }
+    if (
+      prev.props.node.explicitVariableModes !== node.explicitVariableModes ||
+      prev.parentId !== next.parentId
+    ) {
+      state.varTrees.add(next.id);
+    } else if (nodeChanged && hasVariables(node)) {
+      state.varShapes.add(next.id);
+    }
+  }
+
   if (
     next.type === 'figma-text' &&
     nodeChanged &&
     prev.props.node.characters !== node.characters &&
     followsText(prev.props.node)
   ) {
+    const current = (editor.getShape(next.id) as FigmaShape).props.node;
     editor.updateShape<FigmaShape>({
       id: next.id,
       type: next.type,
-      props: { node: { ...node, name: node.characters ?? '' } },
+      props: { node: { ...current, name: current.characters ?? '' } },
     });
   }
   if (
@@ -374,17 +428,37 @@ function onChange(
   }
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §21.5.
+function refreshDirtyVariables(editor: Editor, state: EditingState) {
+  if (!state.varAll && !state.varTrees.size && !state.varShapes.size) {
+    return;
+  }
+  const mark = (id: TLShapeId) => state.varWrites.add(id);
+  if (state.varAll) {
+    refreshVariables(editor, boundShapeIds(editor), false, mark);
+  } else {
+    refreshVariables(editor, state.varTrees, true, mark);
+    refreshVariables(editor, state.varShapes, false, mark);
+  }
+  state.varAll = false;
+  state.varTrees.clear();
+  state.varShapes.clear();
+}
+
 function flush(editor: Editor, state: EditingState) {
   if (state.paused) {
     return;
   }
   // See apps/docs/figma-to-tldraw/tech.md §16.4.
   state.quiet.clear();
+  state.varWrites.clear();
+  state.userResized.clear();
   if (hasMainEdits(state.mainEdits)) {
     const edits = state.mainEdits;
     state.mainEdits = emptyMainEdits();
     syncInstances(editor, edits, componentHooks(editor, state));
   }
+  refreshDirtyVariables(editor, state);
   for (const id of state.dragged) {
     const shape = editor.getShape(id) as FigmaShape | undefined;
     const parent = shape && figmaParent(editor, shape);
@@ -434,6 +508,11 @@ export function enableFigmaEditing(
     renames: emptyRenames(),
     replaying: 0,
     allowDelete: 0,
+    varTrees: new Set(),
+    varShapes: new Set(),
+    varAll: false,
+    varWrites: new Set(),
+    userResized: new Set(),
   };
   STATES.set(editor, state);
   const { sideEffects } = editor;
@@ -457,6 +536,10 @@ export function enableFigmaEditing(
         const main = state.replaying ? undefined : mainAround(editor, shape);
         if (main && main.id !== shape.id) {
           state.mainEdits.created.set(shape.id, main.props.node.id);
+        }
+        // See apps/docs/figma-to-tldraw/tech.md §21.5.
+        if (!state.replaying && hasVariables(shape.props.node)) {
+          state.varShapes.add(shape.id);
         }
       }
     }),
@@ -482,6 +565,16 @@ export function enableFigmaEditing(
     sideEffects.registerBeforeChangeHandler('shape', (prev, next) =>
       keepInstanceLayout(editor, state, prev, next),
     ),
+    // See apps/docs/figma-to-tldraw/tech.md §21.5.
+    sideEffects.registerAfterChangeHandler('document', (prev, next) => {
+      if (
+        !state.paused &&
+        !state.replaying &&
+        prev.meta.figmaVariables !== next.meta.figmaVariables
+      ) {
+        state.varAll = true;
+      }
+    }),
     sideEffects.registerOperationCompleteHandler(() => flush(editor, state)),
     patchHistory(editor, state),
     patchCreate(editor, state),

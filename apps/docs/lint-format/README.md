@@ -44,4 +44,4 @@ code:
 
 - [构建与依赖](../toolchain/README.md)：类型感知规则要 TypeScript 7，可行性调研在那里；删 ESLint 时也去掉了 `pnpm-workspace.yaml` 里 `eslint@10.8.0` 的发布时间豁免。
 - [文档体系](../doc-system/README.md)：`pnpm lint` 的最后一步 `pnpm docs:check`。
-- [提交流程](../commit-workflow/README.md)：commitlint 管提交信息，和这里的代码检查互不相干。
+- 提交流程：commitlint 管提交信息，和这里的代码检查互不相干；规则在根目录 `CLAUDE.md`「Git 提交约定」（2026-10-31 前是 commit-workflow 模块）。

@@ -188,7 +188,7 @@ oxfmt "$@"
 起因：code review 指出 PostToolUse hook 只管 Claude 用 Edit / Write 改的文件，命令行改的（`shadcn add`、`sed`、codegen）和人手改的都漏掉，只能靠各个 skill 提醒跑 `pnpm format`（用户要求修复）。
 
 - `.husky/pre-commit`（新）只有一行 `pnpm exec lint-staged --no-stash`。根 `package.json` 的配置是 `"lint-staged": { "*": "sh scripts/format.sh" }`：所有暂存的文件（新增、修改、改名，不含删除）作为参数交给 §2.2 的脚本，脚本改过的内容自动加回暂存区。
-- **只修复和格式化，不跑测试，也不拦 lint 错误。** 脚本的退出码只取 oxfmt 的，`any`、未使用变量这类修不掉的问题不拦提交，仍由 `pnpm lint` 报；oxfmt 遇到语法错误会失败，这时提交被拦下，工作区恢复原样。当初删掉 `husky init` 生成的 pre-commit，是因为每次提交跑全量测试太重（见 [commit-workflow tech.md §2](../commit-workflow/tech.md#2-钩子与配置2026-07-192026-10-22-修订)）；这里只处理暂存的文件，两个文件约 0.6～0.7 秒，含 `pnpm exec` 的启动时间（实测，连跑 3 次）。
+- **只修复和格式化，不跑测试，也不拦 lint 错误。** 脚本的退出码只取 oxfmt 的，`any`、未使用变量这类修不掉的问题不拦提交，仍由 `pnpm lint` 报；oxfmt 遇到语法错误会失败，这时提交被拦下，工作区恢复原样。当初删掉 `husky init` 生成的 pre-commit，是因为每次提交跑全量测试太重（见根目录 `CLAUDE.md`「Git 提交约定」）；这里只处理暂存的文件，两个文件约 0.6～0.7 秒，含 `pnpm exec` 的启动时间（实测，连跑 3 次）。
 - **用 lint-staged，不自己写。** 一个文件既有暂存的改动、又有没暂存的改动时，直接格式化再 `git add` 会把没暂存的部分也提交进去。lint-staged 先把没暂存的部分存成补丁、从工作区拿掉，跑完再贴回去。实测：暂存的部分格式化后提交；没暂存的一行没被提交，留在工作区。自己写还要处理文件名里的空格和中文，比一行配置长得多。
 - 版本：`lint-staged ^17.6.0`，装在根目录，3 个依赖（`tinyexec`、`picomatch`、`string-argv`），要求 Node ≥ 22.22.1。
 - **不做 stash 备份（`--no-stash`）。** lint-staged 默认在开始前用 `git stash create` + `git stash store` 往 stash 列表里存一份备份，成功后删除，出错时用它恢复。这个列表是所有 worktree 共用的，而本仓库常常同时开几个 worktree、各跑一个 Claude 会话。提交被中断（Ctrl-C、进程被杀）时，备份会一直留在列表里；之后哪个 worktree 不带参数跑 `git stash pop`，就会把这个分支的改动倒进自己的分支。正常提交时备份只在列表里待约 0.6 秒，撞上的概率很小（另一个会话指出，用户决定加 `--no-stash`，2026-10-23）。

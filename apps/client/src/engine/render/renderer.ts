@@ -80,6 +80,8 @@ export class SceneRenderer {
   private localBounds = new Map<TLShapeId, Box | null>();
   /** Page-space subtree bounds from the last draw or query. */
   private pageBounds = new Map<TLShapeId, Box>();
+  // See apps/docs/skia-engine/tech.md §5.10.
+  private stalePageBounds = new Map<TLShapeId, Box>();
   private layerPaint: Paint;
   private stopApply: () => void;
   readonly stats = { recorded: 0, drawn: 0 };
@@ -115,7 +117,7 @@ export class SceneRenderer {
     let parent: TLParentId = id;
     while (isShapeId(parent)) {
       this.localBounds.delete(parent);
-      this.pageBounds.delete(parent);
+      this.dropPageBounds(parent);
       const p = this.editor.store.unsafeGetWithoutCapture<TLShape>(parent);
       if (!p) {
         break;
@@ -124,9 +126,17 @@ export class SceneRenderer {
     }
   }
 
+  private dropPageBounds(id: TLShapeId) {
+    const b = this.pageBounds.get(id);
+    if (b) {
+      this.stalePageBounds.set(id, b);
+      this.pageBounds.delete(id);
+    }
+  }
+
   private forgetPageBoundsBelow(id: TLShapeId) {
     for (const child of this.editor.store.sortedChildIds(id)) {
-      this.pageBounds.delete(child);
+      this.dropPageBounds(child);
       this.forgetPageBoundsBelow(child);
     }
   }
@@ -251,7 +261,8 @@ export class SceneRenderer {
         return;
       }
       const id = rec.id as TLShapeId;
-      const old = this.pageBounds.get(id);
+      // See apps/docs/skia-engine/tech.md §5.10.
+      const old = this.pageBounds.get(id) ?? this.stalePageBounds.get(id);
       if (old) {
         this.pendingDirty.push(old);
       }
@@ -262,6 +273,7 @@ export class SceneRenderer {
       this.forgetBounds((rec as TLShape).parentId);
       this.forgetPageBoundsBelow(id);
       if (removed) {
+        this.stalePageBounds.delete(id);
         dropEntry(this.pictures.get(id));
         this.pictures.delete(id);
         this.incomplete.delete(id);

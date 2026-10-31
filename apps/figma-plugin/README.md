@@ -2,7 +2,7 @@
 
 一个 Figma 插件，做两件事：
 
-1. **生成测试用例**：自动新建一个 `Test Cases` 页面，画出 109 个小用例和 3 个真实页面（2026-10-24 加了 8 个 `image-filter/*` 图片滤镜用例，2026-10-28～10-29 加了 22 个 `text-mixed/*` 混合样式文字用例）
+1. **生成测试用例**：在 `Test Cases` 页面上画出 109 个小用例和 3 个真实页面（2026-10-24 加了 8 个 `image-filter/*` 图片滤镜用例，2026-10-28～10-29 加了 22 个 `text-mixed/*` 混合样式文字用例）。填了前缀只生成一部分时（如 `variables/`），画在 `Test Cases · variables` 这样的页面上（取前缀的第一段）；页面已经有了就接着用，同名的用例换成新画的，不会每次多一个页面。2026-10-29 加了 6 个 `variables/*` 变量用例，每个变量集合只有 1 个模式，Figma 免费版（Starter）的文件里也能生成；建变量出错时插件在日志第一条红字说明原因并跳过这些用例
 2. **导出测试数据**：把页面上每个顶层 frame 导出成"快照 JSON + 图片 + Figma 渲染图"，打包成一个 zip
 
 ## 使用步骤
@@ -27,6 +27,14 @@ pnpm --filter @figma-to-tldraw/client import-cases ~/Downloads/figma-test-cases-
 完全被裁掉、画不出东西的节点（`absoluteRenderBounds` 为空）不导出 SVG，也不报警告。
 
 **按列表重新导出**：第 3 步"按列表导出"贴一段 `[{"id": "节点 id", "dir": "用例目录"}]`，插件按 id 找节点（能跨页面），按给定的目录导出。已有的用例想原样重导一遍（比如插件导出的内容变了）就用它，目录名不变。
+
+**量图片滤镜**（2026-10-30）：第 4 步"量图片滤镜"让 Figma 给一张色表图套上 7 种图片调整的每一档并导出，约 30 秒，下载 `figma-filter-probe-日期.zip`，不动任何页面。画布在图片调整没有 Figma 成品图时（比如在填充弹窗里拖了滑块）靠这些色表实时画。用这个命令导入到仓库根目录的 `filter-luts/`（不进 git），zip 要写绝对路径：
+
+```bash
+pnpm --filter @figma-to-tldraw/client import-filter-luts ~/Downloads/figma-filter-probe-*.zip
+```
+
+Figma 改了图片调整的算法时重跑一次。测量方法和结论见 `apps/docs/figma-to-tldraw/probe-image-filters.md`，画布怎么用见 `tech.md` §22.3。
 
 **主组件**：导出时会顺带导出用例里实例用到的主组件和整套变体（变体超过 60 个的只导用到的），放在 `snapshot.json` 的 `mains` 里。主组件被删掉的实例原样导出，记一条警告。详见 `apps/docs/figma-to-tldraw/tech.md` §16.1。
 

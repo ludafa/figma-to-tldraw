@@ -43,7 +43,18 @@ export interface TLPage {
   meta: JsonObject;
 }
 
-export type TLRecord = TLShape | TLPage;
+// See apps/docs/figma-to-tldraw/tech.md §21.3.
+export interface TLDocument {
+  readonly id: typeof TLDOCUMENT_ID;
+  readonly typeName: 'document';
+  gridSize: number;
+  name: string;
+  meta: JsonObject;
+}
+
+export const TLDOCUMENT_ID = 'document:document';
+
+export type TLRecord = TLShape | TLPage | TLDocument;
 
 export type TLShapePartial<T extends TLShape = TLShape> = T extends T
   ? {

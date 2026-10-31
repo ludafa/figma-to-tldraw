@@ -36,15 +36,7 @@ const TLDRAW_SEQUENCES: Record<string, number> = {
 /** The document as a `.tldr` file (tldraw's file format version 1). */
 export async function serializeTldrawJson(editor: Editor): Promise<string> {
   const sequences = { ...TLDRAW_SEQUENCES };
-  const records: unknown[] = [
-    {
-      id: 'document:document',
-      typeName: 'document',
-      gridSize: 10,
-      name: '',
-      meta: {},
-    },
-  ];
+  const records: unknown[] = [];
   for (const record of editor.store.allRecords()) {
     if (record.typeName === 'shape') {
       sequences[`com.tldraw.shape.${record.type}`] ??= 0;

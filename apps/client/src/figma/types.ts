@@ -43,6 +43,7 @@ export type FigmaBlendMode =
 export interface FigmaColorStop {
   position: number;
   color: FigmaColor;
+  boundVariables?: { color?: FigmaVariableAlias };
 }
 
 export type FigmaTransform = [
@@ -82,6 +83,7 @@ export interface FigmaPaint {
   scalingFactor?: number;
   rotation?: number;
   filters?: FigmaImageFilters;
+  boundVariables?: { color?: FigmaVariableAlias };
 }
 
 export interface FigmaEffect {
@@ -93,6 +95,12 @@ export interface FigmaEffect {
   spread?: number;
   blendMode?: FigmaBlendMode;
   showShadowBehindNode?: boolean;
+  boundVariables?: Partial<
+    Record<
+      'radius' | 'spread' | 'color' | 'offsetX' | 'offsetY',
+      FigmaVariableAlias
+    >
+  >;
 }
 
 export interface FigmaTypeStyle {
@@ -118,6 +126,7 @@ export interface FigmaTypeStyle {
   paragraphIndent?: number;
   listSpacing?: number;
   fills?: FigmaPaint[];
+  boundVariables?: Partial<Record<FigmaTextVariableField, FigmaVariableAlias>>;
 }
 
 /** A length that Figma can also leave on "auto". */
@@ -236,6 +245,10 @@ export interface FigmaNode extends FigmaLayoutProps {
   /** Component sets exported with only the variants a page uses. */
   partial?: boolean;
   variantCount?: number;
+  boundVariables?: FigmaBoundVariables;
+  explicitVariableModes?: FigmaVariableModes;
+  /** Not in REST: modes the export root (or an exported main) inherits from layers outside the export. */
+  inheritedVariableModes?: FigmaVariableModes;
   children?: FigmaNode[];
 }
 
@@ -271,6 +284,138 @@ export interface FigmaComponentMeta {
   description?: string;
   remote?: boolean;
   componentSetId?: string;
+}
+
+// See apps/docs/figma-to-tldraw/tech.md §21.2.
+export interface FigmaVariableAlias {
+  type: 'VARIABLE_ALIAS';
+  id: string;
+}
+
+export type FigmaVariableType =
+  | 'COLOR'
+  | 'FLOAT'
+  | 'STRING'
+  | 'BOOLEAN'
+  | 'EASING'
+  | 'TIMING';
+
+export interface FigmaVariableColor {
+  r: number;
+  g: number;
+  b: number;
+  a?: number;
+}
+
+export type FigmaVariableValue =
+  | boolean
+  | number
+  | string
+  | FigmaVariableColor
+  | FigmaVariableAlias;
+
+export interface FigmaVariable {
+  id: string;
+  name: string;
+  key?: string;
+  remote?: boolean;
+  description?: string;
+  variableCollectionId: string;
+  resolvedType: FigmaVariableType;
+  valuesByMode: Record<string, FigmaVariableValue>;
+  scopes?: string[];
+  codeSyntax?: Record<string, string>;
+  hiddenFromPublishing?: boolean;
+}
+
+export interface FigmaVariableCollection {
+  id: string;
+  name: string;
+  key?: string;
+  remote?: boolean;
+  modes: { modeId: string; name: string }[];
+  defaultModeId: string;
+  hiddenFromPublishing?: boolean;
+  isExtension?: boolean;
+}
+
+/** Collection id → mode id. */
+export type FigmaVariableModes = Record<string, string>;
+
+export interface SnapshotVariables {
+  collections: Record<string, FigmaVariableCollection>;
+  variables: Record<string, FigmaVariable>;
+  /** Node id → the modes that layer sets itself. */
+  modes: Record<string, FigmaVariableModes>;
+  /** Export root / main id → modes inherited from layers outside the export. */
+  inherited: Record<string, FigmaVariableModes>;
+  /** Variable ids the plugin could not read (library variables, deleted ones). */
+  missing: string[];
+}
+
+export type FigmaTextVariableField =
+  | 'fontFamily'
+  | 'fontSize'
+  | 'fontStyle'
+  | 'fontWeight'
+  | 'letterSpacing'
+  | 'lineHeight'
+  | 'paragraphSpacing'
+  | 'paragraphIndent';
+
+export type FigmaCornerVariableField =
+  | 'RECTANGLE_TOP_LEFT_CORNER_RADIUS'
+  | 'RECTANGLE_TOP_RIGHT_CORNER_RADIUS'
+  | 'RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS'
+  | 'RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS';
+
+/** `boundVariables` on a node, in REST's shape (field names differ from the plugin API). */
+export type FigmaStrokeVariableField =
+  | 'BORDER_TOP_WEIGHT'
+  | 'BORDER_RIGHT_WEIGHT'
+  | 'BORDER_BOTTOM_WEIGHT'
+  | 'BORDER_LEFT_WEIGHT';
+
+export interface FigmaBoundVariables {
+  size?: { x?: FigmaVariableAlias; y?: FigmaVariableAlias };
+  individualStrokeWeights?: Partial<
+    Record<FigmaStrokeVariableField, FigmaVariableAlias>
+  >;
+  rectangleCornerRadii?: Partial<
+    Record<FigmaCornerVariableField, FigmaVariableAlias>
+  >;
+  topLeftRadius?: FigmaVariableAlias;
+  topRightRadius?: FigmaVariableAlias;
+  bottomRightRadius?: FigmaVariableAlias;
+  bottomLeftRadius?: FigmaVariableAlias;
+  characters?: FigmaVariableAlias;
+  itemSpacing?: FigmaVariableAlias;
+  counterAxisSpacing?: FigmaVariableAlias;
+  paddingLeft?: FigmaVariableAlias;
+  paddingRight?: FigmaVariableAlias;
+  paddingTop?: FigmaVariableAlias;
+  paddingBottom?: FigmaVariableAlias;
+  minWidth?: FigmaVariableAlias;
+  maxWidth?: FigmaVariableAlias;
+  minHeight?: FigmaVariableAlias;
+  maxHeight?: FigmaVariableAlias;
+  visible?: FigmaVariableAlias;
+  opacity?: FigmaVariableAlias;
+  strokeWeight?: FigmaVariableAlias;
+  fills?: FigmaVariableAlias[];
+  strokes?: FigmaVariableAlias[];
+  effects?: FigmaVariableAlias[];
+  layoutGrids?: FigmaVariableAlias[];
+  textRangeFills?: FigmaVariableAlias[];
+  componentProperties?: Record<string, FigmaVariableAlias>;
+  fontFamily?: FigmaVariableAlias[];
+  fontSize?: FigmaVariableAlias[];
+  fontStyle?: FigmaVariableAlias[];
+  fontWeight?: FigmaVariableAlias[];
+  letterSpacing?: FigmaVariableAlias[];
+  lineHeight?: FigmaVariableAlias[];
+  paragraphSpacing?: FigmaVariableAlias[];
+  paragraphIndent?: FigmaVariableAlias[];
 }
 
 // See apps/docs/figma-to-tldraw/tech.md §4.2.
@@ -312,6 +457,9 @@ export interface Snapshot {
   textSegments?: Record<string, FigmaTextSegment[]>;
   /** Main components (or whole component sets) the page's instances use, by node id. */
   mains?: Record<string, FigmaNode>;
+  variables?: SnapshotVariables;
+  /** Render bounds of hidden vectors whose visibility is bound to a variable (REST gives them none). */
+  hiddenRenderBounds?: Record<string, FigmaRect>;
 }
 
 export interface CaseSummary {

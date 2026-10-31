@@ -33,4 +33,4 @@ client 用真正的 `vite@8`：Vite 8 自带 Rolldown（打包）和 Oxc（转�
 ## 相关模块
 
 - [代码规范与格式化](../lint-format/README.md)：类型感知 lint 规则要 TS 7；Vite 8 用的 Oxc 和 lint 用的 Oxc 是同一个工具链。
-- [提交流程](../commit-workflow/README.md)：和 Vite 8 迁移在同一个分支 `chore/vite8-migration` 上做的。
+- 提交流程（commitlint、husky）和 Vite 8 迁移在同一个分支 `chore/vite8-migration` 上做的，规则在根目录 `CLAUDE.md`「Git 提交约定」。

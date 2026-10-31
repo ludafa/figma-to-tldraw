@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       serveDir('/cases/', path.resolve(__dirname, '../../cases')),
       serveDir('/reports/', path.resolve(__dirname, '../../reports')),
+      serveDir('/filter-luts/', path.resolve(__dirname, '../../filter-luts')),
     ],
     resolve: {
       alias: {

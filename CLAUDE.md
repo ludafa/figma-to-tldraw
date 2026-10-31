@@ -15,6 +15,8 @@ Module type: ESM. Package manager: pnpm. Node imports use `.js` extensions for T
 
 设计和施工记录在 `apps/docs/`，按功能模块组织。动手改某个功能前，先看索引 `apps/docs/README.md`，再打开对应模块的 `README.md`，按需读里面的 `product.md` / `tech.md` / `plan.md` / `verification.md` / `probe-*.md`；不要整目录通读。
 
+文档放哪：功能、设计、施工计划、调研都放 `apps/docs/<模块>/`；项目怎么搭、怎么干活的规矩写进本文件或 `.claude/skills/`。仓库根目录不建 `docs/`。
+
 写或更新文档时用 `feature-docs` skill。已有章节的编号不改（代码注释靠编号引用）；新功能的章节追加在文档末尾，编号取最大编号 + 1。改了模块 `README.md` 的头部后运行 `pnpm docs:index` 重新生成索引（`pnpm lint` 会检查）。
 
 ## 代码注释
@@ -69,12 +71,31 @@ These are load-bearing — change them only with the user's explicit go-ahead.
 - **Before finishing, run `pnpm lint` and `pnpm typecheck`** and fix what's left (strict TS with `verbatimModuleSyntax`: use `import type`). Suppress a rule with `// oxlint-disable-next-line <rule>`.
 - **Kubb's `src/gen/**` must stay formatted by oxfmt** (`kubb.config.ts` → `format: 'oxfmt'`); don't add it to `.oxfmtrc.json`'s `ignorePatterns`. Other codegen output (`routeTree.gen.ts`, `drizzle/**`) is ignored by both configs — add new codegen output there too.
 
+## 协作方式
+
+- 用中文回复，语言简单直白，把用户当成新手，把事情讲清楚。
+- 不要用"第一刀"这种说法，用"第一步""最小验证切片"代替。
+- 只回答问到的问题，不扯到别的项目上。
+- 每完成一步，先跑起来看效果，再进行下一步。
+- 涉及架构的大改动先问用户；小的实现细节自己决定。
+- 用户没说要提交就不提交；要提交时先跟用户确认。
+
+同一个工作区可能同时开着几个 Claude 会话，分支和没提交的改动会在你不知道的时候变掉：
+
+- 改文件前先看 `git branch --show-current` 和 `git status --short`；和自己记得的不一样时，用 `ListAgents` 看有没有别的会话在忙。
+- 要改的文件正被别的会话改着，先告诉用户，等那边提交了再在它的基础上改。
+- 提交时只 `git add` 自己改的文件，不 `git add -A`。
+
 ## Git 提交约定
 
 - **Commit message 用 [Conventional Commits](https://www.conventionalcommits.org/)。** `type(scope): subject` —— `feat` / `fix` / `docs` / `refactor` / `chore` / `test` / `build` / `ci`。scope 用受影响的包（`server` / `client` / `docs`），跨多包或全局改动可省略。一次 commit 只做一件事。
 - **格式由 commitlint 机器兜底。** 根 `commitlint.config.js`（`@commitlint/config-conventional`）+ husky 的 `.husky/commit-msg` 钩子会在每次提交时校验 message，格式不对直接拦下。`.husky/pre-commit` 用 lint-staged 对暂存文件跑 `scripts/format.sh`，只修复和格式化，不跑测试；加了 `--no-stash`，不碰共用的 stash 列表，开头那行 "might result in data loss" 警告可以忽略（见 [`apps/docs/lint-format/tech.md` §9](apps/docs/lint-format/tech.md#9-pre-commit-钩子2026-10-22)）。**不要用 `--no-verify` 绕过钩子。**
 - **钩子对 clone 者自动生效。** 根 `package.json` 的 `"prepare": "husky"` 在 `pnpm install` 后自动激活 husky，无需手动 `husky init`。CI 里若因 `--ignore-scripts` 报错，设 `HUSKY=0` 禁用即可。husky 属于**根** `package.json`，不装进子包。
-- **版本与 changelog 暂不由提交流程管理。** 本仓库三个包都是 `private: true` 的应用，不发 registry，故**没有引入 changesets**——commit message 只影响历史可读性，不决定版本号。若将来在 `packages/*` 放要发布的包，再评估是否引入 changesets（见 [`apps/docs/commit-workflow/`](apps/docs/commit-workflow/README.md)）。
+- **依赖都装在根目录**（`pnpm add -Dw`）：`@commitlint/cli`、`@commitlint/config-conventional`、`husky`、`lint-staged`。钩子靠 `pnpm exec` 跑，没 `pnpm install` 时提交会失败。
+- **pre-commit 不跑测试。** `husky init` 默认生成的 `pnpm test` 钩子删掉了：每次提交跑全量测试太重。仓库没有 CI，钩子是唯一的机器兜底，所以更不能 `--no-verify`。
+- **想确认 commitlint 的规则**：`echo "added some stuff" | pnpm exec commitlint` 退出码 1（报 `type-empty`、`subject-empty`），`echo "feat(server): add health check endpoint" | pnpm exec commitlint` 退出码 0。
+- **版本与 changelog 暂不由提交流程管理（用户拍板，2026-07-19）。** 本仓库三个包都是 `private: true` 的应用，不发 registry。changesets 会跳过 private 包，`/release` 里的 `pnpm changeset publish` 在这里什么都不做，硬装只会多一套空转的配置，故**没有引入 changesets**，也没有 `/release`——commit message 只影响历史可读性，不决定版本号。将来在 `packages/*` 放了要发布的包，按这个顺序接：装 `@changesets/cli` → `changeset init` → 补 `/release` 命令 →（发私有 registry 时）配 `access: "restricted"` 和登录态；现有的 Conventional Commits 历史就是接上之后算版本的基础。
+- 这一节的选型过程和施工记录原来在 `apps/docs/commit-workflow/`，2026-10-31 并进这里后删掉了（项目基建不放 `apps/docs/`，见「文档」），原文用 `git show 2d6e1a6:apps/docs/commit-workflow/tech.md` 看。
 - **提交流程由 slash command 驱动：**
   - `/commit` —— 分析已 staged 的改动、确定 type/scope、写 message、提交（不自作主张 `git add` 全部）。
   - `/split-commits` —— 把攒在工作区的一坨改动拆成多个语义清晰的 commit（`git add -p` 分批 stage）。
