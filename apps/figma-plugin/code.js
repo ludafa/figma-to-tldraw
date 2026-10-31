@@ -1926,6 +1926,35 @@ async function bakeFilteredImage(hash, filters) {
   }
 }
 
+// See apps/docs/figma-to-tldraw/probe-image-filters.md §2.
+async function measureFilters(images, jobs) {
+  var hashes = {};
+  Object.keys(images).forEach(function (k) {
+    hashes[k] = figma.createImage(images[k]).hash;
+  });
+  for (var i = 0; i < jobs.length; i++) {
+    var job = jobs[i];
+    post({ type: 'progress', done: i, total: jobs.length, text: job.name });
+    var bytes = null;
+    for (var tries = 1; tries <= 10; tries++) {
+      bytes = await bakeFilteredImage(hashes[job.image], job.filters);
+      if (await checkedInUi(bytes)) break;
+      post({ type: 'log', text: '  导出是空白的，0.3 秒后重试（第 ' + tries + ' 次）', error: true });
+      await new Promise(function (r) { setTimeout(r, 300); });
+    }
+    post({ type: 'measure-file', name: job.name, bytes: bytes, tries: tries });
+  }
+  post({ type: 'measure-done' });
+}
+
+var pendingCheck = null;
+function checkedInUi(bytes) {
+  return new Promise(function (resolve) {
+    pendingCheck = resolve;
+    post({ type: 'measure-check', bytes: bytes });
+  });
+}
+
 // See apps/docs/skia-engine/tech.md §11.4.
 var TEXT_SEGMENT_FIELDS = [
   'paragraphSpacing',
@@ -2429,6 +2458,8 @@ figma.ui.onmessage = async function (msg) {
     if (msg.type === 'generate') await generate(msg.images, msg.only);
     else if (msg.type === 'export') await exportCases();
     else if (msg.type === 'export-list') await exportList(msg.items);
+    else if (msg.type === 'measure') await measureFilters(msg.images, msg.jobs);
+    else if (msg.type === 'measure-checked' && pendingCheck) pendingCheck(msg.ok);
     else if (msg.type === 'close') figma.closePlugin();
   } catch (e) {
     post({ type: 'error', text: e && e.message ? e.message : String(e) });
