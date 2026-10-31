@@ -61,7 +61,7 @@ function Swatch({
 }) {
   return (
     <span
-      className="inline-block size-3 shrink-0 rounded-[3px] border border-black/15"
+      className="inline-block size-3 shrink-0 rounded-[3px] border border-foreground/15"
       style={{ background: rgba({ ...color, a: color.a ?? 1 }) }}
     />
   );
@@ -69,7 +69,7 @@ function Swatch({
 
 function ValuePreview({ value }: { value: FigmaVariableValue | undefined }) {
   if (value === undefined) {
-    return <span className="text-black/35">—</span>;
+    return <span className="text-foreground/35">—</span>;
   }
   if (isVariableColor(value)) {
     const a = value.a ?? 1;
@@ -77,7 +77,9 @@ function ValuePreview({ value }: { value: FigmaVariableValue | undefined }) {
       <span className="flex items-center gap-1">
         <Swatch color={value} />
         <span className="uppercase">{toHex({ ...value, a }).slice(1)}</span>
-        {a < 1 && <span className="text-black/45">{Math.round(a * 100)}%</span>}
+        {a < 1 && (
+          <span className="text-foreground/45">{Math.round(a * 100)}%</span>
+        )}
       </span>
     );
   }
@@ -166,7 +168,7 @@ export function BoundVariablesSection({ shape }: { shape: FigmaShape }) {
         set && (
           <button
             type="button"
-            className="rounded px-1 text-black/55 hover:bg-black/5 hover:text-black"
+            className="rounded px-1 text-foreground/55 hover:bg-foreground/5 hover:text-foreground"
             onClick={() => setOpen(true)}
           >
             变量表
@@ -179,7 +181,7 @@ export function BoundVariablesSection({ shape }: { shape: FigmaShape }) {
           key={slot.binding.join('/')}
           className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-1.5"
         >
-          <span className="truncate text-black/45">{slot.label}</span>
+          <span className="truncate text-foreground/45">{slot.label}</span>
           <div
             className={FIELD}
             title={set ? variableLabel(set, slot.alias.id) : slot.alias.id}
@@ -196,7 +198,7 @@ export function BoundVariablesSection({ shape }: { shape: FigmaShape }) {
           <button
             type="button"
             title="解绑：保留现在的值，不再跟着变量变"
-            className="rounded px-1 text-black/45 hover:bg-black/5 hover:text-black"
+            className="rounded px-1 text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
             onClick={() => {
               const s = editor.getShape<FigmaShape>(shape.id);
               if (s) {
@@ -274,7 +276,7 @@ function ValueCell({
           }
         }}
       >
-        <span className="shrink-0 text-black/45">→</span>
+        <span className="shrink-0 text-foreground/45">→</span>
         <span className="min-w-0 flex-1 truncate">
           {variableLabel(set, raw.id)}
         </span>
@@ -368,7 +370,7 @@ export function VariablesDialog({
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 outline-none"
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-foreground/30! outline-none"
       onPointerDown={(e) => e.target === e.currentTarget && onClose()}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -377,29 +379,29 @@ export function VariablesDialog({
         }
       }}
     >
-      <div className="figma-panel flex max-h-[80vh] w-[min(880px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-white text-[11px] text-[#1d1d1d] shadow-xl">
-        <div className="flex items-center justify-between border-b border-black/10 px-3 py-2">
+      <div className="figma-panel flex max-h-[80vh] w-[min(880px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border bg-background text-[11px] text-foreground shadow-xl">
+        <div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2">
           <span className="font-semibold">变量</span>
           <button
             type="button"
-            className="rounded px-1.5 text-black/55 hover:bg-black/5 hover:text-black"
+            className="rounded px-1.5 text-foreground/55 hover:bg-foreground/5 hover:text-foreground"
             onClick={onClose}
           >
             关闭
           </button>
         </div>
         <div className="flex min-h-0 flex-1">
-          <ul className="w-44 shrink-0 overflow-y-auto border-r border-black/10 py-1">
+          <ul className="w-44 shrink-0 overflow-y-auto border-r border-foreground/10 py-1">
             {collections.map((c) => (
               <li key={c.id}>
                 <button
                   type="button"
-                  className={`flex w-full items-center justify-between gap-1 px-3 py-1 text-left ${c.id === collection?.id ? 'bg-black/[0.06] font-semibold' : 'hover:bg-black/[0.03]'}`}
+                  className={`flex w-full items-center justify-between gap-1 px-3 py-1 text-left ${c.id === collection?.id ? 'bg-foreground/[0.06] font-semibold' : 'hover:bg-foreground/[0.03]'}`}
                   onClick={() => setPicked(c.id)}
                 >
                   <span className="truncate">{c.name}</span>
                   {c.remote && (
-                    <span className="shrink-0 text-black/40">库</span>
+                    <span className="shrink-0 text-foreground/40">库</span>
                   )}
                 </button>
               </li>
@@ -408,19 +410,19 @@ export function VariablesDialog({
           {collection && (
             <div className="min-w-0 flex-1 overflow-auto">
               <table className="w-full min-w-max table-fixed border-separate border-spacing-0">
-                <thead className="sticky top-0 bg-white">
+                <thead className="sticky top-0 bg-background">
                   <tr>
-                    <th className="w-40 border-b border-black/10 px-3 py-1.5 text-left font-medium text-black/55">
+                    <th className="w-40 border-b border-foreground/10 px-3 py-1.5 text-left font-medium text-foreground/55">
                       名字
                     </th>
                     {collection.modes.map((m) => (
                       <th
                         key={m.modeId}
-                        className="w-56 border-b border-black/10 px-1.5 py-1.5 text-left font-medium text-black/55"
+                        className="w-56 border-b border-foreground/10 px-1.5 py-1.5 text-left font-medium text-foreground/55"
                       >
                         {m.name}
                         {m.modeId === collection.defaultModeId && (
-                          <span className="ml-1 text-black/35">默认</span>
+                          <span className="ml-1 text-foreground/35">默认</span>
                         )}
                       </th>
                     ))}
@@ -430,11 +432,11 @@ export function VariablesDialog({
                   {variables.map((v) => (
                     <tr key={v.id}>
                       <td
-                        className="border-b border-black/5 px-3 py-1"
+                        className="border-b border-foreground/5 px-3 py-1"
                         title={v.id}
                       >
                         <div className="truncate">{v.name}</div>
-                        <div className="text-black/40">
+                        <div className="text-foreground/40">
                           {TYPE_LABEL[v.resolvedType] ?? v.resolvedType}
                           {v.remote ? ' · 库变量，只读' : ''}
                         </div>
@@ -442,7 +444,7 @@ export function VariablesDialog({
                       {collection.modes.map((m) => (
                         <td
                           key={m.modeId}
-                          className="border-b border-black/5 px-1.5 py-1"
+                          className="border-b border-foreground/5 px-1.5 py-1"
                         >
                           <ValueCell
                             editor={editor}

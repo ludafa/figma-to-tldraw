@@ -61,7 +61,7 @@ export function fromHex(hex: string, a: number): FigmaColor | undefined {
 }
 
 export const FIELD =
-  'flex h-6 min-w-0 items-center gap-1 rounded-sm bg-black/[0.04] px-1.5 focus-within:ring-1 focus-within:ring-[var(--color-selected,#2f80ed)]';
+  'flex h-6 min-w-0 items-center gap-1 rounded-sm bg-foreground/[0.04] px-1.5 focus-within:ring-1 focus-within:ring-[var(--color-selected,#2f80ed)]';
 
 export function Section({
   title,
@@ -73,7 +73,7 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <div className="border-t border-black/10 px-3 py-2">
+    <div className="border-t border-foreground/10 px-3 py-2">
       <div className="mb-1.5 flex h-5 items-center justify-between font-semibold">
         <span>{title}</span>
         {action}
@@ -249,7 +249,7 @@ export function TextField({
   return (
     <label ref={box} className={`${FIELD} ${disabled ? 'opacity-50' : ''}`}>
       {label !== undefined && (
-        <span className="shrink-0 text-black/45">{label}</span>
+        <span className="shrink-0 text-foreground/45">{label}</span>
       )}
       <input
         ref={input}
@@ -341,7 +341,7 @@ export function SelectField<T extends string | number>({
   const known = options.some(([v]) => v === value);
   return (
     <label className={FIELD}>
-      {label && <span className="shrink-0 text-black/45">{label}</span>}
+      {label && <span className="shrink-0 text-foreground/45">{label}</span>}
       <select
         className="w-full min-w-0 bg-transparent outline-none"
         value={known ? String(value) : ''}
@@ -389,7 +389,7 @@ export function ColorField({
     <div className={FIELD}>
       <input
         type="color"
-        className="size-4 shrink-0 cursor-pointer rounded-sm border border-black/10 bg-transparent p-0"
+        className="size-4 shrink-0 cursor-pointer rounded-sm border border-foreground/10 bg-transparent p-0"
         value={hex}
         onPointerDown={onMark}
         onChange={(e) => {

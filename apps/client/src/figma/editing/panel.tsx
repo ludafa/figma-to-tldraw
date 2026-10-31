@@ -127,7 +127,7 @@ function IconButton({
       type="button"
       title={label}
       aria-label={label}
-      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-black/60 hover:bg-black/[0.06]"
+      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground/60 hover:bg-foreground/[0.06]"
       onClick={onClick}
     >
       {children}
@@ -145,12 +145,12 @@ function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex h-6 rounded-sm bg-black/[0.04] p-0.5">
+    <div className="flex h-6 rounded-sm bg-foreground/[0.04] p-0.5">
       {options.map(([v, text]) => (
         <button
           key={v}
           type="button"
-          className={`flex-1 rounded-[3px] ${v === value ? 'bg-white shadow-sm' : 'text-black/55 hover:text-black'}`}
+          className={`flex-1 rounded-[3px] ${v === value ? 'bg-background shadow-sm dark:bg-foreground/15' : 'text-foreground/55 hover:text-foreground'}`}
           onClick={() => onChange(v)}
         >
           {text}
@@ -227,7 +227,7 @@ function PaintList({
                   onChange={(color, merge) => patch(i, { color }, merge)}
                 />
               ) : (
-                <div className={`${FIELD} text-black/60`}>
+                <div className={`${FIELD} text-foreground/60`}>
                   {PAINT_LABEL[p.type]}
                 </div>
               )}
@@ -404,7 +404,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
   if (nodes.some((n) => n.layoutWrap === 'WRAP' || n.layoutMode === 'GRID')) {
     return (
       <Section title="自动布局">
-        <div className="text-black/50">换行和网格布局暂不支持编辑</div>
+        <div className="text-foreground/50">换行和网格布局暂不支持编辑</div>
       </Section>
     );
   }
@@ -440,7 +440,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
       {mode !== 'NONE' && mode !== MIXED && (
         <>
           <div className="flex gap-2">
-            <div className="grid grid-cols-3 gap-0.5 rounded-sm bg-black/[0.04] p-1">
+            <div className="grid grid-cols-3 gap-0.5 rounded-sm bg-foreground/[0.04] p-1">
               {ALIGN.flatMap((row) =>
                 ALIGN.map((col) => {
                   const p = mode === 'HORIZONTAL' ? col : row;
@@ -460,7 +460,7 @@ function AutoLayoutSection({ items, act }: { items: Item[]; act: Actions }) {
                       }
                     >
                       <span
-                        className={`rounded-full ${on ? 'size-2 bg-[var(--color-selected,#2f80ed)]' : 'size-1 bg-black/30'}`}
+                        className={`rounded-full ${on ? 'size-2 bg-[var(--color-selected,#2f80ed)]' : 'size-1 bg-foreground/30'}`}
                       />
                     </button>
                   );
@@ -674,7 +674,7 @@ function FillSection({ items, act }: { items: Item[]; act: Actions }) {
       }
     >
       {paints === MIXED ? (
-        <div className="text-black/50">混合</div>
+        <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
           paints={paints ?? []}
@@ -684,7 +684,7 @@ function FillSection({ items, act }: { items: Item[]; act: Actions }) {
         />
       )}
       {vector && (
-        <div className="text-black/50">
+        <div className="text-foreground/50">
           矢量的颜色写在 SVG 里，下一步再支持修改
         </div>
       )}
@@ -721,7 +721,7 @@ function StrokeSection({ items, act }: { items: Item[]; act: Actions }) {
       }
     >
       {paints === MIXED ? (
-        <div className="text-black/50">混合</div>
+        <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
           paints={paints ?? []}
@@ -805,7 +805,7 @@ function EffectSection({ items, act }: { items: Item[]; act: Actions }) {
         </IconButton>
       }
     >
-      {effects === MIXED && <div className="text-black/50">混合</div>}
+      {effects === MIXED && <div className="text-foreground/50">混合</div>}
       {list.map((e, i) => {
         const shadow = e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW';
         return (
@@ -1074,7 +1074,7 @@ function ActionButton({
   return (
     <button
       type="button"
-      className="h-6 rounded-sm bg-black/[0.04] px-2 hover:bg-black/[0.08]"
+      className="h-6 rounded-sm bg-foreground/[0.04] px-2 hover:bg-foreground/[0.08]"
       onClick={onClick}
     >
       {label}
@@ -1161,15 +1161,18 @@ function InstanceSection({ shape }: { shape: FigmaShape }) {
             ? shapeByNodeId(editor, String(prop.value), shape)
             : undefined;
         return (
-          <div key={key} className="flex h-6 items-center gap-1 text-black/60">
-            <span className="text-black/45">{label}</span>
+          <div
+            key={key}
+            className="flex h-6 items-center gap-1 text-foreground/60"
+          >
+            <span className="text-foreground/45">{label}</span>
             <span className="truncate">
               {swapTo?.props.node.name ?? String(prop.value)}
             </span>
           </div>
         );
       })}
-      <div className="text-black/45">
+      <div className="text-foreground/45">
         {overrides ? `覆盖了 ${overrides} 个字段` : '没有覆盖'}
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -1224,7 +1227,7 @@ function MainSection({ shape }: { shape: FigmaShape }) {
       {defs.map(([key, def]) => (
         <div key={key} className="flex h-6 items-center justify-between gap-2">
           <span className="truncate">{propertyName(key)}</span>
-          <span className="shrink-0 text-black/45">
+          <span className="shrink-0 text-foreground/45">
             {def.type === 'VARIANT'
               ? `变体 ${def.variantOptions?.length ?? 0} 个`
               : def.type === 'BOOLEAN'
@@ -1237,7 +1240,7 @@ function MainSection({ shape }: { shape: FigmaShape }) {
       ))}
       {node.type === 'COMPONENT' && (
         <>
-          <div className="text-black/45">文件里有 {count} 个实例</div>
+          <div className="text-foreground/45">文件里有 {count} 个实例</div>
           <div>
             <ActionButton
               label="生成实例"
@@ -1293,7 +1296,7 @@ function FigmaPanel({ items }: { items: Item[] }) {
   const groups = shapes.every(isGroup);
   const types = new Set(shapes.map((s) => s.props.node.type));
   return (
-    <div className="figma-panel pb-1 text-[11px] text-[var(--color-text-1,#1d1d1d)]">
+    <div className="figma-panel pb-1 text-[11px] text-foreground">
       <div className="flex items-baseline justify-between gap-2 px-3 py-2">
         <span
           className={`truncate font-semibold ${
@@ -1304,7 +1307,7 @@ function FigmaPanel({ items }: { items: Item[] }) {
             ? shapes[0].props.node.name
             : `${shapes.length} 个图层`}
         </span>
-        <span className="shrink-0 text-black/45">
+        <span className="shrink-0 text-foreground/45">
           {types.size === 1
             ? (TYPE_LABEL[[...types][0]] ?? [...types][0])
             : '混合'}
