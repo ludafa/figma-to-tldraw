@@ -28,6 +28,14 @@ pnpm --filter @figma-to-tldraw/client import-cases ~/Downloads/figma-test-cases-
 
 **按列表重新导出**：第 3 步"按列表导出"贴一段 `[{"id": "节点 id", "dir": "用例目录"}]`，插件按 id 找节点（能跨页面），按给定的目录导出。已有的用例想原样重导一遍（比如插件导出的内容变了）就用它，目录名不变。
 
+**量图片滤镜**（2026-10-30）：第 4 步"量图片滤镜"让 Figma 给一张色表图套上 7 种图片调整的每一档并导出，约 30 秒，下载 `figma-filter-probe-日期.zip`，不动任何页面。画布在图片调整没有 Figma 成品图时（比如在填充弹窗里拖了滑块）靠这些色表实时画。用这个命令导入到仓库根目录的 `filter-luts/`（不进 git），zip 要写绝对路径：
+
+```bash
+pnpm --filter @figma-to-tldraw/client import-filter-luts ~/Downloads/figma-filter-probe-*.zip
+```
+
+Figma 改了图片调整的算法时重跑一次。测量方法和结论见 `apps/docs/figma-to-tldraw/probe-image-filters.md`，画布怎么用见 `tech.md` §22.3。
+
 **主组件**：导出时会顺带导出用例里实例用到的主组件和整套变体（变体超过 60 个的只导用到的），放在 `snapshot.json` 的 `mains` 里。主组件被删掉的实例原样导出，记一条警告。详见 `apps/docs/figma-to-tldraw/tech.md` §16.1。
 
 **字体**：用例只能用开源、能从 npm 装上的字体（`apps/client/src/figma/fonts.ts` 的 `OPEN_FONTS`），`import-cases` 会跳过用到其他字体的用例。挑社区稿子时先看它用的字体（`tech.md` §15）。
