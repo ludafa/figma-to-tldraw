@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as CanvasRouteImport } from './routes/canvas'
@@ -17,11 +18,17 @@ import { Route as DemoRouteImport } from './routes/demo'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as ReportRouteImport } from './routes/report'
+import { Route as RoadmapRouteImport } from './routes/roadmap'
 import { Route as ShowcaseRouteImport } from './routes/showcase'
-import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -60,14 +67,19 @@ const ReportRoute = ReportRouteImport.update({
   path: '/report',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoadmapRoute = RoadmapRouteImport.update({
+  id: '/roadmap',
+  path: '/roadmap',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShowcaseRoute = ShowcaseRouteImport.update({
   id: '/showcase',
   path: '/showcase',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppNotesRoute = AppNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
@@ -82,31 +94,36 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AppIndexRoute
+  '/': typeof IndexRoute
   '/canvas': typeof CanvasRoute
   '/compare': typeof CompareRoute
   '/demo': typeof DemoRoute
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
+  '/roadmap': typeof RoadmapRoute
   '/showcase': typeof ShowcaseRoute
+  '/notes': typeof AppNotesRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof AppIndexRoute
+  '/': typeof IndexRoute
   '/canvas': typeof CanvasRoute
   '/compare': typeof CompareRoute
   '/demo': typeof DemoRoute
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
+  '/roadmap': typeof RoadmapRoute
   '/showcase': typeof ShowcaseRoute
+  '/notes': typeof AppNotesRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/canvas': typeof CanvasRoute
@@ -115,10 +132,11 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/import': typeof ImportRoute
   '/report': typeof ReportRoute
+  '/roadmap': typeof RoadmapRoute
   '/showcase': typeof ShowcaseRoute
+  '/_app/notes': typeof AppNotesRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
-  '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -130,7 +148,9 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/import'
     | '/report'
+    | '/roadmap'
     | '/showcase'
+    | '/notes'
     | '/login'
     | '/register'
   fileRoutesByTo: FileRoutesByTo
@@ -142,11 +162,14 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/import'
     | '/report'
+    | '/roadmap'
     | '/showcase'
+    | '/notes'
     | '/login'
     | '/register'
   id:
     | '__root__'
+    | '/'
     | '/_app'
     | '/_auth'
     | '/canvas'
@@ -155,13 +178,15 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/import'
     | '/report'
+    | '/roadmap'
     | '/showcase'
+    | '/_app/notes'
     | '/_auth/login'
     | '/_auth/register'
-    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   CanvasRoute: typeof CanvasRoute
@@ -170,11 +195,19 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   ImportRoute: typeof ImportRoute
   ReportRoute: typeof ReportRoute
+  RoadmapRoute: typeof RoadmapRoute
   ShowcaseRoute: typeof ShowcaseRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -231,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/roadmap': {
+      id: '/roadmap'
+      path: '/roadmap'
+      fullPath: '/roadmap'
+      preLoaderRoute: typeof RoadmapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/showcase': {
       id: '/showcase'
       path: '/showcase'
@@ -238,11 +278,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShowcaseRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/': {
-      id: '/_app/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
+    '/_app/notes': {
+      id: '/_app/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof AppNotesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/login': {
@@ -263,11 +303,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
-  AppIndexRoute: typeof AppIndexRoute
+  AppNotesRoute: typeof AppNotesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppIndexRoute: AppIndexRoute,
+  AppNotesRoute: AppNotesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -285,6 +325,7 @@ const AuthRouteChildren: AuthRouteChildren = {
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   CanvasRoute: CanvasRoute,
@@ -293,6 +334,7 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   ImportRoute: ImportRoute,
   ReportRoute: ReportRoute,
+  RoadmapRoute: RoadmapRoute,
   ShowcaseRoute: ShowcaseRoute,
 }
 export const routeTree = rootRouteImport
