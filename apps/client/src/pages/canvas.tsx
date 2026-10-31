@@ -2,7 +2,7 @@ import '../figma/figma.css';
 
 import { getRouteApi, Link } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ import {
   getCanvasController,
   SkiaCanvas,
   type TLComponents,
+  usePagePosition,
 } from '../engine';
 import {
   copyCollectionValues,
@@ -75,29 +76,37 @@ function ExpectedOverlay() {
   if (!overlay || overlay.mode === 'off') {
     return null;
   }
+  return <ExpectedImage overlay={overlay} />;
+}
+
+// See apps/docs/skia-engine/tech.md §6.9.
+function ExpectedImage({ overlay }: { overlay: Overlay }) {
+  const ref = useRef<HTMLImageElement>(null);
+  usePagePosition(ref, overlay.x, overlay.y);
   return (
     <img
+      ref={ref}
       src={overlay.src}
       alt=""
       draggable={false}
       style={{
         position: 'absolute',
-        left: overlay.x,
-        top: overlay.y,
+        left: 0,
+        top: 0,
+        transformOrigin: '0 0',
         width: overlay.width,
         height: overlay.height,
         maxWidth: 'none',
         opacity: overlay.mode === 'half' ? 0.5 : 1,
         mixBlendMode: overlay.mode === 'diff' ? 'difference' : undefined,
         pointerEvents: 'none',
-        zIndex: 1_000_000,
       }}
     />
   );
 }
 
 const components: TLComponents = {
-  OnTheCanvas: ExpectedOverlay,
+  InFrontOfTheCanvas: ExpectedOverlay,
   StylePanel: FigmaStylePanel,
   Toolbar: FigmaToolbar,
 };
@@ -237,16 +246,18 @@ function Toolbar({
   warnings: string[];
 }) {
   return (
-    <div className="pointer-events-auto absolute top-2 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-3 py-1.5 text-sm shadow-sm">
-      <span className="font-medium">{title}</span>
-      <div className="flex gap-1">
+    <div className="pointer-events-auto absolute top-2 left-1/2 z-[1000] flex max-w-[calc(100%-16px)] -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-3 py-1.5 text-sm shadow-sm">
+      <span className="min-w-0 truncate font-medium" title={title}>
+        {title}
+      </span>
+      <div className="flex shrink-0 gap-1">
         {OVERLAY_MODES.map((m) => (
           <button
             key={m.mode}
             type="button"
             onClick={() => onMode(m.mode)}
             className={cn(
-              'rounded-md px-2 py-0.5 hover:bg-muted',
+              'rounded-md px-2 py-0.5 whitespace-nowrap hover:bg-muted',
               mode === m.mode && 'bg-muted font-medium',
             )}
           >
@@ -255,7 +266,10 @@ function Toolbar({
         ))}
       </div>
       {warnings.length > 0 && (
-        <span className="text-amber-600" title={warnings.join('\n')}>
+        <span
+          className="shrink-0 whitespace-nowrap text-amber-600"
+          title={warnings.join('\n')}
+        >
           {warnings.length} 条警告
         </span>
       )}

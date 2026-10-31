@@ -1,6 +1,8 @@
 import {
   createContext,
+  type RefObject,
   useContext,
+  useLayoutEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -65,4 +67,28 @@ export function useAtom<T>(name: string, initial: T | (() => T)): Atom<T> {
     ),
   );
   return a;
+}
+
+// See apps/docs/skia-engine/tech.md §6.9.
+export function usePagePosition(
+  ref: RefObject<HTMLElement | null>,
+  x: number,
+  y: number,
+) {
+  const editor = useEditor();
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const update = () => {
+      const c = editor.getCamera();
+      el.style.transform = `scale(${c.z}) translate(${c.x + x}px, ${c.y + y}px)`;
+    };
+    update();
+    editor.on('camera', update);
+    return () => {
+      editor.off('camera', update);
+    };
+  }, [editor, ref, x, y]);
 }
