@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "compare": "tsx scripts/compare.ts",
     "import-cases": "tsx scripts/import-cases.ts",
+    "import-filter-luts": "tsx scripts/import-filter-luts.ts",
     "export-static": "tsx scripts/export-static.ts"
   },
   "dependencies": {

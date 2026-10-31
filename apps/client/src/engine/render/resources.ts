@@ -103,6 +103,11 @@ export class Resources {
       : undefined;
   }
 
+  /** Whether loading or decoding the image at `url` gave up. */
+  imageFailed(url: string): boolean {
+    return this.images.get(url)?.state === 'failed';
+  }
+
   /**
    * The image at `url`. With `scale` (device pixels per image pixel) it may be
    * a reduced copy, so map it by its own `width()` / `height()`.

@@ -252,7 +252,7 @@ export function snapshotToShapes(
           images[key] = opts.assetBase + baked;
         } else {
           warnings.push(
-            `图片滤镜没有效果（缺少渲染好的图）：${node.name}（${node.id}）`,
+            `图片滤镜没有 Figma 渲染好的图，改用色表实时画：${node.name}（${node.id}）`,
           );
         }
       }

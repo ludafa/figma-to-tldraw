@@ -9,7 +9,7 @@ import type {
 } from 'canvaskit-wasm';
 
 import type { Resources } from '../../engine/render/resources';
-import { filteredImageKey } from '../image-filters';
+import { filteredImageKey, lutLayers } from '../image-filters';
 import { gradientMatrix } from '../paint-math';
 import type { FigmaBlendMode, FigmaColor, FigmaPaint } from '../types';
 
@@ -144,7 +144,8 @@ function imageShader(
     return undefined;
   }
   const key = filteredImageKey(paint.imageRef, paint.filters);
-  const url = (key && src.images[key]) || src.images[paint.imageRef];
+  const baked = key ? src.images[key] : undefined;
+  const url = baked || src.images[paint.imageRef];
   const natural = url ? res.imageSize(url) : undefined;
   if (!url || !natural) {
     // Starts the download and marks the drawing incomplete.
@@ -218,7 +219,7 @@ function imageShader(
   const kx = iw / image.width();
   const ky = ih / image.height();
   m = [m[0] * kx, m[1] * ky, m[2], m[3] * kx, m[4] * ky, m[5], 0, 0, 1];
-  return d.keep(
+  const shader = d.keep(
     image.makeShaderOptions(
       tile,
       tile,
@@ -227,6 +228,77 @@ function imageShader(
       m,
     ),
   );
+  return key && !baked ? liveFilters(ck, shader, paint, res, d) : shader;
+}
+
+let filterEffect: RuntimeEffect | null | undefined;
+
+// See apps/docs/figma-to-tldraw/tech.md §22.3.
+const FILTER_SKSL = `
+uniform shader src;
+uniform shader lo;
+uniform shader hi;
+uniform float t;
+
+float2 cell(float b, float2 rg) {
+  return float2(mod(b, 8.0), floor(b / 8.0)) * 64.0 + rg;
+}
+
+half4 main(float2 p) {
+  half4 c = src.eval(p);
+  if (c.a <= 0.0) {
+    return c;
+  }
+  float3 v = clamp(float3(c.rgb) / float(c.a), 0.0, 1.0) * 63.0;
+  float b0 = floor(v.b);
+  float b1 = min(b0 + 1.0, 63.0);
+  float f = v.b - b0;
+  float2 rg = v.rg + 0.5;
+  float2 p0 = cell(b0, rg);
+  float2 p1 = cell(b1, rg);
+  float3 a = mix(float3(lo.eval(p0).rgb), float3(lo.eval(p1).rgb), f);
+  float3 b = mix(float3(hi.eval(p0).rgb), float3(hi.eval(p1).rgb), f);
+  return half4(half3(mix(a, b, t)) * c.a, c.a);
+}`;
+
+/** The image with its filters applied through measured color tables. */
+function liveFilters(
+  ck: CanvasKit,
+  input: Shader,
+  paint: FigmaPaint,
+  res: Resources,
+  d: Disposer,
+): Shader {
+  filterEffect ??= ck.RuntimeEffect.Make(FILTER_SKSL);
+  if (!filterEffect) {
+    return input;
+  }
+  const table = (url: string) => {
+    const image = res.getImage(url);
+    return image
+      ? d.keep(
+          image.makeShaderOptions(
+            ck.TileMode.Clamp,
+            ck.TileMode.Clamp,
+            ck.FilterMode.Linear,
+            ck.MipmapMode.None,
+          ),
+        )
+      : undefined;
+  };
+  let out = input;
+  for (const layer of lutLayers(paint.filters)) {
+    if (res.imageFailed(layer.lo) || res.imageFailed(layer.hi)) {
+      continue;
+    }
+    const lo = table(layer.lo);
+    const hi = table(layer.hi);
+    if (!lo || !hi) {
+      return input;
+    }
+    out = d.keep(filterEffect.makeShaderWithChildren([layer.t], [out, lo, hi]));
+  }
+  return out;
 }
 
 /** A Skia paint for one Figma paint, or undefined when it draws nothing. */

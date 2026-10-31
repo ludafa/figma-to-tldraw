@@ -13,6 +13,8 @@ node_modules
 # Figma test data exported by apps/figma-plugin, and fidelity reports
 cases/
 reports/
+# Color tables for image filters, measured in Figma (see apps/docs/figma-to-tldraw/tech.md §22.3)
+filter-luts/
 
 # Cases taken out of cases/ (kept for reference)
 archive/
