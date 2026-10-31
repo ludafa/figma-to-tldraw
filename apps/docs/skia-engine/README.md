@@ -2,7 +2,7 @@
 name: skia-engine
 title: 自研 Skia 画面引擎
 description: 用自己写的 CanvasKit（Skia 编译成 WebAssembly，跑在 WebGL 上）画面引擎替换 tldraw：apps/client/src/engine/ 里和 tldraw 同名同用法的 API（Editor、ShapeUtil、createShapeId、getIndices、StateNode、react / computed / atom、useEditor / useValue、<SkiaCanvas> 对应 <Tldraw>）；自己的信号、store、撤销历史、分数索引、几何；渲染层（canvaskit.ts 加载、fonts.ts 按 @font-face 懒加载字体和共用的 FontCollection、resources.ts 图片（浏览器 createImageBitmap 解码、按内容去重、按缩放取 1/2^k 的档位，image-size.ts）和 SVG 缓存、svg.ts 把 Figma 导出的 SVG 翻成 Skia 绘制、瓦片缓存、选框层）；Figma 图形的 Skia 画法（figma/skia/：填充、渐变、图片、描边、虚线、阴影、背景模糊、文字按 Figma 规则逐行放基线、font-metrics.json 和生成它的 scripts/font-metrics.ts）；混合样式文字（每行按段取行高、各字体的自动行高、多种填充、列表符号、首行缩进、文字描边、字间距断行、下划线的波浪线 / 点线 / 粗细 / 偏移 / 跳过下伸部分，插件导出的 textSegments，插件 text-mixed/* 22 个用例）；还原度目标（每个用例差异 < 1%）和 4 项操作 ≥ 60fps 的性能目标与测法（scripts/bench.ts，也能测 /demo）；总览 Demo 页 /demo（全部 175 个用例、22100 个图形铺在一张画布上，?copies=N 重复，demo/layout.ts、demo/load.ts、标签层）。改画面引擎、查渲染和 Figma 不一致、查卡顿或内存（wasm 堆涨满）、改 /demo 时来读。
-changes: [2026-10-27, 2026-10-28]
+changes: [2026-10-27, 2026-10-28, 2026-10-29]
 status: 已上线
 code:
   - apps/client/src/engine/
@@ -23,6 +23,8 @@ code:
 2026-10-28 加了总览 Demo 页 `/demo`（用户追加）：175 个用例、22100 个图形放在一张画布上，约 12 秒加载完，wasm 堆 161～193MB；4 项操作在整面墙和放大到单个用例时都是 60fps（显示器 60Hz）；为它改了引擎的图片解码、字体集合、瓦片补画和按节点 id 找图层，全量对比仍是 175 / 175 小于 1%，平均 0.155%（[verification.md §4](verification.md#4-各次实际结果)）。
 
 2026-10-28 提交前按 code review 修了 14 处：撤销历史（`run` 的历史模式、`bailToMark`）、文字工具进编辑状态、切页时的镜头、拖动抬起的定时器、信号和 store 的 O(N²)、总览跟着内容扩大、WebGL 句柄、Linear Dodge 混合、多画布的键盘、漏掉的文字投影等（[plan.md](plan.md) 最后一节）。
+
+2026-10-29 修了切用例后上个用例的画面留在画布上（用户试用发现）：删子图形时把父 frame 缓存的范围清掉了，轮到删父 frame 时查不到旧位置、没重画；现在清掉的范围留作旧位置备用（[tech.md §5.10](tech.md#510-删掉改动的图形漏标旧位置2026-10-29用户试用发现)）。同一天还修了"差异"叠加看不出区别：叠加图在带 `transform` 的镜头层里，混合不到下面的 WebGL 画布，改放 `InFrontOfTheCanvas` 并用 `usePagePosition` 跟着镜头（[tech.md §6.9](tech.md#69-盖在画布上要和画布混合的-dom2026-10-29用户试用发现)）。
 
 2026-10-28～10-29 攻混合样式文字（用户追加）：插件加了 `text-mixed/*` 用例，修了换字体的自动行高、多种填充、首行缩进和按段的段间距、列表符号、文字描边、字间距断行、按段取行高、首字母大写、装饰线样式；顺带查出 Skia 段落里的基线是取整过的，原来所有文字都偏开小数部分，改了以后全量 197 个用例平均 0.091%，原来的 175 个没有一个变差（[tech.md §11](tech.md#11-混合样式文字2026-10-28用户追加)）。
 

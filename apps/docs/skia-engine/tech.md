@@ -249,6 +249,24 @@ Figma 导出带背景模糊的矢量时，SVG 里先是一个 `<foreignObject>`�
 
 没验证的：`<g opacity>` 包着这一对时（背景滤镜在不透明度图层里读到的是空白），和 `paintBox` 画的盒子图层不透明度小于 1 时（同样的原因）背景模糊对不对。现有用例里没有。
 
+### 5.10 删掉、改动的图形漏标旧位置（2026-10-29，用户试用发现）
+
+现象：在 `/canvas` 左边的用例列表里，从大用例切到小用例，上个用例比新用例大出来的那部分还留在画布上（用户截图）。复现：`page/gallery` 切到 `fill/solid`，gallery 深色的背景和卡片没被子图形盖住的部分都在；`page/mobile-login` 切到 `radius/uniform`，留下白底。`/canvas` 每个用例都用缩放 1（figma-to-tldraw tech.md §7），所以切用例时还用同一层瓦片，只重画标脏的地方。
+
+原因：`render/renderer.ts` 的 `invalidate` 用 `pageBounds`（上次画或查过的页面范围）当图形的旧位置，标成脏矩形（§5 第 1 步）。可是每改一个图形，它和所有祖先的 `pageBounds` 都会被清掉（祖先的范围包含它，可能变了）；store 又是一条记录发一次变化（`store.ts` 的 `apply`），`deleteShapes` 先删子图形再删父图形。删子图形那一次就把父 frame 的缓存清了，轮到父 frame 时已经查不到旧位置，只标了各个子图形的范围，父 frame 自己的底色、没被子图形盖住的部分没重画。同样的漏标也会出现在"先改子图形、再改父图形"的时候，比如自动布局的 frame 跟着内容缩小，旧边框外面那一圈留在画面上。
+
+做法：清缓存时不直接扔掉，挪进 `stalePageBounds`（`dropPageBounds`）；图形自己被改、被删时，旧位置取 `pageBounds`，没有就取 `stalePageBounds`；图形删掉时把它的那条也删掉。这样只多认了"图形自己"的旧位置，不会因为子图形改了就把整个父 frame 标脏，拖动、改属性时重画的范围和原来一样。
+
+没选的：
+
+| 方案                                 | 结论                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------- |
+| 清祖先缓存时把祖先的旧范围直接标脏   | ❌ 改一个按钮就把整页的根 frame 标脏，大稿子上每次拖动都整块重画                    |
+| 同一次变化里先读完所有旧位置再清缓存 | ❌ store 一条记录发一次变化，同一次变化里只有一个图形，没用（先这样改过，单测没过） |
+| 切用例时把瓦片全清掉                 | ❌ 只治 `/canvas` 切用例这一种，编辑时父 frame 缩小的漏标还在                       |
+
+检查：`render/renderer.test.ts` 加 2 条（整棵树先子后父删掉时，脏矩形盖住整个父图形；先改子图形再改父图形时，父图形的旧范围还在），去掉 `stalePageBounds` 的回退两条都失败。Playwright 在 `/canvas` 上用左边列表切 4 组用例（gallery → solid、mobile-login → uniform、product-list → mobile-login、E-Learning 详情页 → mobile-login），切过去的画面和直接打开新用例逐像素比，修之前前两组差 517,748 和 59,997 个像素，修之后 4 组都是 0（verification.md §4）。
+
 ## 6. 工具和交互（`engine/tools/`、`engine/editor.ts`）（2026-10-27）
 
 `StateNode` 和 tldraw 一样：`static id`、`initial`、`children`，`transition('a.b', info)` 走点分路径，事件先交给父状态再交给当前子状态，`onEnter` / `onExit` / `onPointerDown` / `onPointerMove` / `onPointerUp` / `onDoubleClick` / `onKeyDown` / `onKeyUp` / `onWheel` / `onCancel` / `onComplete` / `onInterrupt` / `onTick`。根状态在 `Editor` 构造时用 `[SelectTool, HandTool, ...tools]` 拼出来，默认 `select`。
@@ -300,6 +318,19 @@ tldraw 版工具栏保留了 tldraw 的画笔和箭头（用户定的）。本�
 - `arrow`：`start`、`end`、`arrowheadStart`、`arrowheadEnd`、`color`、`size`。拖出一条直线，箭头两边各 30°；松手后选中箭头并回到选择工具。
 - 命中测试用 `Polyline2d`（点到折线的距离 ≤ 半线宽 + 容差）。颜色用 tldraw 浅色主题的色值。
 - 和 tldraw 一样作为默认值导出（`engine/defaults.ts`）：`defaultShapeUtils = [DrawShapeUtil, ArrowShapeUtil]`、`defaultShapeTools = [DrawShapeTool, ArrowShapeTool]`、`defaultTools = [SelectTool, HandTool]`。`<SkiaCanvas>` 像 `<Tldraw>` 一样自动把默认图形类和工具并进 `shapeUtils` / `tools`，传进来的同名（`type` / `id` 相同）优先。工具栏按钮 `DrawToolbarItem`、`ArrowToolbarItem` 只在工具注册了时才显示。
+
+### 6.9 盖在画布上、要和画布混合的 DOM（2026-10-29，用户试用发现）
+
+`<SkiaCanvas>` 的 `components` 里有两个放页面坐标内容的口子：
+
+- `OnTheCanvas`：放在 `CameraLayer` 里。这一层用 CSS `transform: scale() translate()` 跟着镜头，里面的东西写页面坐标就行（`/demo` 的标签、文字编辑框都在这层）。
+- `InFrontOfTheCanvas`：和 `<canvas>` 是兄弟，没有变换，在 `CameraLayer` 后面、界面层前面。
+
+**要和画布混合的东西（`mix-blend-mode`）不能放 `OnTheCanvas`。** 带 `transform` 的元素自成一个层叠上下文，也就是一个隔离的混合组：里面的元素只和组里已经画的东西混合，碰不到组外面的 WebGL 画布。`/canvas`、`/import` 的"差异"叠加（Figma 原图用 `difference` 盖上去，一样的地方变黑）原来放在 `OnTheCanvas`，换引擎以后只和透明的背景混合，显示的就是 Figma 原图本身，"不叠加""半透明""差异"看上去都差不多（用户试用发现）。tldraw 版没这个问题，因为那时图形本身也是这一层里的 DOM。
+
+做法：`engine/react/hooks.ts` 的 `usePagePosition(ref, x, y)` 让元素自己跟着镜头：在 `ref` 的元素上写 `transform: scale(z) translate(x + 镜头 x, y + 镜头 y)`，听 `camera` 事件更新（和 `CameraLayer` 一样直接改 DOM，不重新渲染 React）。元素要 `position: absolute; left: 0; top: 0; transform-origin: 0 0`。元素自己的 `transform` 不影响它和下面的画布混合，隔离只来自祖先。`/canvas` 的 `ExpectedImage`、`/import` 的 `OnPage`（叠加图和红色高亮框）都放 `InFrontOfTheCanvas`，用这个钩子定位。
+
+检查（2026-10-29，Playwright）：`/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop-2` 取画面里 840 × 780 的一块，近黑（RGB 最大值 < 40）的像素：不叠加 0.3%、半透明 0.3%、差异 99.7%；滚轮平移后 98.4%、Ctrl+滚轮缩放后 99.1%。`/import` 导入插件 zip 后"差异"那块变黑，悬停差异分析的一项时红色高亮框盖在对应的文字上（verification.md §4）。
 
 ## 7. Figma 图形的 Skia 画法（`figma/skia/`）（2026-10-27）
 

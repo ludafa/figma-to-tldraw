@@ -12,7 +12,7 @@
 | `apps/client/src/engine/indices.test.ts`（新）    | 分数索引：反复夹逼仍然有序、上下方向、批量生成、`sortByIndex`                                                                                                                                                                                                                                     | 2026-10-27             |
 | `apps/client/src/engine/render/svg.test.ts`（新） | SVG 解析：元素树、注释和 `<?xml?>`、实体解码、`parseColor`（十六进制、rgba、颜色名、none / url / transparent）、`parseTransform` 的组合顺序和 `matrix()`；`backdropOpacity` 取背景模糊所属图形的不透明度（tech.md §5.9，2026-10-28）                                                              | 2026-10-27             |
 
-| `apps/client/src/engine/render/renderer.test.ts`（新） | `easeInOut` 和 CSS `ease-in-out` 一致：两端和中点、先慢后快再慢、对称、单调 | 2026-10-27 |
+| `apps/client/src/engine/render/renderer.test.ts`（新） | `easeInOut` 和 CSS `ease-in-out` 一致：两端和中点、先慢后快再慢、对称、单调；脏矩形（tech.md §5.10）：整棵树先子后父删掉时盖住整个父图形，先改子图形再改父图形时父图形的旧范围还在 | 2026-10-27，2026-10-29 |
 | `apps/client/src/engine/render/overlay.test.ts`（新） | `parseCssColor`：空格写法加百分比透明度、逗号写法、十六进制和颜色名交给 CanvasKit | 2026-10-27 |
 | `apps/client/src/demo/layout.test.ts`（新） | `layoutWall`：每个用例放一次、尺寸不变、互不重叠；每块包住自己的板、空类别跳过；小用例换行排而不是排成一长条；`copies` 重复时 id 前缀不重复 | 2026-10-27 |
 | `apps/client/src/engine/render/image-size.test.ts`（新） | `encodedImageSize` 读 PNG、JPEG、GIF、WebP 文件头，其他格式返回 null；`imageLevel` 按缩放取档、最小 256px、小图不缩；`levelsToDrop` 不到上限时一档都不丢、超过时丢最久没用的 | 2026-10-28 |
@@ -56,6 +56,7 @@
 10. `/demo?copies=2` → 图形 44,200，面板写着 "175 / 175 × 2"。（2026-10-28）
 11. `/canvas` 按 T（文字工具）在空白处点一下 → 直接出现编辑框；打字后按 Esc，字留下、回到选择工具，⌘Z 一次删掉这段字。用文字工具拖出一个框、或者点到已有的文字，也直接进编辑。（2026-10-28）
 12. `/canvas` 选一段文字，右侧"效果"里加一个投影 → 字下面出现投影，改偏移和模糊跟着变。（2026-10-28）
+13. `/canvas?case=page/gallery`，在左边列表里点 `fill/solid` → 画布上只有 solid 那个白底蓝块，gallery 的深色背景和卡片一点不剩；再点 `page/mobile-login`、`radius/uniform` 来回切，也没有残留。（2026-10-29）
 
 ## 4. 各次实际结果
 
@@ -178,3 +179,29 @@ plan.md "2026-10-28（分支 `feat/mixed-text`，混合样式文字）"那一节
 - 之后（2026-10-29）computer use 能用了：在 Figma 里生成并导入 3 个装饰线用例（共 197 个），改了跳过下伸部分的挖法和波浪线圆头（tech.md §11.10）。第二次全量对比（`reports/fidelity/20261029-091947`）：197 / 197 小于 1%，平均 0.091%，最大 0.83%；`text-mixed/*` 22 个平均 0.083%，最大 0.21%（`letter-spacing`）；新用例 `decoration-wavy` 0.17%、`decoration-dotted` 0.04%、`decoration-units` 0.19%；和第一次全量比变好 1、变差 2（+0.005%、+0.007%）、不变 191。
 - 装饰线逐条量过（2 倍图）：点线、波浪线 12 / 22 / 40px 和 1 / 3 / 6px 粗的波长、摆幅、墨量、点距、点大小和 Figma 差 ≤ 0.25px；`PERCENT` 粗细和偏移逐像素一样；跳过下伸部分 12 个空隙的边缘每条差 ≤ 3 像素。
 - 没做：`SMALL_CAPS`、`SMALL_CAPS_FORCED` 在 Figma 里对 Inter、Lato 都设不上，没测到；很粗的波浪线在跳过下伸部分时的断口形状（Figma 是圆头、断得更早）没对上。
+
+### 2026-10-29（切用例残留，用户试用发现）
+
+plan.md "2026-10-29（分支 `feat/figma-variables`，切用例残留）"那一节的改动。
+
+- `pnpm lint`、`pnpm typecheck` 通过；`pnpm test` 29 个测试文件、201 条全部通过（`renderer.test.ts` 新增 2 条，临时去掉 `stalePageBounds` 的回退时这 2 条失败）。
+- Playwright（无头 Chromium，1280 × 900，设备像素比 2）：先直接打开目标用例截画布，再打开来源用例、点左边列表切过去再截，逐像素比（每个像素 RGB 差的和超过 30 算不同）：
+
+| 切换                                                                | 修之前             | 修之后 |
+| ------------------------------------------------------------------- | ------------------ | ------ |
+| `page/gallery` → `fill/solid`                                       | 517,748 个像素不同 | 0      |
+| `page/mobile-login` → `radius/uniform`                              | 59,997             | 0      |
+| `page/product-list` → `page/mobile-login`                           | 0                  | 0      |
+| E-Learning `visual-high-fidelity-detail` → `page/mobile-login`      | 没测               | 0      |
+| `layout/wrap` → `fill/solid`、`fill/solid` → `fill/linear-gradient` | 0                  | 没重测 |
+
+- 手动验收第 13 条按上面的脚本跑过，页面错误 0 个。没在 `/demo` 和编辑时"自动布局 frame 跟着内容缩小"的场景专门看，后者是同一处漏标，只有单测。
+
+### 2026-10-29（差异叠加，用户试用发现）
+
+plan.md 同一天"阶段 2"的改动。
+
+- Playwright（无头 Chromium，1440 × 1000）：`/canvas?case=real/untitled-ui-free-figma-ui-kit-and-design/settings-pages-desktop-2`，取画布上 (60, 120)～(900, 900) 这块，近黑（RGB 最大值 < 40）的像素占比：不叠加 0.3%、半透明 0.3%、差异 99.7%；滚轮平移后 98.4%，Ctrl+滚轮放大后 99.1%（文字边缘有一圈抗锯齿的亮线）。修之前"差异"显示的是 Figma 原图本身（用户截图）。
+- `/import`（1100 × 900）：导入 `tmp/figma-test-cases-20261029-1041.zip`，"差异"时用例那块变黑；悬停差异分析的第一项，红色高亮框盖在 "Colors, text and visibility…" 那行字上（339 个红色像素）。页面错误 0 个。
+- 900px 宽窗口：工具条 644px 宽，用例名截断成 "settings-pages-d…"，三个按钮都是一行（高 24px）。
+- 手动验收第 1 条（差异几乎全黑）现在成立。
