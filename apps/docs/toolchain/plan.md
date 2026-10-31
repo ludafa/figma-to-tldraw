@@ -22,7 +22,7 @@
 
 - client 依赖例行小升级（提交 `d98b5a5`）：react / react-dom 19.2.5 → 19.2.8、kubb 4.37 → 4.39、better-auth 1.6.9 → 1.6.25、`@types/node` 25 → 26，以及 base-ui、tanstack、lucide、shadcn 的小版本。
 - `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 加 `eslint@10.8.0`，免得被 pnpm 的发布时间限制拦下。
-- 同一个 PR 里还有提交流程的改动，见 [提交流程的施工计划](../commit-workflow/plan.md)。
+- 同一个 PR 里还有提交流程的改动（commitlint、husky、`/commit`、`/split-commits`），规则现在写在根目录 `CLAUDE.md`「Git 提交约定」。
 
 ## 2026-10-21（分支 `ludafa/add-oxlint-eslint-config`）
 

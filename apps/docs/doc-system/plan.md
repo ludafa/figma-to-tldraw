@@ -28,7 +28,7 @@
 | 原文件                                                                  | 去向                                                                                     |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `decisions/0001-vite-rolldown-upgrade-and-pnpm11-config.md`             | [toolchain](../toolchain/README.md)：tech.md §1～§2、plan.md 2026-07-19、verification.md |
-| `decisions/0002-commit-workflow-commitlint-no-changesets.md`            | [commit-workflow](../commit-workflow/README.md)：全部                                    |
+| `decisions/0002-commit-workflow-commitlint-no-changesets.md`            | commit-workflow 模块：全部（2026-10-31 并进 `CLAUDE.md`「Git 提交约定」，模块删除）      |
 | `decisions/0003-oxlint-oxfmt-replace-eslint-prettier.md`                | [lint-format](../lint-format/README.md)：全部，并补上之后几轮的改动                      |
 | 本会话的 TypeScript 7 调研（原来只在对话里）                            | [toolchain/probe-typescript-7.md](../toolchain/probe-typescript-7.md)                    |
 | 原 `apps/docs/README.md`（features / solutions / decisions 的写法说明） | 被 feature-docs skill 取代                                                               |
@@ -78,10 +78,16 @@
 
 ## 2026-10-31（分支 `feat/figma-variables`）
 
-起因：用户说文档有点乱，"所有功能、规划类的应该放到 apps/docs 里边，和项目基建相关的应该内化到项目的 claude.md 或者是 skill 里边"，先整理根目录的 `./docs`，"记录保持代码与文档的链接"（用户要求）。
+起因：用户说文档有点乱，"所有功能、规划类的应该放到 apps/docs 里边，和项目基建相关的应该内化到项目的 claude.md 或者是 skill 里边"，先整理根目录的 `./docs`，"记录保持代码与文档的链接"；接着说 `apps/docs/commit-workflow`"不应该还放到这里"（用户要求）。
 
 ### 阶段 1：根目录 `docs/`
 
 - 文件：`docs/施工计划.md` → `apps/docs/figma-to-tldraw/plan.md`（挪过去，编号不变）；删除 `docs/handoff/` 三份交接材料，要点并进那份 plan.md 的 §9；`CLAUDE.md` 加「协作方式」和「文档」里"文档放哪"一段；改了 figma-to-tldraw 的 README、tech.md、verification.md、三份 probe 和产品方向 plan.md 里的 9 处链接。
 - 状态：✅ 完成（2026-10-31）
 - 检查：代码注释里本来就没有指向根目录 `docs/` 的引用；`pnpm docs:check` 372 条代码引用、412 条文档链接通过，`pnpm lint` 通过。
+
+### 阶段 2：commit-workflow 模块并进 `CLAUDE.md`
+
+- 文件：删除 `apps/docs/commit-workflow/`；`CLAUDE.md`「Git 提交约定」补上原来只在模块里的内容（依赖装在根目录、pre-commit 为什么不跑测试、试 commitlint 规则的两条命令、为什么不用 changesets、以后要发版时怎么接）；`feature-docs` skill §1 加"项目基建不建模块"；lint-format、toolchain、本模块里 7 处提到它的地方改成指向 `CLAUDE.md`。原文用 `git show 2d6e1a6:apps/docs/commit-workflow/<文件名>` 看。
+- 状态：✅ 完成（2026-10-31）
+- 偏差：并进 `/split-commits` 之前，先核实了一条记忆"pre-commit 的 `lint-staged --no-stash` 会把部分暂存的文件整个重新 add"：在临时仓库里用 lint-staged 17.6.0 实测，只暂存一处改动时只提交了这一处（已格式化），没暂存的那处留在工作区，和 [lint-format tech.md §9](../lint-format/tech.md#9-pre-commit-钩子2026-10-22) 一致。那条记忆是错的，`/split-commits` 里的 `git add -p` 不用改。
