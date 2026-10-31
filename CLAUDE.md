@@ -15,6 +15,8 @@ Module type: ESM. Package manager: pnpm. Node imports use `.js` extensions for T
 
 设计和施工记录在 `apps/docs/`，按功能模块组织。动手改某个功能前，先看索引 `apps/docs/README.md`，再打开对应模块的 `README.md`，按需读里面的 `product.md` / `tech.md` / `plan.md` / `verification.md` / `probe-*.md`；不要整目录通读。
 
+文档放哪：功能、设计、施工计划、调研都放 `apps/docs/<模块>/`；项目怎么搭、怎么干活的规矩写进本文件或 `.claude/skills/`。仓库根目录不建 `docs/`。
+
 写或更新文档时用 `feature-docs` skill。已有章节的编号不改（代码注释靠编号引用）；新功能的章节追加在文档末尾，编号取最大编号 + 1。改了模块 `README.md` 的头部后运行 `pnpm docs:index` 重新生成索引（`pnpm lint` 会检查）。
 
 ## 代码注释
@@ -68,6 +70,21 @@ These are load-bearing — change them only with the user's explicit go-ahead.
 - **Code style is automated — don't spend effort on it.** A PostToolUse hook runs `scripts/format.sh` (`oxlint --fix` + `oxfmt`) on every file you edit (formatting, import/Tailwind order, `curly`, `one-var`). `pnpm format` does the same repo-wide, and the pre-commit hook does it for staged files. Config lives only in the root `.oxlintrc.json` / `.oxfmtrc.json`; client-only rules go in the `apps/client/**` override. Rationale: [`apps/docs/lint-format/`](apps/docs/lint-format/README.md).
 - **Before finishing, run `pnpm lint` and `pnpm typecheck`** and fix what's left (strict TS with `verbatimModuleSyntax`: use `import type`). Suppress a rule with `// oxlint-disable-next-line <rule>`.
 - **Kubb's `src/gen/**` must stay formatted by oxfmt** (`kubb.config.ts` → `format: 'oxfmt'`); don't add it to `.oxfmtrc.json`'s `ignorePatterns`. Other codegen output (`routeTree.gen.ts`, `drizzle/**`) is ignored by both configs — add new codegen output there too.
+
+## 协作方式
+
+- 用中文回复，语言简单直白，把用户当成新手，把事情讲清楚。
+- 不要用"第一刀"这种说法，用"第一步""最小验证切片"代替。
+- 只回答问到的问题，不扯到别的项目上。
+- 每完成一步，先跑起来看效果，再进行下一步。
+- 涉及架构的大改动先问用户；小的实现细节自己决定。
+- 用户没说要提交就不提交；要提交时先跟用户确认。
+
+同一个工作区可能同时开着几个 Claude 会话，分支和没提交的改动会在你不知道的时候变掉：
+
+- 改文件前先看 `git branch --show-current` 和 `git status --short`；和自己记得的不一样时，用 `ListAgents` 看有没有别的会话在忙。
+- 要改的文件正被别的会话改着，先告诉用户，等那边提交了再在它的基础上改。
+- 提交时只 `git add` 自己改的文件，不 `git add -A`。
 
 ## Git 提交约定
 

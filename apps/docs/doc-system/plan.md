@@ -75,3 +75,13 @@
   4. 第 10 条：加 `textOf()` 缓存，每个文件只读一次。
 - 偏差：测试时发现引用正则 `See (apps\/docs\/[\w./-]+\.md)` 匹配不到中文路径，`-z` 修好之后这类引用照样被漏掉。改成 `[\p{L}\p{N}_./-]+` 并加 `u` 标志（Claude 发现，计划外）。
 - 检查：在 scratchpad 里建了一个临时目录，放一份文件名是中文的文档（`apps/docs/中文/说明.md`）和一个引用它 `§9` 的 `引用.ts`。还没 `git init` 时打印跳过提示、退出码 0；`git init` 之后报出全部 5 个问题：中文引用的 `§9` 不存在、`/nope.md` 不存在、两个坏的 `%` 转义、一个不存在的相对链接。指向 `/apps/docs/中文/说明.md#1-选型` 的根路径链接没有报错。仓库里 `pnpm docs:check` 通过。
+
+## 2026-10-31（分支 `feat/figma-variables`）
+
+起因：用户说文档有点乱，"所有功能、规划类的应该放到 apps/docs 里边，和项目基建相关的应该内化到项目的 claude.md 或者是 skill 里边"，先整理根目录的 `./docs`，"记录保持代码与文档的链接"（用户要求）。
+
+### 阶段 1：根目录 `docs/`
+
+- 文件：`docs/施工计划.md` → `apps/docs/figma-to-tldraw/plan.md`（挪过去，编号不变）；删除 `docs/handoff/` 三份交接材料，要点并进那份 plan.md 的 §9；`CLAUDE.md` 加「协作方式」和「文档」里"文档放哪"一段；改了 figma-to-tldraw 的 README、tech.md、verification.md、三份 probe 和产品方向 plan.md 里的 9 处链接。
+- 状态：✅ 完成（2026-10-31）
+- 检查：代码注释里本来就没有指向根目录 `docs/` 的引用；`pnpm docs:check` 372 条代码引用、412 条文档链接通过，`pnpm lint` 通过。
