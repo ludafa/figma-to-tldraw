@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 import {
   DefaultStylePanel,
@@ -8,6 +8,7 @@ import {
   useEditor,
   useValue,
 } from '../../engine';
+import { rgba } from '../geometry';
 import { isFigmaShape, type FigmaShape } from '../shape-types';
 import type {
   FigmaEffect,
@@ -171,6 +172,43 @@ const PAINT_LABEL: Record<FigmaPaint['type'], string> = {
   VIDEO: '视频',
 };
 
+// See apps/docs/figma-to-tldraw/tech.md §13.4.
+function PaintSwatch({
+  paint,
+  images,
+}: {
+  paint: FigmaPaint;
+  images: Record<string, string>;
+}) {
+  const src =
+    paint.type === 'IMAGE' && paint.imageRef && images[paint.imageRef];
+  const stops = (paint.gradientStops ?? []).map(
+    (s) => `${rgba(s.color)} ${round(s.position * 100)}%`,
+  );
+  const list = stops.length === 1 ? [stops[0], stops[0]] : stops;
+  const background: CSSProperties['background'] = !list.length
+    ? undefined
+    : paint.type === 'GRADIENT_LINEAR'
+      ? `linear-gradient(90deg, ${list.join(', ')})`
+      : paint.type === 'GRADIENT_ANGULAR'
+        ? `conic-gradient(${list.join(', ')})`
+        : paint.type === 'GRADIENT_RADIAL' || paint.type === 'GRADIENT_DIAMOND'
+          ? `radial-gradient(${list.join(', ')})`
+          : undefined;
+  if (!src && !background) {
+    return null;
+  }
+  return (
+    <span className="size-4 shrink-0 overflow-hidden rounded-sm border border-foreground/10 bg-[repeating-conic-gradient(#e5e5e5_0%_25%,#fff_0%_50%)] bg-size-[8px_8px]">
+      {src ? (
+        <img src={src} alt="" className="size-full object-cover" />
+      ) : (
+        <span className="block size-full" style={{ background }} />
+      )}
+    </span>
+  );
+}
+
 function Eye({ on }: { on: boolean }) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -189,15 +227,18 @@ function Eye({ on }: { on: boolean }) {
 
 function PaintList({
   paints,
+  items,
   act,
   readOnly,
   onChange,
 }: {
   paints: FigmaPaint[];
+  items: Item[];
   act: Actions;
   readOnly?: boolean;
   onChange: (paints: FigmaPaint[], merge: boolean) => void;
 }) {
+  const images = imagesOf(items);
   const patch = (i: number, p: Partial<FigmaPaint>, merge = false) =>
     onChange(
       paints.map((q, j) => (j === i ? { ...q, ...p } : q)),
@@ -227,8 +268,9 @@ function PaintList({
                   onChange={(color, merge) => patch(i, { color }, merge)}
                 />
               ) : (
-                <div className={`${FIELD} text-foreground/60`}>
-                  {PAINT_LABEL[p.type]}
+                <div className={FIELD}>
+                  <PaintSwatch paint={p} images={images} />
+                  <span className="truncate">{PAINT_LABEL[p.type]}</span>
                 </div>
               )}
             </div>
@@ -256,6 +298,10 @@ function PaintList({
         ))}
     </>
   );
+}
+
+function imagesOf(items: Item[]): Record<string, string> {
+  return Object.assign({}, ...items.map((i) => i.shape.props.images));
 }
 
 function solid(r: number, g: number, b: number): FigmaPaint {
@@ -678,6 +724,7 @@ function FillSection({ items, act }: { items: Item[]; act: Actions }) {
       ) : (
         <PaintList
           paints={paints ?? []}
+          items={items}
           act={act}
           readOnly={vector}
           onChange={change}
@@ -725,6 +772,7 @@ function StrokeSection({ items, act }: { items: Item[]; act: Actions }) {
       ) : (
         <PaintList
           paints={paints ?? []}
+          items={items}
           act={act}
           readOnly={vector}
           onChange={change}
