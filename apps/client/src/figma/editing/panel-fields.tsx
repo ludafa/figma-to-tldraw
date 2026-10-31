@@ -46,12 +46,18 @@ export function toHex(c: FigmaColor | undefined): string {
     .join('')}`;
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §22.4.
 export function fromHex(hex: string, a: number): FigmaColor | undefined {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  const m = /^#?([0-9a-f]{1,3}|[0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) {
     return undefined;
   }
-  const n = Number.parseInt(m[1], 16);
+  const digits = m[1];
+  const full =
+    digits.length === 3
+      ? [...digits].map((d) => d + d).join('')
+      : digits.padEnd(6, digits);
+  const n = Number.parseInt(full, 16);
   return {
     r: ((n >> 16) & 255) / 255,
     g: ((n >> 8) & 255) / 255,
@@ -377,41 +383,100 @@ export function ColorField({
   color,
   onMark,
   onChange,
+  onOpen,
 }: {
   color: FigmaColor | undefined;
   /** Called before a color drag, so the drag is one undo step. */
   onMark: () => void;
   onChange: (c: FigmaColor, merge: boolean) => void;
+  /** Replaces the browser's color picker with the caller's popover. */
+  onOpen?: (swatch: HTMLElement) => void;
 }) {
   const hex = toHex(color);
   const a = color?.a ?? 1;
   return (
     <div className={FIELD}>
-      <input
-        type="color"
-        className="size-4 shrink-0 cursor-pointer rounded-sm border border-foreground/10 bg-transparent p-0"
-        value={hex}
-        onPointerDown={onMark}
-        onChange={(e) => {
-          const c = fromHex(e.currentTarget.value, a);
-          if (c) {
-            onChange(c, true);
-          }
-        }}
-      />
-      <input
-        className="w-full min-w-0 bg-transparent uppercase outline-none"
-        defaultValue={hex.slice(1)}
-        key={hex}
-        onFocus={(e) => e.currentTarget.select()}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        onBlur={(e) => {
-          const c = fromHex(e.currentTarget.value, a);
-          if (c && toHex(c) !== hex) {
-            onChange(c, false);
-          }
-        }}
-      />
+      {onOpen ? (
+        <button
+          type="button"
+          aria-label="编辑颜色"
+          className="size-4 shrink-0 cursor-pointer rounded-sm border border-foreground/10"
+          style={{ background: hex }}
+          onClick={(e) => onOpen(e.currentTarget)}
+        />
+      ) : (
+        <input
+          type="color"
+          className="size-4 shrink-0 cursor-pointer rounded-sm border border-foreground/10 bg-transparent p-0"
+          value={hex}
+          onPointerDown={onMark}
+          onChange={(e) => {
+            const c = fromHex(e.currentTarget.value, a);
+            if (c) {
+              onChange(c, true);
+            }
+          }}
+        />
+      )}
+      <HexInput color={color} onCommit={(c) => onChange(c, false)} />
     </div>
+  );
+}
+
+/** The six hex digits of a color; commits on Enter or blur. */
+export function HexInput({
+  color,
+  onCommit,
+}: {
+  color: FigmaColor | undefined;
+  onCommit: (c: FigmaColor) => void;
+}) {
+  const hex = toHex(color);
+  return (
+    <input
+      aria-label="十六进制颜色"
+      className="w-full min-w-0 bg-transparent uppercase outline-none"
+      defaultValue={hex.slice(1)}
+      key={hex}
+      onFocus={(e) => e.currentTarget.select()}
+      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      onBlur={(e) => {
+        const c = fromHex(e.currentTarget.value, color?.a ?? 1);
+        if (c && toHex(c) !== hex) {
+          onCommit(c);
+        } else {
+          e.currentTarget.value = hex.slice(1);
+        }
+      }}
+    />
+  );
+}
+
+/** A 24px icon button, as in the paint popover. */
+export function ToolButton({
+  label,
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+      className={`flex size-6 shrink-0 items-center justify-center rounded-sm disabled:opacity-30 ${active ? 'bg-foreground/10 text-foreground' : 'text-foreground/60 enabled:hover:bg-foreground/[0.06]'}`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }

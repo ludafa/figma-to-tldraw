@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useState } from 'react';
 
 import {
   DefaultStylePanel,
@@ -43,6 +43,9 @@ import {
   setProperty,
   shapeByNodeId,
 } from './instances';
+import type { LocalImage } from './paint-edit';
+import type { PaintTarget } from './paint-library';
+import { PaintPopover } from './paint-popover';
 import {
   ColorField,
   FIELD,
@@ -225,33 +228,75 @@ function Eye({ on }: { on: boolean }) {
   );
 }
 
+// See apps/docs/figma-to-tldraw/tech.md §22.
 function PaintList({
   paints,
   items,
   act,
+  target,
   readOnly,
   onChange,
 }: {
   paints: FigmaPaint[];
   items: Item[];
   act: Actions;
+  target: PaintTarget;
   readOnly?: boolean;
   onChange: (paints: FigmaPaint[], merge: boolean) => void;
 }) {
+  const [open, setOpen] = useState<{ i: number; anchor: HTMLElement }>();
   const images = imagesOf(items);
-  const patch = (i: number, p: Partial<FigmaPaint>, merge = false) =>
+  const replace = (i: number, p: FigmaPaint, merge = false) =>
     onChange(
-      paints.map((q, j) => (j === i ? { ...q, ...p } : q)),
+      paints.map((q, j) => (j === i ? p : q)),
       merge,
     );
+  const patch = (i: number, p: Partial<FigmaPaint>, merge = false) =>
+    replace(i, { ...paints[i], ...p } as FigmaPaint, merge);
+  const toggle = (i: number, el: HTMLElement) => {
+    const anchor = el.closest<HTMLElement>('[data-paint-row]') ?? el;
+    setOpen(open?.i === i ? undefined : { i, anchor });
+  };
+  const addImage = (i: number, image: LocalImage, p: FigmaPaint) => {
+    act.shapes((s) => ({
+      id: s.id,
+      type: s.type,
+      props: {
+        images: { ...s.props.images, [image.ref]: image.url },
+        imageSizes: { ...s.props.imageSizes, [image.ref]: image.size },
+      },
+    }));
+    replace(i, p, true);
+  };
+  const shown = open && paints[open.i];
+  const first = items[0]?.shape;
   return (
     <>
+      {shown && first && (
+        <PaintPopover
+          anchor={open.anchor}
+          paint={shown}
+          images={images}
+          imageSizes={Object.assign(
+            {},
+            ...items.map((it) => it.shape.props.imageSizes),
+          )}
+          node={{ w: first.props.w, h: first.props.h }}
+          shapeId={first.id}
+          target={target}
+          onChange={(p, merge) => replace(open.i, p, merge)}
+          onMark={act.mark}
+          onImage={(image, p) => addImage(open.i, image, p)}
+          onClose={() => setOpen(undefined)}
+        />
+      )}
       {paints
         .map((p, i) => [p, i] as const)
         .reverse()
         .map(([p, i]) => (
           <div
             key={i}
+            data-paint-row=""
             className={`flex items-center gap-1 ${p.visible === false ? 'opacity-45' : ''} ${readOnly ? 'pointer-events-none' : ''}`}
           >
             <IconButton
@@ -266,12 +311,17 @@ function PaintList({
                   color={p.color}
                   onMark={act.mark}
                   onChange={(color, merge) => patch(i, { color }, merge)}
+                  onOpen={readOnly ? undefined : (el) => toggle(i, el)}
                 />
               ) : (
-                <div className={FIELD}>
+                <button
+                  type="button"
+                  className={`${FIELD} w-full text-left`}
+                  onClick={(e) => toggle(i, e.currentTarget)}
+                >
                   <PaintSwatch paint={p} images={images} />
                   <span className="truncate">{PAINT_LABEL[p.type]}</span>
-                </div>
+                </button>
               )}
             </div>
             <div className="w-14 shrink-0">
@@ -723,9 +773,11 @@ function FillSection({ items, act }: { items: Item[]; act: Actions }) {
         <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
+          key={items.map((it) => it.shape.id).join()}
           paints={paints ?? []}
           items={items}
           act={act}
+          target="fill"
           readOnly={vector}
           onChange={change}
         />
@@ -771,9 +823,11 @@ function StrokeSection({ items, act }: { items: Item[]; act: Actions }) {
         <div className="text-foreground/50">混合</div>
       ) : (
         <PaintList
+          key={items.map((it) => it.shape.id).join()}
           paints={paints ?? []}
           items={items}
           act={act}
+          target="stroke"
           readOnly={vector}
           onChange={change}
         />

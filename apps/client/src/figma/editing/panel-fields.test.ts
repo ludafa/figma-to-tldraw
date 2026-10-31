@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { stepBase, stepSize, wheelAmount, wheelStepper } from './panel-fields';
+import {
+  fromHex,
+  stepBase,
+  stepSize,
+  toHex,
+  wheelAmount,
+  wheelStepper,
+} from './panel-fields';
 
 const keys = { metaKey: false, shiftKey: false, altKey: false };
 
@@ -82,5 +89,24 @@ describe('stepBase', () => {
 
   it('has nothing to step from when the value is mixed and nothing is typed', () => {
     expect(stepBase(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('fromHex', () => {
+  it('reads six digits with or without #', () => {
+    expect(toHex(fromHex('#1E90FF', 1))).toBe('#1e90ff');
+    expect(toHex(fromHex(' 1e90ff ', 1))).toBe('#1e90ff');
+  });
+
+  it('expands short codes like Figma', () => {
+    expect(toHex(fromHex('f80', 1))).toBe('#ff8800');
+    expect(toHex(fromHex('a', 1))).toBe('#aaaaaa');
+    expect(toHex(fromHex('12', 1))).toBe('#121212');
+  });
+
+  it('rejects other lengths and keeps the alpha', () => {
+    expect(fromHex('1234', 1)).toBeUndefined();
+    expect(fromHex('12345g', 1)).toBeUndefined();
+    expect(fromHex('fff', 0.3)?.a).toBe(0.3);
   });
 });

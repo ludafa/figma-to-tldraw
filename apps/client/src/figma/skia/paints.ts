@@ -133,6 +133,12 @@ function gradientShader(
   return undefined;
 }
 
+/** cos and sin of a whole number of clockwise quarter turns. */
+function quarterTurn(degrees = 0): [number, number] {
+  const q = ((Math.round(degrees / 90) % 4) + 4) % 4;
+  return q === 1 ? [0, 1] : q === 2 ? [-1, 0] : q === 3 ? [0, -1] : [1, 0];
+}
+
 function imageShader(
   ck: CanvasKit,
   paint: FigmaPaint,
@@ -157,23 +163,38 @@ function imageShader(
   const iw = natural.width;
   const ih = natural.height;
   const { w, h } = src;
+  // See apps/docs/figma-to-tldraw/tech.md §22.2.
+  const [cos, sin] = quarterTurn(paint.rotation);
   let m: number[];
   let tile = ck.TileMode.Decal;
   switch (paint.scaleMode) {
     case 'FIT':
     case 'FILL':
     case undefined: {
+      const [rw, rh] = sin ? [ih, iw] : [iw, ih];
       const s =
         paint.scaleMode === 'FIT'
-          ? Math.min(w / iw, h / ih)
-          : Math.max(w / iw, h / ih);
-      m = [s, 0, (w - iw * s) / 2, 0, s, (h - ih * s) / 2, 0, 0, 1];
+          ? Math.min(w / rw, h / rh)
+          : Math.max(w / rw, h / rh);
+      m = [
+        s * cos,
+        -s * sin,
+        w / 2 - s * ((cos * iw) / 2 - (sin * ih) / 2),
+        s * sin,
+        s * cos,
+        h / 2 - s * ((sin * iw) / 2 + (cos * ih) / 2),
+        0,
+        0,
+        1,
+      ];
       break;
     }
     case 'TILE': {
       const size = src.imageSizes[paint.imageRef] ?? { width: iw, height: ih };
       const f = paint.scalingFactor ?? 1;
-      m = [(size.width * f) / iw, 0, 0, 0, (size.height * f) / ih, 0, 0, 0, 1];
+      const sx = (size.width * f) / iw;
+      const sy = (size.height * f) / ih;
+      m = [sx * cos, -sy * sin, 0, sx * sin, sy * cos, 0, 0, 0, 1];
       tile = ck.TileMode.Repeat;
       break;
     }
